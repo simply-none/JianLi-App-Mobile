@@ -35,20 +35,41 @@ final GoRouter appRouter = GoRouter(
   routes: [
     // ---- 底部导航四分支（保持 builder，导航壳 indexedStack 管理状态） ----
     StatefulShellRoute.indexedStack(
-      builder: (context, state, navigationShell) => MainShell(navigationShell: navigationShell),
+      builder: (context, state, navigationShell) =>
+          MainShell(navigationShell: navigationShell),
       branches: [
-        StatefulShellBranch(routes: [
-          GoRoute(path: '/', builder: (context, state) => const DashboardPage()),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(path: '/efficiency', builder: (context, state) => const EfficiencyHubPage()),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(path: '/content', builder: (context, state) => const ContentHubPage()),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(path: '/tools', builder: (context, state) => const ToolsHubPage()),
-        ]),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, state) => const DashboardPage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/efficiency',
+              builder: (context, state) => const EfficiencyHubPage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/content',
+              builder: (context, state) => const ContentHubPage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/tools',
+              builder: (context, state) => const ToolsHubPage(),
+            ),
+          ],
+        ),
       ],
     ),
     // ---- 效率 ----
@@ -62,24 +83,29 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/pomodoro',
-      pageBuilder: (context, state) => fadeSlidePage(const PomodoroPage(), state),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const PomodoroPage(), state),
     ),
     GoRoute(
       path: '/pomodoro/records',
-      pageBuilder: (context, state) => fadeSlidePage(const PomodoroRecordsPage(), state),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const PomodoroRecordsPage(), state),
     ),
     GoRoute(
       path: '/countdown',
-      pageBuilder: (context, state) => fadeSlidePage(const CountdownPage(), state),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const CountdownPage(), state),
     ),
     GoRoute(
       path: '/reminders',
-      pageBuilder: (context, state) => fadeSlidePage(const ReminderListPage(), state),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const ReminderListPage(), state),
     ),
     // ---- 内容 ----
     GoRoute(
       path: '/notes',
-      pageBuilder: (context, state) => fadeSlidePage(const NoteListPage(), state),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const NoteListPage(), state),
       routes: [
         GoRoute(
           path: 'edit',
@@ -99,7 +125,8 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/conversation',
-      pageBuilder: (context, state) => fadeSlidePage(const ConversationPage(), state),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const ConversationPage(), state),
       routes: [
         GoRoute(
           path: ':id',
@@ -112,7 +139,8 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/ebook',
-      pageBuilder: (context, state) => fadeSlidePage(const BookshelfPage(), state),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const BookshelfPage(), state),
       routes: [
         GoRoute(
           path: 'reader',
@@ -126,15 +154,18 @@ final GoRouter appRouter = GoRouter(
     // ---- 工具 ----
     GoRoute(
       path: '/twofactor',
-      pageBuilder: (context, state) => fadeSlidePage(const TwoFactorPage(), state),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const TwoFactorPage(), state),
     ),
     GoRoute(
       path: '/password-vault',
-      pageBuilder: (context, state) => fadeSlidePage(const PasswordVaultPage(), state),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const PasswordVaultPage(), state),
     ),
     GoRoute(
       path: '/file-vault',
-      pageBuilder: (context, state) => fadeSlidePage(const FileVaultPage(), state),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const FileVaultPage(), state),
     ),
     GoRoute(
       path: '/qr',

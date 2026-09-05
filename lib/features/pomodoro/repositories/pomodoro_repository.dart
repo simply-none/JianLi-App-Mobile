@@ -15,8 +15,9 @@ class PomodoroRepository {
 
   /// 读取番茄钟状态机配置（不存在/未启用返回 null）
   Future<PomodoroSnapshot?> loadSnapshot() async {
-    final row = await (_db.select(_db.reminders)..where((tbl) => tbl.id.equals('pomodoro')))
-        .getSingleOrNull();
+    final row = await (_db.select(
+      _db.reminders,
+    )..where((tbl) => tbl.id.equals('pomodoro'))).getSingleOrNull();
     if (row == null || row.enabled != '1') return null;
     final states = parsePomodoroStates(row.states);
     final startMs = int.tryParse(row.startTime ?? '') ?? 0;
@@ -33,11 +34,15 @@ class PomodoroRepository {
     final nowStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-    await _db.into(_db.pomodoroStatus).insert(PomodoroStatusCompanion.insert(
-          label: Value(label),
-          value: Value(value),
-          mode: Value(mode),
-          createTime: Value(nowStr),
-        ));
+    await _db
+        .into(_db.pomodoroStatus)
+        .insert(
+          PomodoroStatusCompanion.insert(
+            label: Value(label),
+            value: Value(value),
+            mode: Value(mode),
+            createTime: Value(nowStr),
+          ),
+        );
   }
 }

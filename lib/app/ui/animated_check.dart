@@ -65,15 +65,15 @@ class _AnimatedCheckState extends State<AnimatedCheck>
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-        animation: _anim,
-        builder: (_, animation) => CustomPaint(
-          size: Size.square(widget.size),
-          painter: _CheckPainter(
-            progress: _anim.value,
-            color: widget.color ?? context.theme.colors.primary,
-          ),
-        ),
-      );
+    animation: _anim,
+    builder: (_, animation) => CustomPaint(
+      size: Size.square(widget.size),
+      painter: _CheckPainter(
+        progress: _anim.value,
+        color: widget.color ?? context.theme.colors.primary,
+      ),
+    ),
+  );
 }
 
 class _CheckPainter extends CustomPainter {

@@ -16,9 +16,9 @@ class ConversationRepository {
 
   /// 主题列表流（update_time 倒序）
   Stream<List<ConversationThemeData>> watchThemes() {
-    return (_db.select(_db.conversationTheme)
-          ..orderBy([(t) => OrderingTerm.desc(t.updateTime)]))
-        .watch();
+    return (_db.select(
+      _db.conversationTheme,
+    )..orderBy([(t) => OrderingTerm.desc(t.updateTime)])).watch();
   }
 
   /// 某主题下的消息流（过滤软删除，时间正序）
@@ -32,28 +32,39 @@ class ConversationRepository {
   /// 新建主题（桌面端字段：title/tags/create_time/update_time/remark/parent_id）
   Future<int> createTheme({required String title, String remark = ''}) async {
     final now = _now();
-    return _db.into(_db.conversationTheme).insert(ConversationThemeCompanion.insert(
-          title: Value(title),
-          tags: const Value('[]'),
-          createTime: Value(now),
-          updateTime: Value(now),
-          remark: Value(remark),
-          parentId: const Value(null),
-        ));
+    return _db
+        .into(_db.conversationTheme)
+        .insert(
+          ConversationThemeCompanion.insert(
+            title: Value(title),
+            tags: const Value('[]'),
+            createTime: Value(now),
+            updateTime: Value(now),
+            remark: Value(remark),
+            parentId: const Value(null),
+          ),
+        );
   }
 
   /// 追加一条消息（记录型对话；themeId 与桌面端一致为字符串化 id）
-  Future<void> addMessage({required String themeId, required String content}) async {
-    await _db.into(_db.conversation).insert(ConversationCompanion.insert(
-          themeId: Value(themeId),
-          content: Value(content),
-          tags: const Value('[]'),
-          createTime: Value(_now()),
-          pinned: const Value('0'),
-          isDeleted: const Value('0'),
-          refIds: const Value('[]'),
-          isRich: const Value('0'),
-        ));
+  Future<void> addMessage({
+    required String themeId,
+    required String content,
+  }) async {
+    await _db
+        .into(_db.conversation)
+        .insert(
+          ConversationCompanion.insert(
+            themeId: Value(themeId),
+            content: Value(content),
+            tags: const Value('[]'),
+            createTime: Value(_now()),
+            pinned: const Value('0'),
+            isDeleted: const Value('0'),
+            refIds: const Value('[]'),
+            isRich: const Value('0'),
+          ),
+        );
   }
 
   static String _now() {
@@ -66,16 +77,17 @@ class ConversationRepository {
 /// 仓库 provider
 final Provider<ConversationRepository> conversationRepositoryProvider =
     Provider<ConversationRepository>(
-  (ref) => ConversationRepository(ref.watch(appDatabaseProvider)),
-);
+      (ref) => ConversationRepository(ref.watch(appDatabaseProvider)),
+    );
 
 /// 主题流 provider
 final StreamProvider<List<ConversationThemeData>> conversationThemesProvider =
     StreamProvider<List<ConversationThemeData>>(
-  (ref) => ref.watch(conversationRepositoryProvider).watchThemes(),
-);
+      (ref) => ref.watch(conversationRepositoryProvider).watchThemes(),
+    );
 
 /// 消息流 provider（family：themeId）
 final messagesProvider = StreamProvider.family<List<ConversationData>, String>(
-  (ref, themeId) => ref.watch(conversationRepositoryProvider).watchMessages(themeId),
+  (ref, themeId) =>
+      ref.watch(conversationRepositoryProvider).watchMessages(themeId),
 );

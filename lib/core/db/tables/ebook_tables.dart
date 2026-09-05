@@ -8,7 +8,7 @@ import 'package:drift/drift.dart';
 /// 书架表 ebook_bookshelf（file_path TEXT PRIMARY KEY）
 class EbookBookshelf extends Table {
   /// 桌面端文件绝对路径（主键；移动端同步后需以 content_hash 重映射）
-    TextColumn get filePath => text().named('file_path')();
+  TextColumn get filePath => text().named('file_path')();
 
   TextColumn get name => text().nullable()();
   TextColumn get format => text().nullable()();
@@ -16,9 +16,9 @@ class EbookBookshelf extends Table {
   /// 阅读进度百分比（桌面端 REAL）
   RealColumn get percent => real().nullable()();
 
-    TextColumn get lastReadAt => text().named('last_read_at').nullable()();
+  TextColumn get lastReadAt => text().named('last_read_at').nullable()();
 
-    TextColumn get addedAt => text().named('added_at').nullable()();
+  TextColumn get addedAt => text().named('added_at').nullable()();
 
   TextColumn get title => text().nullable()();
   TextColumn get author => text().nullable()();
@@ -27,7 +27,7 @@ class EbookBookshelf extends Table {
   TextColumn get cover => text().nullable()();
 
   /// 文件内容哈希（跨端稳定映射键）
-    TextColumn get contentHash => text().named('content_hash').nullable()();
+  TextColumn get contentHash => text().named('content_hash').nullable()();
 
   /// 旧层遗留可空整型列
   IntColumn get id => integer().nullable()();
@@ -38,7 +38,7 @@ class EbookBookshelf extends Table {
 
 /// 阅读进度表 ebook_progress（file_path TEXT PRIMARY KEY）
 class EbookProgress extends Table {
-    TextColumn get filePath => text().named('file_path')();
+  TextColumn get filePath => text().named('file_path')();
 
   TextColumn get format => text().nullable()();
 
@@ -48,9 +48,9 @@ class EbookProgress extends Table {
   /// 阅读进度百分比（桌面端 REAL）
   RealColumn get percent => real().nullable()();
 
-    TextColumn get updatedAt => text().named('updated_at').nullable()();
+  TextColumn get updatedAt => text().named('updated_at').nullable()();
 
-    TextColumn get contentHash => text().named('content_hash').nullable()();
+  TextColumn get contentHash => text().named('content_hash').nullable()();
 
   IntColumn get id => integer().nullable()();
 
@@ -62,23 +62,23 @@ class EbookProgress extends Table {
 class EbookBookmark extends Table {
   IntColumn get id => integer().autoIncrement()();
 
-    TextColumn get filePath => text().named('file_path').nullable()();
+  TextColumn get filePath => text().named('file_path').nullable()();
 
   TextColumn get format => text().nullable()();
   TextColumn get cfi => text().nullable()();
   TextColumn get label => text().nullable()();
   TextColumn get percent => text().nullable()();
 
-    TextColumn get createdAt => text().named('created_at').nullable()();
+  TextColumn get createdAt => text().named('created_at').nullable()();
 
-    TextColumn get contentHash => text().named('content_hash').nullable()();
+  TextColumn get contentHash => text().named('content_hash').nullable()();
 }
 
 /// 划线/批注表 ebook_annotation（type 区分样式，color 为标注色）
 class EbookAnnotation extends Table {
   IntColumn get id => integer().autoIncrement()();
 
-    TextColumn get filePath => text().named('file_path').nullable()();
+  TextColumn get filePath => text().named('file_path').nullable()();
 
   TextColumn get format => text().nullable()();
 
@@ -96,14 +96,14 @@ class EbookAnnotation extends Table {
   /// 标注颜色（桌面端默认 'yellow'）
   TextColumn get color => text().nullable()();
 
-    TextColumn get createdAt => text().named('created_at').nullable()();
+  TextColumn get createdAt => text().named('created_at').nullable()();
 
-    TextColumn get updatedAt => text().named('updated_at').nullable()();
+  TextColumn get updatedAt => text().named('updated_at').nullable()();
 
   /// 类型，如 markStrong
   TextColumn get type => text().nullable()();
 
-    TextColumn get contentHash => text().named('content_hash').nullable()();
+  TextColumn get contentHash => text().named('content_hash').nullable()();
 }
 
 /// 书籍分类表 ebook_category（name UNIQUE）
@@ -112,16 +112,16 @@ class EbookCategory extends Table {
 
   TextColumn get name => text().unique()();
 
-    TextColumn get createdAt => text().named('created_at').nullable()();
+  TextColumn get createdAt => text().named('created_at').nullable()();
 
   TextColumn get color => text().nullable()();
 }
 
 /// 书-分类关联表 ebook_book_category（复合主键 book_path + category_id）
 class EbookBookCategory extends Table {
-    TextColumn get bookPath => text().named('book_path')();
+  TextColumn get bookPath => text().named('book_path')();
 
-    IntColumn get categoryId => integer().named('category_id')();
+  IntColumn get categoryId => integer().named('category_id')();
 
   /// 旧层遗留可空整型列
   IntColumn get id => integer().nullable()();
@@ -134,9 +134,9 @@ class EbookBookCategory extends Table {
 class EbookBgImage extends Table {
   IntColumn get id => integer().autoIncrement()();
 
-    TextColumn get imagePath => text().named('image_path').unique()();
+  TextColumn get imagePath => text().named('image_path').unique()();
 
-    TextColumn get dataUrl => text().named('data_url').nullable()();
+  TextColumn get dataUrl => text().named('data_url').nullable()();
 
-    TextColumn get createdAt => text().named('created_at').nullable()();
+  TextColumn get createdAt => text().named('created_at').nullable()();
 }

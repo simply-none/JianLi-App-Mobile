@@ -18,16 +18,16 @@ class TodoList extends Table {
   // ---- 业务列 ----
   TextColumn get priority => text().nullable()();
 
-    TextColumn get dueDate => text().named('dueDate').nullable()();
+  TextColumn get dueDate => text().named('dueDate').nullable()();
 
-    TextColumn get createTime => text().named('createTime').nullable()();
+  TextColumn get createTime => text().named('createTime').nullable()();
 
-    TextColumn get completedTime => text().named('completedTime').nullable()();
+  TextColumn get completedTime => text().named('completedTime').nullable()();
 
   /// 标签 JSON 数组（todo_tags.key 列表）
   TextColumn get tags => text().nullable()();
 
-    TextColumn get updateTime => text().named('updateTime').nullable()();
+  TextColumn get updateTime => text().named('updateTime').nullable()();
 
   /// 是否完成：'1'/'0'
   TextColumn get completed => text().nullable()();
@@ -36,35 +36,40 @@ class TodoList extends Table {
   TextColumn get description => text().nullable()();
 
   /// 截止提醒配置
-    TextColumn get deadlineReminder => text().named('deadlineReminder').nullable()();
+  TextColumn get deadlineReminder =>
+      text().named('deadlineReminder').nullable()();
 
-    TextColumn get remindCount => text().named('remindCount').nullable()();
+  TextColumn get remindCount => text().named('remindCount').nullable()();
 
-    TextColumn get remindInterval => text().named('remindInterval').nullable()();
+  TextColumn get remindInterval => text().named('remindInterval').nullable()();
 
-    TextColumn get remindIntervalUnit => text().named('remindIntervalUnit').nullable()();
+  TextColumn get remindIntervalUnit =>
+      text().named('remindIntervalUnit').nullable()();
 
   TextColumn get status => text().nullable()();
 
   /// 父任务 key（父子任务）
-    TextColumn get parentId => text().named('parentId').nullable()();
+  TextColumn get parentId => text().named('parentId').nullable()();
 
   // ---- 重复任务系列字段 ----
-    TextColumn get recurrenceEnd => text().named('recurrenceEnd').nullable()();
+  TextColumn get recurrenceEnd => text().named('recurrenceEnd').nullable()();
 
-    TextColumn get recurrenceId => text().named('recurrenceId').nullable()();
+  TextColumn get recurrenceId => text().named('recurrenceId').nullable()();
 
-    TextColumn get recurrenceInterval => text().named('recurrenceInterval').nullable()();
+  TextColumn get recurrenceInterval =>
+      text().named('recurrenceInterval').nullable()();
 
-    TextColumn get isRecurrenceInstance => text().named('isRecurrenceInstance').nullable()();
+  TextColumn get isRecurrenceInstance =>
+      text().named('isRecurrenceInstance').nullable()();
 
-    TextColumn get recurrenceRule => text().named('recurrenceRule').nullable()();
+  TextColumn get recurrenceRule => text().named('recurrenceRule').nullable()();
 
-    TextColumn get recurrenceWeekdays => text().named('recurrenceWeekdays').nullable()();
+  TextColumn get recurrenceWeekdays =>
+      text().named('recurrenceWeekdays').nullable()();
 
-    TextColumn get sortOrder => text().named('sortOrder').nullable()();
+  TextColumn get sortOrder => text().named('sortOrder').nullable()();
 
-    TextColumn get parentIds => text().named('parentIds').nullable()();
+  TextColumn get parentIds => text().named('parentIds').nullable()();
 
   /// 旧层遗留的可空整型列（桌面库存在，样例全为 NULL）
   IntColumn get id => integer().nullable()();

@@ -77,7 +77,10 @@ class _PomodoroRecordsPageState extends ConsumerState<PomodoroRecordsPage> {
                     return ColoredBox(
                       color: AppTokens.pageTint(context),
                       child: ListView.builder(
-                        padding: const EdgeInsets.only(top: 4, bottom: 24),
+                        padding: EdgeInsets.only(
+                          top: AppTokens.listTopGapOf(context),
+                          bottom: AppTokens.pageBottomGapOf(context),
+                        ),
                         itemCount: records.length,
                         itemBuilder: (context, i) {
                           final r = records[i];

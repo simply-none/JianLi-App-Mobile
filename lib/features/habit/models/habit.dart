@@ -21,7 +21,9 @@ class HabitItem {
   factory HabitItem.fromRow(HabitDefData row) {
     return HabitItem(
       key: row.key ?? '',
-      name: (row.name?.isNotEmpty ?? false) ? row.name! : (row.remark ?? '未命名习惯'),
+      name: (row.name?.isNotEmpty ?? false)
+          ? row.name!
+          : (row.remark ?? '未命名习惯'),
       enabled: row.enabled == '1',
       weekDays: parseIntList(row.weekDays),
       reminderTimes: parseStringList(row.reminderTimes),
@@ -59,7 +61,8 @@ List<int> parseIntList(String? raw) {
   if (raw == null || raw.isEmpty) return const [];
   try {
     final decoded = jsonDecode(raw);
-    if (decoded is List) return decoded.whereType<num>().map((e) => e.toInt()).toList();
+    if (decoded is List)
+      return decoded.whereType<num>().map((e) => e.toInt()).toList();
     return const [];
   } catch (_) {
     return const [];

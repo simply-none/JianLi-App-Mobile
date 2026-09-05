@@ -20,20 +20,24 @@ class QrHistoryRepository {
 
   /// 历史流（新→旧）
   Stream<List<QrHistoryData>> watchAll() {
-    return (_db.select(_db.qrHistory)
-          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
-        .watch();
+    return (_db.select(
+      _db.qrHistory,
+    )..orderBy([(t) => OrderingTerm.desc(t.createdAt)])).watch();
   }
 
   /// 追加历史（style 暂不传，移动端样式定制列 P2）
   Future<void> add({required String type, required String content}) {
-    return _db.into(_db.qrHistory).insert(QrHistoryCompanion.insert(
-          key: _uuid.v4(),
-          source: const Value(kQrSourceMobile),
-          type: Value(type),
-          content: Value(content),
-          createdAt: Value(_now()),
-        ));
+    return _db
+        .into(_db.qrHistory)
+        .insert(
+          QrHistoryCompanion.insert(
+            key: _uuid.v4(),
+            source: const Value(kQrSourceMobile),
+            type: Value(type),
+            content: Value(content),
+            createdAt: Value(_now()),
+          ),
+        );
   }
 
   /// 删除单条
@@ -41,8 +45,9 @@ class QrHistoryRepository {
       (_db.delete(_db.qrHistory)..where((t) => t.key.equals(key))).go();
 
   /// 清空本机来源历史
-  Future<void> clearMobile() =>
-      (_db.delete(_db.qrHistory)..where((t) => t.source.equals(kQrSourceMobile))).go();
+  Future<void> clearMobile() => (_db.delete(
+    _db.qrHistory,
+  )..where((t) => t.source.equals(kQrSourceMobile))).go();
 
   String _now() {
     final n = DateTime.now();
@@ -54,14 +59,14 @@ class QrHistoryRepository {
 /// 历史仓库 provider
 final Provider<QrHistoryRepository> qrHistoryRepositoryProvider =
     Provider<QrHistoryRepository>((ref) {
-  return QrHistoryRepository(ref.watch(appDatabaseProvider));
-});
+      return QrHistoryRepository(ref.watch(appDatabaseProvider));
+    });
 
 /// 历史流 provider
 final StreamProvider<List<QrHistoryData>> qrHistoryProvider =
     StreamProvider<List<QrHistoryData>>(
-  (ref) => ref.watch(qrHistoryRepositoryProvider).watchAll(),
-);
+      (ref) => ref.watch(qrHistoryRepositoryProvider).watchAll(),
+    );
 
 /// 解析历史行里 style JSON（桌面端存 QrStyleOptions，移动端暂只读展示用）
 Map<String, dynamic>? parseQrStyle(String? raw) {

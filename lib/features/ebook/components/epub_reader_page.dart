@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../repositories/ebook_repository.dart';
 import '../services/epub_service.dart';
 
@@ -49,7 +50,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       if (row != null) {
         final progress = await repo.getProgress(row);
         final cfi = progress?.cfi ?? '';
-        final idx = cfi.startsWith('chapter:') ? int.tryParse(cfi.substring(8)) ?? 0 : 0;
+        final idx = cfi.startsWith('chapter:')
+            ? int.tryParse(cfi.substring(8)) ?? 0
+            : 0;
         if (mounted && idx > 0 && (book.chapters.length > idx)) {
           setState(() => _chapter = idx);
         }
@@ -102,50 +105,59 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       child: _loading
           ? const Center(child: FCircularProgress())
           : _error != null
-              ? Center(child: Text(_error!))
-              : Column(
-                  children: [
-                    Expanded(
-                      child: ColoredBox(
-                        color: AppTokens.pageTint(context),
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(16),
-                          child: HtmlWidget(book!.chapters[_chapter].html),
+          ? Center(child: Text(_error!))
+          : Column(
+              children: [
+                Expanded(
+                  child: ColoredBox(
+                    color: AppTokens.pageTint(context),
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(AppTokens.pagePaddingOf(context)),
+                      child: HtmlWidget(
+                        // 正文字号随全局基准字号体系（阅览模式在根组件驱动主题）
+                        book!.chapters[_chapter].html,
+                        textStyle: TextStyle(
+                          fontSize: t.typography.body.md.fontSize ?? 14,
+                          height: 1.8,
                         ),
                       ),
                     ),
-                    const FDivider(),
-                    SafeArea(
-                      top: false,
-                      child: Row(
-                        children: [
-                          FButton(
-                            variant: FButtonVariant.ghost,
-                            onPress:
-                                _chapter > 0 ? () => _goChapter(_chapter - 1) : null,
-                            child: const Text('上一章'),
-                          ),
-                          Expanded(
-                            child: Center(
-                              child: Text(
-                                '${_chapter + 1}/${book.chapters.length}',
-                                style: t.typography.body.sm
-                                    .copyWith(color: t.colors.mutedForeground),
-                              ),
+                  ),
+                ),
+                const FDivider(),
+                SafeArea(
+                  top: false,
+                  child: Row(
+                    children: [
+                      FButton(
+                        variant: FButtonVariant.ghost,
+                        onPress: _chapter > 0
+                            ? () => _goChapter(_chapter - 1)
+                            : null,
+                        child: const Text('上一章'),
+                      ),
+                      Expanded(
+                        child: Center(
+                          child: Text(
+                            '${_chapter + 1}/${book.chapters.length}',
+                            style: t.typography.body.sm.copyWith(
+                              color: t.colors.mutedForeground,
                             ),
                           ),
-                          FButton(
-                            variant: FButtonVariant.ghost,
-                            onPress: _chapter < book.chapters.length - 1
-                                ? () => _goChapter(_chapter + 1)
-                                : null,
-                            child: const Text('下一章'),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                      FButton(
+                        variant: FButtonVariant.ghost,
+                        onPress: _chapter < book.chapters.length - 1
+                            ? () => _goChapter(_chapter + 1)
+                            : null,
+                        child: const Text('下一章'),
+                      ),
+                    ],
+                  ),
                 ),
+              ],
+            ),
     );
   }
 
@@ -155,30 +167,40 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       context: context,
       side: FLayout.btt,
       mainAxisMaxRatio: null, // 目录可长，允许拖到更高
-      builder: (context) => SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text('目录', style: context.theme.typography.body.lg),
-            ),
-            FTileGroup(
-              divider: FItemDivider.none,
-              children: [
-                for (var i = 0; i < book.chapters.length; i++)
-                  FTile(
-                    title: Text(book.chapters[i].title,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    selected: i == _chapter,
-                    onPress: () {
-                      Navigator.pop(context);
-                      _goChapter(i);
-                    },
-                  ),
-              ],
-            ),
-          ],
+      builder: (context) => SheetSurface(
+        child: SafeArea(
+          child: ListView(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  AppTokens.pagePaddingOf(context),
+                  0,
+                  AppTokens.pagePaddingOf(context),
+                  8,
+                ),
+                child: Text('目录', style: context.theme.typography.body.lg),
+              ),
+              FTileGroup(
+                divider: FItemDivider.none,
+                children: [
+                  for (var i = 0; i < book.chapters.length; i++)
+                    FTile(
+                      title: Text(
+                        book.chapters[i].title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      selected: i == _chapter,
+                      onPress: () {
+                        Navigator.pop(context);
+                        _goChapter(i);
+                      },
+                    ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

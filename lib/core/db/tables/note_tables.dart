@@ -19,15 +19,15 @@ class NoteBook extends Table {
   /// 富文本 HTML（vue-quill 产出）
   TextColumn get html => text().nullable()();
 
-    TextColumn get createTime => text().named('createTime').nullable()();
+  TextColumn get createTime => text().named('createTime').nullable()();
 
-    TextColumn get updateTime => text().named('updateTime').nullable()();
+  TextColumn get updateTime => text().named('updateTime').nullable()();
 
-    TextColumn get mdText => text().named('mdText').nullable()();
+  TextColumn get mdText => text().named('mdText').nullable()();
 
   TextColumn get tags => text().nullable()();
 
-    TextColumn get whereStr => text().named('whereStr').nullable()();
+  TextColumn get whereStr => text().named('whereStr').nullable()();
 
   TextColumn get content => text().nullable()();
 
@@ -50,11 +50,11 @@ class BasicInfo extends Table {
   /// 配置值（vault 相关键的 value 为路径或哨兵 JSON）
   TextColumn get value => text().nullable()();
 
-    TextColumn get whereStr => text().named('whereStr').nullable()();
+  TextColumn get whereStr => text().named('whereStr').nullable()();
 
-    TextColumn get orderByDesc => text().named('orderByDesc').nullable()();
+  TextColumn get orderByDesc => text().named('orderByDesc').nullable()();
 
-    TextColumn get orderBy => text().named('orderBy').nullable()();
+  TextColumn get orderBy => text().named('orderBy').nullable()();
 
   /// 旧层遗留可空整型列
   IntColumn get id => integer().nullable()();

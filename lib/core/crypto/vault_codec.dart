@@ -20,8 +20,9 @@ final AesGcm _aesGcm = AesGcm.with256bits();
 final Random _secureRandom = Random.secure();
 
 /// 生成 [length] 字节安全随机数
-Uint8List randomVaultBytes(int length) =>
-    Uint8List.fromList(List<int>.generate(length, (_) => _secureRandom.nextInt(256)));
+Uint8List randomVaultBytes(int length) => Uint8List.fromList(
+  List<int>.generate(length, (_) => _secureRandom.nextInt(256)),
+);
 
 /// 由口令派生 32 字节密钥（PBKDF2-SHA256，盐 + 迭代次数与桌面端一致）
 Future<SecretKey> deriveVaultKey(
@@ -42,7 +43,10 @@ Future<SecretKey> deriveVaultKey(
 
 /// 解密 JSON 信封为明文 JSON 数组（口令错误/文件损坏时抛异常）
 /// 返回 `List<dynamic>`，由调用方映射到具体模型（避免本层耦合 feature 模型）。
-Future<List<dynamic>> decryptVaultEnvelope(String rawJson, String passphrase) async {
+Future<List<dynamic>> decryptVaultEnvelope(
+  String rawJson,
+  String passphrase,
+) async {
   final env = jsonDecode(rawJson);
   if (env is! Map<String, dynamic>) {
     throw const FormatException('vault 信封格式非法：顶层不是对象');
@@ -56,7 +60,11 @@ Future<List<dynamic>> decryptVaultEnvelope(String rawJson, String passphrase) as
   if (ct.length <= kVaultGcmTagBytes) {
     throw const FormatException('vault ct 长度非法');
   }
-  final cipherData = Uint8List.sublistView(ct, 0, ct.length - kVaultGcmTagBytes);
+  final cipherData = Uint8List.sublistView(
+    ct,
+    0,
+    ct.length - kVaultGcmTagBytes,
+  );
   final tag = Uint8List.sublistView(ct, ct.length - kVaultGcmTagBytes);
 
   final key = await deriveVaultKey(passphrase, salt, iterations: iter);
@@ -72,7 +80,10 @@ Future<List<dynamic>> decryptVaultEnvelope(String rawJson, String passphrase) as
 }
 
 /// 加密 JSON 数组为信封 JSON 字符串（与桌面端 encryptVault 等价）
-Future<String> encryptVaultEnvelope(List<Object?> items, String passphrase) async {
+Future<String> encryptVaultEnvelope(
+  List<Object?> items,
+  String passphrase,
+) async {
   final salt = randomVaultBytes(kVaultSaltBytes);
   final iv = randomVaultBytes(kVaultIvBytes);
   final key = await deriveVaultKey(passphrase, salt);
@@ -110,21 +121,38 @@ class EncryptedVaultBytes {
 }
 
 /// 加密任意字节（密钥由调用方给，如保险箱还原出的主密钥）
-Future<EncryptedVaultBytes> encryptVaultBytes(List<int> plain, List<int> key) async {
+Future<EncryptedVaultBytes> encryptVaultBytes(
+  List<int> plain,
+  List<int> key,
+) async {
   final iv = randomVaultBytes(kVaultIvBytes);
-  final box = await _aesGcm.encrypt(plain, secretKey: SecretKey(key), nonce: iv);
+  final box = await _aesGcm.encrypt(
+    plain,
+    secretKey: SecretKey(key),
+    nonce: iv,
+  );
   final ct = <int>[...box.cipherText, ...box.mac.bytes];
-  return EncryptedVaultBytes(ivBase64: base64Encode(iv), ctBase64: base64Encode(ct));
+  return EncryptedVaultBytes(
+    ivBase64: base64Encode(iv),
+    ctBase64: base64Encode(ct),
+  );
 }
 
 /// 解密任意字节（布局同桌面端：ct = 密文 || tag）
-Future<Uint8List> decryptVaultBytes(EncryptedVaultBytes env, List<int> key) async {
+Future<Uint8List> decryptVaultBytes(
+  EncryptedVaultBytes env,
+  List<int> key,
+) async {
   final iv = base64Decode(env.ivBase64);
   final ct = base64Decode(env.ctBase64);
   if (ct.length <= kVaultGcmTagBytes) {
     throw const FormatException('vault ct 长度非法');
   }
-  final cipherData = Uint8List.sublistView(ct, 0, ct.length - kVaultGcmTagBytes);
+  final cipherData = Uint8List.sublistView(
+    ct,
+    0,
+    ct.length - kVaultGcmTagBytes,
+  );
   final tag = Uint8List.sublistView(ct, ct.length - kVaultGcmTagBytes);
   final clear = await _aesGcm.decrypt(
     SecretBox(cipherData, nonce: iv, mac: Mac(tag)),

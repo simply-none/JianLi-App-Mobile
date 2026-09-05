@@ -15,7 +15,9 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -85,7 +87,10 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
                   : ColoredBox(
                       color: AppTokens.pageTint(context),
                       child: ListView(
-                        padding: const EdgeInsets.only(top: 4, bottom: 24),
+                        padding: EdgeInsets.only(
+                          top: AppTokens.listTopGapOf(context),
+                          bottom: AppTokens.pageBottomGapOf(context),
+                        ),
                         children: [
                           // 页面专属蓝渐变横幅（与工具分组页「密码管理」入口色对齐）
                           PageBanner(
@@ -199,7 +204,8 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
     );
   }
 
-  /// 新增/编辑对话框
+  /// 新增/编辑条目（底部抽屉——小功能新增/编辑统一抽屉化；
+  /// 表单较高：SingleChildScrollView + mainAxisMaxRatio null 允许拖高）
   Future<void> _editEntry(PasswordEntry? entry) async {
     final title = TextEditingController(text: entry?.title);
     final username = TextEditingController(text: entry?.username);
@@ -207,19 +213,31 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
     final url = TextEditingController(text: entry?.url);
     final note = TextEditingController(text: entry?.note);
 
-    await showFDialog<void>(
+    await showFSheet<void>(
       context: context,
-      builder: (context, style, _) => FDialog(
-        builder: (context, style) => SingleChildScrollView(
+      side: FLayout.btt,
+      // 表单较高且可滚动，不限制弹层最大高度
+      mainAxisMaxRatio: null,
+      builder: (context) => SheetSurface(
+        padding: EdgeInsets.zero,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
                 entry == null ? '新增条目' : '编辑条目',
-                style: style.titleTextStyle,
+                style: context.theme.typography.body.lg.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               FTextField(
                 control: FTextFieldControl.managed(controller: title),
                 label: const Text('名称'),
@@ -248,7 +266,6 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
               ),
               const SizedBox(height: 16),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 spacing: 8,
                 children: [
                   FButton(
@@ -256,22 +273,25 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
                     onPress: () => Navigator.pop(context),
                     child: const Text('取消'),
                   ),
-                  FButton(
-                    onPress: () {
-                      ref
-                          .read(passwordVaultEntriesProvider.notifier)
-                          .upsertEntry(
-                            passphrase: _passphrase ?? '',
-                            key: entry?.key,
-                            title: title.text.trim(),
-                            username: username.text,
-                            password: password.text,
-                            url: url.text,
-                            note: note.text,
-                          );
-                      Navigator.pop(context);
-                    },
-                    child: const Text('保存'),
+                  Expanded(
+                    child: GradientButton(
+                      label: '保存',
+                      icon: FLucideIcons.check,
+                      onPress: () {
+                        ref
+                            .read(passwordVaultEntriesProvider.notifier)
+                            .upsertEntry(
+                              passphrase: _passphrase ?? '',
+                              key: entry?.key,
+                              title: title.text.trim(),
+                              username: username.text,
+                              password: password.text,
+                              url: url.text,
+                              note: note.text,
+                            );
+                        Navigator.pop(context);
+                      },
+                    ),
                   ),
                 ],
               ),

@@ -13,7 +13,10 @@ import '../models/two_factor_account.dart';
   final labelPart = Uri.decodeComponent(rest.substring(0, qIndex));
   final params = Uri.splitQueryString(rest.substring(qIndex + 1));
 
-  final secret = params['secret']?.toUpperCase().replaceAll(RegExp('[^A-Z2-7]'), '');
+  final secret = params['secret']?.toUpperCase().replaceAll(
+    RegExp('[^A-Z2-7]'),
+    '',
+  );
   if (secret == null || secret.isEmpty) return null;
 
   // label 形如 "Issuer:account" 或 "account"

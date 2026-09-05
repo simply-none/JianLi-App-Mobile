@@ -110,9 +110,9 @@ class IdleSlot {
   const IdleSlot({required this.start, required this.end});
 
   factory IdleSlot.fromJson(Map<String, dynamic> json) => IdleSlot(
-        start: json['start'] as String? ?? '',
-        end: json['end'] as String? ?? '',
-      );
+    start: json['start'] as String? ?? '',
+    end: json['end'] as String? ?? '',
+  );
 
   final String start;
   final String end;

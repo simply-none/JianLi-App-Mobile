@@ -65,17 +65,25 @@ class EntryCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                      style: t.typography.body.md.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                      style: t.typography.body.sm.copyWith(
+                        color: t.colors.mutedForeground,
+                      ),
                     ),
                   ],
                 ),
               ),
-              Icon(FLucideIcons.chevronRight, size: 18, color: t.colors.mutedForeground),
+              Icon(
+                FLucideIcons.chevronRight,
+                size: 18,
+                color: t.colors.mutedForeground,
+              ),
             ],
           ),
         ),

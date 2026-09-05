@@ -17,13 +17,14 @@ class Countdown extends Table {
   TextColumn get mode => text().nullable()();
 
   /// 目标结束时间戳(ms) —— 计时基准
-    IntColumn get endTime => integer().named('end_time').nullable()();
+  IntColumn get endTime => integer().named('end_time').nullable()();
 
   /// 原始时长(ms)，用于「重置」
   IntColumn get duration => integer().nullable()();
 
   /// 暂停时冻结的剩余(ms)
-    IntColumn get pausedRemaining => integer().named('paused_remaining').nullable()();
+  IntColumn get pausedRemaining =>
+      integer().named('paused_remaining').nullable()();
 
   /// running / paused / finished
   TextColumn get status => text().nullable()();
@@ -37,9 +38,9 @@ class Countdown extends Table {
   /// 卡片/进度环颜色
   TextColumn get color => text().nullable()();
 
-    IntColumn get createdAt => integer().named('created_at').nullable()();
+  IntColumn get createdAt => integer().named('created_at').nullable()();
 
-    IntColumn get finishedAt => integer().named('finished_at').nullable()();
+  IntColumn get finishedAt => integer().named('finished_at').nullable()();
 
   @override
   Set<Column> get primaryKey => {key};
@@ -62,7 +63,7 @@ class QrHistory extends Table {
   TextColumn get style => text().nullable()();
   TextColumn get note => text().nullable()();
 
-    TextColumn get createdAt => text().named('created_at').nullable()();
+  TextColumn get createdAt => text().named('created_at').nullable()();
 
   @override
   Set<Column> get primaryKey => {key};
@@ -77,7 +78,7 @@ class QrTemplate extends Table {
   TextColumn get content => text().nullable()();
   TextColumn get style => text().nullable()();
 
-    TextColumn get createdAt => text().named('created_at').nullable()();
+  TextColumn get createdAt => text().named('created_at').nullable()();
 
   @override
   Set<Column> get primaryKey => {key};

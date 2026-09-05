@@ -21,7 +21,7 @@ class PageBanner extends StatelessWidget {
     this.subtitle,
     this.accentIndex = 0,
     this.stats = const [],
-    this.margin = const EdgeInsets.fromLTRB(16, 12, 16, 4),
+    this.margin,
   });
 
   final IconData icon;
@@ -34,14 +34,22 @@ class PageBanner extends StatelessWidget {
   /// 统计行：(数值, 标签)；纯数值自动数字滚动（AnimatedStat）
   final List<(String, String)> stats;
 
-  final EdgeInsetsGeometry margin;
+  /// 外边距（null = 默认：水平随字号缩放的 pagePadding + 上下 12/4）
+  final EdgeInsetsGeometry? margin;
 
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
     final accent = AppTokens.accent(accentIndex);
     return Padding(
-      padding: margin,
+      padding:
+          margin ??
+          EdgeInsets.fromLTRB(
+            AppTokens.pagePaddingOf(context),
+            12,
+            AppTokens.pagePaddingOf(context),
+            4,
+          ),
       child: Container(
         decoration: BoxDecoration(
           gradient: AppTokens.accentGradient(accent),

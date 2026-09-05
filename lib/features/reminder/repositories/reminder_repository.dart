@@ -45,36 +45,41 @@ class ReminderRepository {
     List<int> weekDays = const [],
   }) async {
     final id = 'mobile:${DateTime.now().millisecondsSinceEpoch}';
-    await _db.into(_db.reminders).insert(RemindersCompanion.insert(
-          id: id,
-          mode: const Value('time'),
-          weekDays: Value(weekDays.isEmpty ? '[]' : _toJson(weekDays)),
-          loop: const Value('1'),
-          title: Value(title),
-          content: Value(content),
-          enabled: const Value('1'),
-          time: Value(time),
-        ));
-    await scheduleNotification(ReminderItem(
-      id: id,
-      mode: 'time',
-      title: title,
-      content: content,
-      enabled: true,
-      weekDays: weekDays,
-      time: time,
-      date: null,
-      repeat: null,
-      interval: null,
-      unit: null,
-      idleTime: null,
-      source: '',
-      statesSummary: null,
-    ));
+    await _db
+        .into(_db.reminders)
+        .insert(
+          RemindersCompanion.insert(
+            id: id,
+            mode: const Value('time'),
+            weekDays: Value(weekDays.isEmpty ? '[]' : _toJson(weekDays)),
+            loop: const Value('1'),
+            title: Value(title),
+            content: Value(content),
+            enabled: const Value('1'),
+            time: Value(time),
+          ),
+        );
+    await scheduleNotification(
+      ReminderItem(
+        id: id,
+        mode: 'time',
+        title: title,
+        content: content,
+        enabled: true,
+        weekDays: weekDays,
+        time: time,
+        date: null,
+        repeat: null,
+        interval: null,
+        unit: null,
+        idleTime: null,
+        source: '',
+        statesSummary: null,
+      ),
+    );
   }
 
-  static String _toJson(List<int> v) =>
-      v.isEmpty ? '[]' : '[${v.join(',')}]';
+  static String _toJson(List<int> v) => v.isEmpty ? '[]' : '[${v.join(',')}]';
 
   /// 按 mode 把提醒翻译为本地通知计划
   Future<void> scheduleNotification(ReminderItem item) async {

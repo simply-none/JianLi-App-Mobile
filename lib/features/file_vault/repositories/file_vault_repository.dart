@@ -40,17 +40,22 @@ class FileVaultService {
 
   /// 读取配置（null = 未建库）
   Future<Map<String, dynamic>?> _loadConfig() async {
-    final row = await (_db.select(_db.fileVaultConfig)
-          ..where((t) => t.key.equals('vault')))
-        .getSingleOrNull();
+    final row = await (_db.select(
+      _db.fileVaultConfig,
+    )..where((t) => t.key.equals('vault'))).getSingleOrNull();
     final raw = row?.value;
     if (raw == null || raw.isEmpty) return null;
     return jsonDecode(raw) as Map<String, dynamic>;
   }
 
   Future<void> _saveConfig(Map<String, dynamic> cfg) async {
-    await _db.into(_db.fileVaultConfig).insertOnConflictUpdate(
-          FileVaultConfigCompanion.insert(key: 'vault', value: Value(jsonEncode(cfg))),
+    await _db
+        .into(_db.fileVaultConfig)
+        .insertOnConflictUpdate(
+          FileVaultConfigCompanion.insert(
+            key: 'vault',
+            value: Value(jsonEncode(cfg)),
+          ),
         );
   }
 
@@ -59,15 +64,24 @@ class FileVaultService {
 
   /// 首次建库：生成 dataKey → KEK 包装（与桌面端 set-password 逐字节兼容）
   Future<void> setPassword(String password) async {
-    final dataKey = Uint8List.fromList(List.generate(32, (_) => _random.nextInt(256)));
-    final salt = Uint8List.fromList(List.generate(16, (_) => _random.nextInt(256)));
+    final dataKey = Uint8List.fromList(
+      List.generate(32, (_) => _random.nextInt(256)),
+    );
+    final salt = Uint8List.fromList(
+      List.generate(16, (_) => _random.nextInt(256)),
+    );
     final kek = await deriveVaultKey(password, salt);
     final w = await encryptVaultBytes(dataKey, await kek.extractBytes());
     // wrappedKey = base64(iv_raw ‖ ct_raw)
-    final wrapped = base64Encode(
-      [...base64Decode(w.ivBase64), ...base64Decode(w.ctBase64)],
-    );
-    await _saveConfig({'salt': base64Encode(salt), 'wrappedKey': wrapped, 'version': 1});
+    final wrapped = base64Encode([
+      ...base64Decode(w.ivBase64),
+      ...base64Decode(w.ctBase64),
+    ]);
+    await _saveConfig({
+      'salt': base64Encode(salt),
+      'wrappedKey': wrapped,
+      'version': 1,
+    });
     _dataKey = dataKey;
   }
 
@@ -115,17 +129,24 @@ class FileVaultService {
 
     // 原名加密入库（方案 A）
     final eName = await encryptVaultBytes(utf8.encode(name), dk);
-    final nameB64 = base64Encode([...base64Decode(eName.ivBase64), ...base64Decode(eName.ctBase64)]);
+    final nameB64 = base64Encode([
+      ...base64Decode(eName.ivBase64),
+      ...base64Decode(eName.ctBase64),
+    ]);
 
-    await _db.into(_db.fileVaultFiles).insert(FileVaultFilesCompanion.insert(
-          id: id,
-          name: Value(nameB64),
-          mime: Value(''),
-          ext: Value(ext),
-          size: Value('${plain.length}'),
-          ciphertextPath: Value(cipherPath),
-          createdAt: Value(DateTime.now().toIso8601String()),
-        ));
+    await _db
+        .into(_db.fileVaultFiles)
+        .insert(
+          FileVaultFilesCompanion.insert(
+            id: id,
+            name: Value(nameB64),
+            mime: Value(''),
+            ext: Value(ext),
+            size: Value('${plain.length}'),
+            ciphertextPath: Value(cipherPath),
+            createdAt: Value(DateTime.now().toIso8601String()),
+          ),
+        );
   }
 
   /// 列表（解锁后解密文件名）
@@ -135,7 +156,10 @@ class FileVaultService {
     final rows = await _db.select(_db.fileVaultFiles).get();
     final result = <({FileVaultFile meta, String name})>[];
     for (final row in rows) {
-      result.add((meta: row, name: await decryptVaultName(row.name, dk) ?? '（未知文件）'));
+      result.add((
+        meta: row,
+        name: await decryptVaultName(row.name, dk) ?? '（未知文件）',
+      ));
     }
     return result;
   }
@@ -147,7 +171,10 @@ class FileVaultService {
     final buf = await File(meta.ciphertextPath ?? '').readAsBytes();
     final parsed = parseJlv(buf);
     return decryptVaultBytes(
-      EncryptedVaultBytes(ivBase64: base64Encode(parsed.iv), ctBase64: base64Encode(parsed.ct)),
+      EncryptedVaultBytes(
+        ivBase64: base64Encode(parsed.iv),
+        ctBase64: base64Encode(parsed.ct),
+      ),
       dk,
     );
   }
@@ -159,11 +186,14 @@ class FileVaultService {
       final f = File(path);
       if (f.existsSync()) f.deleteSync();
     }
-    await (_db.delete(_db.fileVaultFiles)..where((t) => t.id.equals(meta.id))).go();
+    await (_db.delete(
+      _db.fileVaultFiles,
+    )..where((t) => t.id.equals(meta.id))).go();
   }
 }
 
 /// 服务 provider（App 生命周期单例；锁定态保存在实例字段）
-final Provider<FileVaultService> fileVaultServiceProvider = Provider<FileVaultService>(
-  (ref) => FileVaultService(ref.watch(appDatabaseProvider)),
-);
+final Provider<FileVaultService> fileVaultServiceProvider =
+    Provider<FileVaultService>(
+      (ref) => FileVaultService(ref.watch(appDatabaseProvider)),
+    );

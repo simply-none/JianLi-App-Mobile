@@ -112,7 +112,10 @@ class _SyncPageState extends ConsumerState<SyncPage> {
       child: ColoredBox(
         color: AppTokens.pageTint(context),
         child: ListView(
-          padding: const EdgeInsets.only(top: 4, bottom: 24),
+          padding: EdgeInsets.only(
+            top: AppTokens.listTopGapOf(context),
+            bottom: AppTokens.pageBottomGapOf(context),
+          ),
           children: [
             // 页面专属青渐变横幅（与工具分组页「同步」入口色对齐）
             PageBanner(
@@ -164,58 +167,72 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                       ),
                     )
                   else
-                    // 发现的设备行：名称/平台 + IP + 拉取/发送
+                    // 发现的设备行：两行布局——名称/平台 + IP 独占一行，
+                    // 拉取/发送按钮第二行右对齐，窄屏下设备名不再被按钮挤压截断
                     for (final peer in _peers.values)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            SquircleBox(
-                              size: 36,
-                              radius: 10,
-                              gradient: AppTokens.accentGradient(
-                                AppTokens.accent(5),
-                              ),
-                              alignment: Alignment.center,
-                              child: Icon(
-                                FLucideIcons.monitorSmartphone,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '${peer.name} (${peer.platform})',
-                                    style: t.typography.body.sm.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
+                            Row(
+                              children: [
+                                SquircleBox(
+                                  size: 36,
+                                  radius: 10,
+                                  gradient: AppTokens.accentGradient(
+                                    AppTokens.accent(5),
                                   ),
-                                  Text(
-                                    peer.ip,
-                                    style: t.typography.body.xs.copyWith(
-                                      color: t.colors.mutedForeground,
-                                    ),
+                                  alignment: Alignment.center,
+                                  child: Icon(
+                                    FLucideIcons.monitorSmartphone,
+                                    color: Colors.white,
+                                    size: 16,
                                   ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${peer.name} (${peer.platform})',
+                                        style: t.typography.body.sm.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        peer.ip,
+                                        style: t.typography.body.xs.copyWith(
+                                          color: t.colors.mutedForeground,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            FButton(
-                              variant: FButtonVariant.outline,
-                              size: FButtonSizeVariant.sm,
-                              onPress: () => _fetch(peer),
-                              child: const Text('拉取'),
-                            ),
-                            const SizedBox(width: 6),
-                            FButton(
-                              size: FButtonSizeVariant.sm,
-                              onPress: () => _send(peer),
-                              child: const Text('发送'),
+                            const SizedBox(height: 6),
+                            // 操作行：右对齐，不与设备名争宽度
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                FButton(
+                                  variant: FButtonVariant.outline,
+                                  size: FButtonSizeVariant.sm,
+                                  onPress: () => _fetch(peer),
+                                  child: const Text('拉取'),
+                                ),
+                                const SizedBox(width: 6),
+                                FButton(
+                                  size: FButtonSizeVariant.sm,
+                                  onPress: () => _send(peer),
+                                  child: const Text('发送'),
+                                ),
+                              ],
                             ),
                           ],
                         ),

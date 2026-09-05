@@ -10,6 +10,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -59,7 +60,10 @@ class ReminderListPage extends ConsumerWidget {
           return ColoredBox(
             color: AppTokens.pageTint(context),
             child: ListView(
-              padding: const EdgeInsets.only(top: 4, bottom: 24),
+              padding: EdgeInsets.only(
+                top: AppTokens.listTopGapOf(context),
+                bottom: AppTokens.pageBottomGapOf(context),
+              ),
               children: [
                 StaggerList(
                   children: [
@@ -96,7 +100,7 @@ class ReminderListPage extends ConsumerWidget {
       context: context,
       side: FLayout.btt,
       builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => Padding(
+        builder: (context, setSheetState) => SheetSurface(
           padding: const EdgeInsets.fromLTRB(4, 8, 4, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,

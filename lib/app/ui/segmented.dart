@@ -29,7 +29,9 @@ class JianliSegmented extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
-    final align = items.length > 1 ? -1 + 2 * selected / (items.length - 1) : 0.0;
+    final align = items.length > 1
+        ? -1 + 2 * selected / (items.length - 1)
+        : 0.0;
     return SizedBox(
       height: height,
       child: Stack(

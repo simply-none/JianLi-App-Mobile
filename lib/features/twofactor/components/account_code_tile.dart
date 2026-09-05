@@ -18,11 +18,7 @@ import '../services/totp_service.dart';
 
 /// 单条 2FA 账户码展示
 class AccountCodeTile extends StatelessWidget {
-  const AccountCodeTile({
-    super.key,
-    required this.account,
-    required this.meta,
-  });
+  const AccountCodeTile({super.key, required this.account, required this.meta});
 
   final TwoFactorAccount account;
   final TotpWithMeta meta;
@@ -56,13 +52,17 @@ class AccountCodeTile extends StatelessWidget {
                     Expanded(
                       child: Text(
                         account.displayName,
-                        style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                        style: t.typography.body.md.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     Text(
                       '${meta.remainingSeconds}s',
-                      style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                      style: t.typography.body.sm.copyWith(
+                        color: t.colors.mutedForeground,
+                      ),
                     ),
                   ],
                 ),
@@ -82,7 +82,9 @@ class AccountCodeTile extends StatelessWidget {
                     const Spacer(),
                     Text(
                       '下一码 ${meta.nextCode}',
-                      style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
+                      style: t.typography.body.xs.copyWith(
+                        color: t.colors.mutedForeground,
+                      ),
                     ),
                   ],
                 ),
@@ -107,7 +109,10 @@ class AccountCodeTile extends StatelessWidget {
   Future<void> _copy(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: meta.code));
     if (context.mounted) {
-      showFToast(context: context, title: Text('${account.displayName} 验证码已复制'));
+      showFToast(
+        context: context,
+        title: Text('${account.displayName} 验证码已复制'),
+      );
     }
   }
 }

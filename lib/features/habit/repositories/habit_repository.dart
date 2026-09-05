@@ -35,38 +35,52 @@ class HabitRepository {
   Future<void> toggleCheckin(String habitKey, DateTime date) async {
     final dateStr = _formatDate(date);
     final checkinKey = '$habitKey#$dateStr';
-    final existing = await (_db.select(_db.habitCheckin)
-          ..where((tbl) => tbl.key.equals(checkinKey)))
-        .getSingleOrNull();
+    final existing = await (_db.select(
+      _db.habitCheckin,
+    )..where((tbl) => tbl.key.equals(checkinKey))).getSingleOrNull();
 
     if (existing != null) {
       // 已打卡 → 取消
-      await (_db.delete(_db.habitCheckin)..where((tbl) => tbl.key.equals(checkinKey))).go();
+      await (_db.delete(
+        _db.habitCheckin,
+      )..where((tbl) => tbl.key.equals(checkinKey))).go();
       return;
     }
 
     // 未打卡 → 写入（与桌面端字段约定一致：source=manual，time=HH:mm:ss）
     final now = DateTime.now();
-    await _db.into(_db.habitCheckin).insert(HabitCheckinCompanion.insert(
-          key: Value(checkinKey),
-          habitKey: Value(habitKey),
-          date: Value(dateStr),
-          source: const Value('manual'),
-          time: Value(_formatTime(now)),
-        ));
+    await _db
+        .into(_db.habitCheckin)
+        .insert(
+          HabitCheckinCompanion.insert(
+            key: Value(checkinKey),
+            habitKey: Value(habitKey),
+            date: Value(dateStr),
+            source: const Value('manual'),
+            time: Value(_formatTime(now)),
+          ),
+        );
   }
 
   /// 近 [days] 天内每天是否打卡（连续天数展示用），key → [bool x days]
-  Future<Map<String, List<bool>>> recentCheckinMap(List<String> habitKeys, int days) async {
+  Future<Map<String, List<bool>>> recentCheckinMap(
+    List<String> habitKeys,
+    int days,
+  ) async {
     final today = DateTime.now();
-    final dates = List.generate(days, (i) => _formatDate(today.subtract(Duration(days: i))));
+    final dates = List.generate(
+      days,
+      (i) => _formatDate(today.subtract(Duration(days: i))),
+    );
     final result = <String, List<bool>>{};
     for (final key in habitKeys) {
       final checked = <bool>[];
       for (final date in dates) {
-        final row = await (_db.select(_db.habitCheckin)
-              ..where((tbl) => tbl.habitKey.equals(key) & tbl.date.equals(date)))
-            .getSingleOrNull();
+        final row =
+            await (_db.select(_db.habitCheckin)..where(
+                  (tbl) => tbl.habitKey.equals(key) & tbl.date.equals(date),
+                ))
+                .getSingleOrNull();
         checked.add(row != null);
       }
       result[key] = checked;
@@ -80,8 +94,7 @@ class HabitRepository {
   String _formatTime(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
 
-  String _formatDateTime(DateTime t) =>
-      '${_formatDate(t)} ${_formatTime(t)}';
+  String _formatDateTime(DateTime t) => '${_formatDate(t)} ${_formatTime(t)}';
 
   /// 新建习惯（字段约定对齐桌面端 useHabit.saveHabit）
   /// 同时按桌面端 syncReminders 语义写入 time 型提醒行并调度本地通知。
@@ -96,43 +109,62 @@ class HabitRepository {
     final nowStr = _formatDateTime(now);
     final nameU = name.trim();
 
-    await _db.into(_db.habitDef).insert(HabitDefCompanion.insert(
-          name: Value(nameU),
-          value: const Value(null),
-          createdAt: const Value(null),
-          key: Value(key),
-          createTime: Value(nowStr),
-          updateTime: Value(nowStr),
-          chainActions: const Value('[]'),
-          weekDays: Value(jsonEncode(weekDays)),
-          enabled: const Value('1'),
-          reminderTimes: Value(jsonEncode(reminderTime.isEmpty ? <String>[] : [reminderTime])),
-          remark: Value(nameU),
-          freqType: Value(freqType),
-        ));
+    await _db
+        .into(_db.habitDef)
+        .insert(
+          HabitDefCompanion.insert(
+            name: Value(nameU),
+            value: const Value(null),
+            createdAt: const Value(null),
+            key: Value(key),
+            createTime: Value(nowStr),
+            updateTime: Value(nowStr),
+            chainActions: const Value('[]'),
+            weekDays: Value(jsonEncode(weekDays)),
+            enabled: const Value('1'),
+            reminderTimes: Value(
+              jsonEncode(reminderTime.isEmpty ? <String>[] : [reminderTime]),
+            ),
+            remark: Value(nameU),
+            freqType: Value(freqType),
+          ),
+        );
 
     // 提醒联动（桌面端 id 形如 habit:<key>#<序号>）
     if (reminderTime.isNotEmpty) {
       final reminderId = '$key#1';
-      await _db.into(_db.reminders).insert(RemindersCompanion.insert(
-            id: reminderId,
-            mode: const Value('time'),
-            weekDays: Value(jsonEncode(weekDays)),
-            loop: const Value('1'),
-            title: Value(nameU),
-            content: const Value(''),
-            enabled: const Value('1'),
-            time: Value(reminderTime),
-            source: const Value('habit'),
-          ));
-      await _scheduleHabitNotification(reminderId, nameU, reminderTime, weekDays);
+      await _db
+          .into(_db.reminders)
+          .insert(
+            RemindersCompanion.insert(
+              id: reminderId,
+              mode: const Value('time'),
+              weekDays: Value(jsonEncode(weekDays)),
+              loop: const Value('1'),
+              title: Value(nameU),
+              content: const Value(''),
+              enabled: const Value('1'),
+              time: Value(reminderTime),
+              source: const Value('habit'),
+            ),
+          );
+      await _scheduleHabitNotification(
+        reminderId,
+        nameU,
+        reminderTime,
+        weekDays,
+      );
     }
     return key;
   }
 
   /// 调度习惯提醒的本地通知（每天/按星期）
   Future<void> _scheduleHabitNotification(
-      String id, String title, String time, List<int> weekDays) async {
+    String id,
+    String title,
+    String time,
+    List<int> weekDays,
+  ) async {
     final parts = time.split(':');
     final hour = int.tryParse(parts[0]);
     final minute = parts.length > 1 ? int.tryParse(parts[1]) : null;
@@ -163,10 +195,12 @@ class HabitRepository {
 
   /// 删除习惯（联动清理提醒行与本地通知）
   Future<void> deleteHabit(HabitItem habit) async {
-    await (_db.delete(_db.habitDef)..where((t) => t.key.equals(habit.key))).go();
-    final rows = await (_db.select(_db.reminders)
-          ..where((t) => t.id.like('${habit.key}#%')))
-        .get();
+    await (_db.delete(
+      _db.habitDef,
+    )..where((t) => t.key.equals(habit.key))).go();
+    final rows = await (_db.select(
+      _db.reminders,
+    )..where((t) => t.id.like('${habit.key}#%'))).get();
     for (final r in rows) {
       await (_db.delete(_db.reminders)..where((t) => t.id.equals(r.id))).go();
       await NotificationService.cancel(r.id.hashCode);
@@ -178,7 +212,8 @@ class HabitRepository {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     final r = Random.secure();
     String part() => String.fromCharCodes(
-        List.generate(8, (_) => chars.codeUnitAt(r.nextInt(chars.length))));
+      List.generate(8, (_) => chars.codeUnitAt(r.nextInt(chars.length))),
+    );
     return '${part()}-${part()}';
   }
 }

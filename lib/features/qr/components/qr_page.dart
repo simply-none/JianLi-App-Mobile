@@ -19,6 +19,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -107,7 +108,12 @@ class _QrPageState extends ConsumerState<QrPage> {
   Widget _buildGenerate() {
     final payload = _currentPayload;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: EdgeInsets.fromLTRB(
+        AppTokens.pagePaddingOf(context),
+        8,
+        AppTokens.pagePaddingOf(context),
+        24,
+      ),
       children: [
         // 类型选择
         FSelect<String>(
@@ -223,7 +229,7 @@ class _QrPageState extends ConsumerState<QrPage> {
     await showFSheet<void>(
       context: context,
       side: FLayout.btt,
-      builder: (context) => Padding(
+      builder: (context) => SheetSurface(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -289,7 +295,12 @@ class _QrPageState extends ConsumerState<QrPage> {
         return ColoredBox(
           color: AppTokens.pageTint(context),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            padding: EdgeInsets.fromLTRB(
+              AppTokens.pagePaddingOf(context),
+              8,
+              AppTokens.pagePaddingOf(context),
+              24,
+            ),
             children: [
               StaggerList(
                 children: [

@@ -33,8 +33,10 @@ class _ConfettiOverlayState extends State<ConfettiOverlay>
     duration: AppTokens.slow,
   );
   final _rng = Random();
-  late final List<_Piece> _pieces =
-      List.generate(widget.count, (_) => _Piece(_rng));
+  late final List<_Piece> _pieces = List.generate(
+    widget.count,
+    (_) => _Piece(_rng),
+  );
   bool _started = false;
 
   @override
@@ -64,56 +66,56 @@ class _ConfettiOverlayState extends State<ConfettiOverlay>
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-        animation: _ctrl,
-        builder: (_, animation) => LayoutBuilder(
-          builder: (c, constraints) {
-            final h = constraints.maxHeight;
-            final prog = _ctrl.value;
-            return Stack(
-              children: _pieces.map((p) {
-                final top = prog * (h + 40) - 20;
-                final left = p.x * constraints.maxWidth;
-                final opacity =
-                    (prog < 0.85 ? 1.0 : (1 - (prog - 0.85) / 0.15)).clamp(0.0, 1.0);
-                return Positioned(
-                  top: top,
-                  left: left,
-                  child: Opacity(
-                    opacity: opacity,
-                    child: Transform.rotate(
-                      angle: p.rot * prog * 6.28,
-                      child: Container(
-                        width: p.w,
-                        height: p.h * 1.6,
-                        decoration: BoxDecoration(
-                          color: p.color,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
+    animation: _ctrl,
+    builder: (_, animation) => LayoutBuilder(
+      builder: (c, constraints) {
+        final h = constraints.maxHeight;
+        final prog = _ctrl.value;
+        return Stack(
+          children: _pieces.map((p) {
+            final top = prog * (h + 40) - 20;
+            final left = p.x * constraints.maxWidth;
+            final opacity = (prog < 0.85 ? 1.0 : (1 - (prog - 0.85) / 0.15))
+                .clamp(0.0, 1.0);
+            return Positioned(
+              top: top,
+              left: left,
+              child: Opacity(
+                opacity: opacity,
+                child: Transform.rotate(
+                  angle: p.rot * prog * 6.28,
+                  child: Container(
+                    width: p.w,
+                    height: p.h * 1.6,
+                    decoration: BoxDecoration(
+                      color: p.color,
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                );
-              }).toList(),
+                ),
+              ),
             );
-          },
-        ),
-      );
+          }).toList(),
+        );
+      },
+    ),
+  );
 }
 
 class _Piece {
   _Piece(Random r)
-      : x = r.nextDouble(),
-        w = 6 + r.nextDouble() * 6,
-        h = 8 + r.nextDouble() * 8,
-        rot = r.nextDouble() * 2 - 1,
-        color = const [
-          Colors.red,
-          Colors.blue,
-          Colors.green,
-          Colors.orange,
-          Colors.purple,
-          Colors.pink,
-        ][r.nextInt(6)];
+    : x = r.nextDouble(),
+      w = 6 + r.nextDouble() * 6,
+      h = 8 + r.nextDouble() * 8,
+      rot = r.nextDouble() * 2 - 1,
+      color = const [
+        Colors.red,
+        Colors.blue,
+        Colors.green,
+        Colors.orange,
+        Colors.purple,
+        Colors.pink,
+      ][r.nextInt(6)];
   final double x;
   final double w;
   final double h;

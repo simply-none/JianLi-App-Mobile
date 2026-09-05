@@ -15,7 +15,12 @@ const int _ivBytes = 12;
 
 /// 解析结果
 class JlvParsed {
-  const JlvParsed({this.metaName, this.metaExt, required this.iv, required this.ct});
+  const JlvParsed({
+    this.metaName,
+    this.metaExt,
+    required this.iv,
+    required this.ct,
+  });
 
   /// 新格式内嵌原名；旧格式为 null
   final String? metaName;
@@ -35,9 +40,16 @@ JlvParsed parseJlv(Uint8List buf) {
     if (magic == kJlvMagic) {
       final bd = ByteData.sublistView(buf, 4, 8);
       final metaLen = bd.getUint32(0);
-      final metaJson = utf8.decode(buf.sublist(8, 8 + metaLen), allowMalformed: true);
+      final metaJson = utf8.decode(
+        buf.sublist(8, 8 + metaLen),
+        allowMalformed: true,
+      );
       final meta = jsonDecode(metaJson) as Map<String, dynamic>;
-      final iv = Uint8List.sublistView(buf, 8 + metaLen, 8 + metaLen + _ivBytes);
+      final iv = Uint8List.sublistView(
+        buf,
+        8 + metaLen,
+        8 + metaLen + _ivBytes,
+      );
       final ct = Uint8List.sublistView(buf, 8 + metaLen + _ivBytes);
       return JlvParsed(
         metaName: meta['name'] as String?,
@@ -55,7 +67,12 @@ JlvParsed parseJlv(Uint8List buf) {
 }
 
 /// 构造 .jlv 密文（导入时使用；与桌面端 composeCipher 等价）
-Uint8List buildJlv({required String name, required String ext, required Uint8List iv, required Uint8List ct}) {
+Uint8List buildJlv({
+  required String name,
+  required String ext,
+  required Uint8List iv,
+  required Uint8List ct,
+}) {
   final meta = utf8.encode(jsonEncode({'name': name, 'ext': ext}));
   final out = BytesBuilder();
   out.add(ascii.encode(kJlvMagic));
@@ -74,10 +91,13 @@ Future<String?> decryptVaultName(String? nameB64, List<int> dataKey) async {
     final buf = base64Decode(nameB64);
     final iv = Uint8List.sublistView(buf, 0, _ivBytes);
     final ct = Uint8List.sublistView(buf, _ivBytes);
-    final plain = await decryptVaultBytes(EncryptedVaultBytes(
-      ivBase64: base64Encode(iv),
-      ctBase64: base64Encode(ct),
-    ), dataKey);
+    final plain = await decryptVaultBytes(
+      EncryptedVaultBytes(
+        ivBase64: base64Encode(iv),
+        ctBase64: base64Encode(ct),
+      ),
+      dataKey,
+    );
     return utf8.decode(plain);
   } catch (_) {
     return null;

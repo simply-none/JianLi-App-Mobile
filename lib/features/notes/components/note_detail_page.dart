@@ -13,7 +13,9 @@ import 'package:material_ui/material_ui.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../models/note_item.dart';
+import '../models/note_tag.dart';
 import '../providers/note_providers.dart';
+import 'note_tag_chip.dart';
 
 /// 笔记详情页（路由参数：笔记 key）
 class NoteDetailPage extends ConsumerWidget {
@@ -52,13 +54,26 @@ class NoteDetailPage extends ConsumerWidget {
           if (note == null) {
             return Center(child: Text('未找到笔记：$noteKey'));
           }
+          // 标签 key → 定义（名称/颜色），来自 basic_info.note_tags
+          final tagDefs =
+              ref.watch(noteTagsProvider).value ?? const <NoteTag>[];
+          final defByKey = {for (final d in tagDefs) d.key: d};
+          final badges = [
+            for (final k in note.tags)
+              if (defByKey[k] != null) defByKey[k]!,
+          ];
           return ColoredBox(
             color: AppTokens.pageTint(context),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                  padding: EdgeInsets.fromLTRB(
+                    AppTokens.pagePaddingOf(context),
+                    14,
+                    AppTokens.pagePaddingOf(context),
+                    4,
+                  ),
                   child: Row(
                     children: [
                       SquircleBox(
@@ -80,8 +95,16 @@ class NoteDetailPage extends ConsumerWidget {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Row(
+                  padding: EdgeInsets.fromLTRB(
+                    AppTokens.pagePaddingOf(context),
+                    0,
+                    AppTokens.pagePaddingOf(context),
+                    8,
+                  ),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       // 分类 chip：琥珀软底 + 专属色文字（与笔记域强调色一致）
                       Container(
@@ -104,7 +127,8 @@ class NoteDetailPage extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      // 标签彩色徽标（对齐 PC 列表/详情的标签展示）
+                      for (final tag in badges) NoteTagBadge(tag: tag),
                       Text(
                         '更新于 ${note.updateTime}',
                         style: t.typography.body.sm.copyWith(
@@ -115,6 +139,7 @@ class NoteDetailPage extends ConsumerWidget {
                   ),
                 ),
                 const FDivider(),
+                // 正文字号随全局基准字号体系（阅览模式在根组件驱动主题，无需页内缩放）
                 Expanded(child: NoteHtmlView(html: note.html)),
               ],
             ),
@@ -164,7 +189,7 @@ class NoteDetailPage extends ConsumerWidget {
   }
 }
 
-/// HTML 渲染组件（独立小部件，便于测试与复用）
+/// HTML 渲染组件（独立小部件，便于测试与复用）；字号跟随全局基准字号体系
 class NoteHtmlView extends StatelessWidget {
   const NoteHtmlView({super.key, required this.html});
 
@@ -173,8 +198,14 @@ class NoteHtmlView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: HtmlWidget(html),
+      padding: EdgeInsets.all(AppTokens.pagePaddingOf(context)),
+      child: HtmlWidget(
+        html,
+        textStyle: TextStyle(
+          fontSize: context.theme.typography.body.md.fontSize ?? 14,
+          height: 1.7,
+        ),
+      ),
     );
   }
 }

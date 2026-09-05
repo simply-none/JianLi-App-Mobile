@@ -40,10 +40,17 @@ class SyncService {
     // 回退逻辑收敛为局部变量（原 _serverName/_serverId 未声明，属既有编译错误）
     final resolvedName = name.isEmpty ? localDeviceName : name;
     final resolvedId = id.isEmpty ? localDeviceId : id;
-    _server = await HttpServer.bind(InternetAddress.anyIPv4, SyncProtocol.dataPort);
+    _server = await HttpServer.bind(
+      InternetAddress.anyIPv4,
+      SyncProtocol.dataPort,
+    );
     _server!.listen((request) async {
       if (request.uri.path == '/ping') {
-        _json(request, {'name': resolvedName, 'id': resolvedId, 'platform': localPlatform});
+        _json(request, {
+          'name': resolvedName,
+          'id': resolvedId,
+          'platform': localPlatform,
+        });
         return;
       }
       // 拉取端点：对端主动拉本机数据（与 PC 端 syncModule.ts 的 /export 对称）
@@ -87,7 +94,11 @@ class SyncService {
     });
   }
 
-  void _json(HttpRequest request, Map<String, dynamic> data, [int status = 200]) {
+  void _json(
+    HttpRequest request,
+    Map<String, dynamic> data, [
+    int status = 200,
+  ]) {
     request.response.statusCode = status;
     request.response.headers.contentType = ContentType.json;
     request.response.write(jsonEncode(data));
@@ -135,12 +146,17 @@ class SyncService {
   }
 
   /// 向对端推送一张表
-  Future<({bool ok, String message})> sendTable(PeerDevice peer, String table) async {
+  Future<({bool ok, String message})> sendTable(
+    PeerDevice peer,
+    String table,
+  ) async {
     try {
       final client = HttpClient()
         ..connectionTimeout = const Duration(seconds: 5);
       final rows = await exportTable(table);
-      final req = await client.postUrl(Uri.parse('http://${peer.ip}:${SyncProtocol.dataPort}/sync'));
+      final req = await client.postUrl(
+        Uri.parse('http://${peer.ip}:${SyncProtocol.dataPort}/sync'),
+      );
       req.headers.contentType = ContentType.json;
       req.add(utf8.encode(jsonEncode({'table': table, 'rows': rows})));
       final res = await req.close();
@@ -149,7 +165,9 @@ class SyncService {
       final json = jsonDecode(body) as Map<String, dynamic>;
       return (
         ok: res.statusCode == 200 && json['ok'] == true,
-        message: json['ok'] == true ? '已同步 $table：${json['written']} 行' : '${json['error']}'
+        message: json['ok'] == true
+            ? '已同步 $table：${json['written']} 行'
+            : '${json['error']}',
       );
     } catch (e) {
       return (ok: false, message: '发送失败：$e');
@@ -157,12 +175,18 @@ class SyncService {
   }
 
   /// 从对端拉取一张表（GET /export?table=x → 幂等 upsert 入本机库）
-  Future<({bool ok, String message})> fetchTable(PeerDevice peer, String table) async {
+  Future<({bool ok, String message})> fetchTable(
+    PeerDevice peer,
+    String table,
+  ) async {
     try {
       final client = HttpClient()
         ..connectionTimeout = const Duration(seconds: 5);
       final req = await client.getUrl(
-          Uri.parse('http://${peer.ip}:${SyncProtocol.dataPort}/export?table=$table'));
+        Uri.parse(
+          'http://${peer.ip}:${SyncProtocol.dataPort}/export?table=$table',
+        ),
+      );
       final res = await req.close();
       final body = await utf8.decoder.bind(res).join();
       client.close();
@@ -170,7 +194,8 @@ class SyncService {
       if (res.statusCode != 200 || json['ok'] != true) {
         return (ok: false, message: '拉取 $table 失败：${json['error']}');
       }
-      final rows = ((json['rows'] as List?) ?? const []).whereType<Map<String, dynamic>>();
+      final rows = ((json['rows'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>();
       var written = 0;
       for (final row in rows) {
         await _upsertRow(table, row);

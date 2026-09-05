@@ -18,7 +18,9 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
@@ -179,7 +181,7 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
     );
   }
 
-  /// 预览（图片内存渲染；其他类型仅提示）
+  /// 预览（底部抽屉——内容展示类弹层统一抽屉化；图片内存渲染，其他类型仅提示）
   Future<void> _preview(({FileVaultFile meta, String name}) item) async {
     try {
       final bytes = await _service.decryptFile(item.meta);
@@ -191,17 +193,29 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
         'gif',
         'webp',
       ].any((e) => (item.meta.ext ?? '').toLowerCase().contains(e));
-      await showFDialog<void>(
+      await showFSheet<void>(
         context: context,
-        builder: (context, style, _) => FDialog(
-          builder: (context, style) => Column(
+        side: FLayout.btt,
+        builder: (context) => SheetSurface(
+          padding: EdgeInsets.fromLTRB(
+            AppTokens.pagePaddingOf(context),
+            16,
+            AppTokens.pagePaddingOf(context),
+            24,
+          ),
+          child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(item.name, style: style.titleTextStyle),
-              const SizedBox(height: 12),
+              Text(
+                item.name,
+                style: context.theme.typography.body.lg.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
               if (isImage)
-                // 限定高度防止大图撑爆对话框，支持缩放/平移查看
+                // 限定高度防止大图撑爆抽屉，支持缩放/平移查看
                 SizedBox(
                   height: 320,
                   width: double.infinity,
@@ -214,19 +228,15 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
               else
                 Text(
                   '该类型暂不支持预览（${item.meta.ext}），共 ${bytes.length} 字节。\n导出/分享列 P2。',
-                  style: style.bodyTextStyle,
+                  style: context.theme.typography.body.sm.copyWith(
+                    color: context.theme.colors.mutedForeground,
+                  ),
                 ),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                spacing: 8,
-                children: [
-                  FButton(
-                    variant: FButtonVariant.outline,
-                    onPress: () => Navigator.pop(context),
-                    child: const Text('关闭'),
-                  ),
-                ],
+              GradientButton(
+                label: '关闭',
+                icon: FLucideIcons.x,
+                onPress: () => Navigator.pop(context),
               ),
             ],
           ),

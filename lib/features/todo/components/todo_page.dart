@@ -9,8 +9,10 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/segmented.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -86,7 +88,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                 return ColoredBox(
                   color: AppTokens.pageTint(context),
                   child: ListView(
-                    padding: const EdgeInsets.only(top: 4, bottom: 24),
+                    padding: EdgeInsets.only(
+                      top: AppTokens.listTopGapOf(context),
+                      bottom: AppTokens.pageBottomGapOf(context),
+                    ),
                     children: [
                       StaggerList(
                         children: [
@@ -129,18 +134,37 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     );
   }
 
-  /// 新增待办对话框（第一批仅采集标题）
+  /// 新增待办（底部抽屉——小功能新增统一抽屉化；第一批仅采集标题）
   Future<void> _showAddDialog(BuildContext context) async {
     final controller = TextEditingController();
-    final title = await showFDialog<String>(
+    final title = await showFSheet<String>(
       context: context,
-      builder: (c, style, _) => FDialog(
-        builder: (c, style) => Column(
+      side: FLayout.btt,
+      builder: (c) => SheetSurface(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          MediaQuery.of(c).viewInsets.bottom + 24,
+        ),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('新增待办', style: style.titleTextStyle),
-            const SizedBox(height: 12),
+            Text(
+              '新增待办',
+              style: c.theme.typography.body.lg.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '今天要完成什么？',
+              style: c.theme.typography.body.sm.copyWith(
+                color: c.theme.colors.mutedForeground,
+              ),
+            ),
+            const SizedBox(height: 14),
             FTextField(
               control: FTextFieldControl.managed(controller: controller),
               hint: '要做什么？',
@@ -148,20 +172,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               onSubmit: (v) => Navigator.pop(c, v),
             ),
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              spacing: 8,
-              children: [
-                FButton(
-                  variant: FButtonVariant.outline,
-                  onPress: () => Navigator.pop(c),
-                  child: const Text('取消'),
-                ),
-                FButton(
-                  onPress: () => Navigator.pop(c, controller.text),
-                  child: const Text('添加'),
-                ),
-              ],
+            GradientButton(
+              label: '添加',
+              icon: FLucideIcons.plus,
+              onPress: () => Navigator.pop(c, controller.text),
             ),
           ],
         ),

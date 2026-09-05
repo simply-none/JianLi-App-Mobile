@@ -107,7 +107,10 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
                 ),
               )
             : ListView(
-                padding: const EdgeInsets.only(top: 4, bottom: 24),
+                padding: EdgeInsets.only(
+                  top: AppTokens.listTopGapOf(context),
+                  bottom: AppTokens.pageBottomGapOf(context),
+                ),
                 children: [
                   // 页面专属红渐变横幅：当前阶段 + 剩余时间（与效率分组页「番茄钟」入口色对齐）
                   PageBanner(
@@ -122,7 +125,12 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
                   const SizedBox(height: 8),
                   // 阶段进度环（白卡承托，避免渐变上叠渐变）
                   AppCard(
-                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    margin: EdgeInsets.fromLTRB(
+                      AppTokens.pagePaddingOf(context),
+                      8,
+                      AppTokens.pagePaddingOf(context),
+                      8,
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Column(
                       children: [

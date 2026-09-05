@@ -13,6 +13,8 @@ class NoteItem {
     required this.title,
     required this.excerpt,
     required this.html,
+    required this.content,
+    required this.mdText,
     required this.category,
     required this.tags,
     required this.updateTime,
@@ -26,6 +28,8 @@ class NoteItem {
       title: _firstLine(row.excerpt) ?? '无标题笔记',
       excerpt: row.excerpt ?? '',
       html: row.html ?? '',
+      content: row.content ?? '',
+      mdText: row.mdText ?? '',
       category: row.category,
       tags: parseNoteTags(row.tags),
       updateTime: row.updateTime ?? '',
@@ -38,11 +42,19 @@ class NoteItem {
   final String excerpt;
   final String html;
 
+  /// 桌面端原始正文列（mdText = markdown 纯文本；content = 纯文本），搜索用
+  final String content;
+  final String mdText;
+
   /// 分类（桌面端直接存文本，无独立分类表）
   final String? category;
   final List<String> tags;
   final String updateTime;
   final String createTime;
+
+  /// 内容搜索文本（标题/摘要/正文/markdown/富文本合并小写；对齐 PC 端
+  /// mdText/content/html/excerpt 四列 LIKE 的搜索范围）
+  String get searchText => ('$excerpt\n$content\n$mdText\n$html').toLowerCase();
 
   /// 摘要首行作为标题
   static String? _firstLine(String? excerpt) {

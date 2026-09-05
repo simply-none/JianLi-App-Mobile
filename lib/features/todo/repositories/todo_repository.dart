@@ -27,7 +27,10 @@ class TodoRepository {
 
   /// 标签流（供展示映射）
   Stream<List<TodoTagView>> watchTags() {
-    return _db.select(_db.todoTags).watch().map((rows) => rows.map(TodoTagView.fromRow).toList());
+    return _db
+        .select(_db.todoTags)
+        .watch()
+        .map((rows) => rows.map(TodoTagView.fromRow).toList());
   }
 
   /// 新增待办（title 必填，其余走默认值）
@@ -36,14 +39,18 @@ class TodoRepository {
     final nowStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-    await _db.into(_db.todoList).insert(TodoListCompanion.insert(
-          key: _uuid.v4(),
-          title: Value(title),
-          description: Value(description),
-          completed: const Value('0'),
-          createTime: Value(nowStr),
-          updateTime: Value(nowStr),
-        ));
+    await _db
+        .into(_db.todoList)
+        .insert(
+          TodoListCompanion.insert(
+            key: _uuid.v4(),
+            title: Value(title),
+            description: Value(description),
+            completed: const Value('0'),
+            createTime: Value(nowStr),
+            updateTime: Value(nowStr),
+          ),
+        );
   }
 
   /// 切换完成状态
@@ -63,7 +70,9 @@ class TodoRepository {
 
   /// 删除待办（含其子任务）
   Future<void> deleteTodo(String key) async {
-    await (_db.delete(_db.todoList)..where((tbl) => tbl.parentId.equals(key))).go();
+    await (_db.delete(
+      _db.todoList,
+    )..where((tbl) => tbl.parentId.equals(key))).go();
     await (_db.delete(_db.todoList)..where((tbl) => tbl.key.equals(key))).go();
   }
 }

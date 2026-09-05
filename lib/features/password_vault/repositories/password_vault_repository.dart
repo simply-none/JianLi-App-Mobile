@@ -20,21 +20,27 @@ class PasswordVaultRepository {
 
   Future<String> _vaultPath() async {
     // 优先读 basic_info 记录，保证路径稳定
-    final row = await (_db.select(_db.basicInfo)
-          ..where((tbl) => tbl.key.equals('mobilePasswordVaultPath')))
-        .getSingleOrNull();
+    final row =
+        await (_db.select(_db.basicInfo)
+              ..where((tbl) => tbl.key.equals('mobilePasswordVaultPath')))
+            .getSingleOrNull();
     if (row?.value != null && row!.value!.isNotEmpty) return row.value!;
     final dir = await getApplicationDocumentsDirectory();
     final path = p.join(dir.path, 'password-vault.jlv');
-    await _db.into(_db.basicInfo).insert(BasicInfoCompanion.insert(
-          key: 'mobilePasswordVaultPath',
-          value: Value(path),
-        ));
+    await _db
+        .into(_db.basicInfo)
+        .insert(
+          BasicInfoCompanion.insert(
+            key: 'mobilePasswordVaultPath',
+            value: Value(path),
+          ),
+        );
     return path;
   }
 
   /// 是否已建库
-  Future<bool> hasVault() => _vaultPath().then((path) => File(path).existsSync());
+  Future<bool> hasVault() =>
+      _vaultPath().then((path) => File(path).existsSync());
 
   /// 首次建库（写入空数组）
   Future<void> createVault(String passphrase) async {
@@ -50,7 +56,10 @@ class PasswordVaultRepository {
     if (!file.existsSync()) {
       throw StateError('尚未创建密码库');
     }
-    final list = await decryptVaultEnvelope(file.readAsStringSync(), passphrase);
+    final list = await decryptVaultEnvelope(
+      file.readAsStringSync(),
+      passphrase,
+    );
     return list
         .whereType<Map<String, dynamic>>()
         .map(PasswordEntry.fromJson)
@@ -60,8 +69,10 @@ class PasswordVaultRepository {
   /// 用加密回写保存全部条目（信封文件是唯一真相源，与桌面端 2FA 同范式）
   Future<void> saveAll(String passphrase, List<PasswordEntry> entries) async {
     final path = await _vaultPath();
-    final envelope =
-        await encryptVaultEnvelope(entries.map((e) => e.toJson()).toList(), passphrase);
+    final envelope = await encryptVaultEnvelope(
+      entries.map((e) => e.toJson()).toList(),
+      passphrase,
+    );
     File(path).writeAsStringSync(envelope);
   }
 }

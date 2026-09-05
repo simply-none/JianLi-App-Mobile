@@ -53,16 +53,16 @@ class TwoFactorAccount {
   String get displayName => issuer.isEmpty ? account : '$issuer · $account';
 
   Map<String, dynamic> toJson() => {
-        'key': key,
-        'issuer': issuer,
-        'account': account,
-        'secret': secret,
-        'algorithm': algorithm,
-        'digits': digits,
-        'period': period,
-        if (group != null) 'group': group,
-        if (sortOrder != null) 'sortOrder': sortOrder,
-        'createdAt': createdAt,
-        'updatedAt': updatedAt,
-      };
+    'key': key,
+    'issuer': issuer,
+    'account': account,
+    'secret': secret,
+    'algorithm': algorithm,
+    'digits': digits,
+    'period': period,
+    if (group != null) 'group': group,
+    if (sortOrder != null) 'sortOrder': sortOrder,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
+  };
 }

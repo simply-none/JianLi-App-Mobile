@@ -24,5 +24,5 @@ class Screenshots extends Table {
   TextColumn get height => text().nullable()();
 
   /// 贴纸处理状态
-    TextColumn get stickerStatus => text().named('sticker_status').nullable()();
+  TextColumn get stickerStatus => text().named('sticker_status').nullable()();
 }

@@ -68,40 +68,89 @@ class AppTheme {
   static ThemeStyle styleById(String id) =>
       styles.firstWhere((s) => s.id == id, orElse: () => styles.first);
 
-  /// 亮色主题（指定样式）
-  static FThemeData light([ThemeStyle? style]) =>
-      build(style: style ?? styles.first, brightness: Brightness.light);
+  /// 亮色主题（指定样式 + 基准字号）
+  static FThemeData light([
+    ThemeStyle? style,
+    double baseFontSize = AppTokens.baseFontSizeNormal,
+  ]) => build(
+    style: style ?? styles.first,
+    brightness: Brightness.light,
+    baseFontSize: baseFontSize,
+  );
 
-  /// 暗色主题（指定样式）
-  static FThemeData dark([ThemeStyle? style]) =>
-      build(style: style ?? styles.first, brightness: Brightness.dark);
+  /// 暗色主题（指定样式 + 基准字号）
+  static FThemeData dark([
+    ThemeStyle? style,
+    double baseFontSize = AppTokens.baseFontSizeNormal,
+  ]) => build(
+    style: style ?? styles.first,
+    brightness: Brightness.dark,
+    baseFontSize: baseFontSize,
+  );
 
-  /// MaterialApp 用：亮色 Material 主题（指定样式）
-  static ThemeData materialLight([ThemeStyle? style]) =>
-      light(style).toApproximateMaterialTheme();
+  /// MaterialApp 用：亮色 Material 主题（指定样式 + 基准字号）
+  static ThemeData materialLight([
+    ThemeStyle? style,
+    double baseFontSize = AppTokens.baseFontSizeNormal,
+  ]) => light(style, baseFontSize).toApproximateMaterialTheme();
 
-  /// MaterialApp 用：暗色 Material 主题（指定样式）
-  static ThemeData materialDark([ThemeStyle? style]) =>
-      dark(style).toApproximateMaterialTheme();
+  /// MaterialApp 用：暗色 Material 主题（指定样式 + 基准字号）
+  static ThemeData materialDark([
+    ThemeStyle? style,
+    double baseFontSize = AppTokens.baseFontSizeNormal,
+  ]) => dark(style, baseFontSize).toApproximateMaterialTheme();
 
   /// 构建一套 forui 主题：中性底色（shadcn 观感）+ 指定样式主色
   ///
   /// 官方模式（同 FTheme.neutral 源码）：FThemeData(touch, colors) 只传这两个，
   /// typography/style/icons 自动从 colors + touch 推导继承。
+  ///
+  /// [baseFontSize] 基准字号体系（阅览模式）：普通文本（md）对齐该像素值，
+  /// 其余字型按 forui 默认比例等比缩放。必须构造期传入——copyWith(typography:)
+  /// 不会让 forui 组件内部样式重推导（官方文档同款姿势：改 typography 要新建 FThemeData）。
+  ///
+  /// 额外两处全局处理（2026-09-05）：
+  /// - background 预叠主色冷调（pageTint 同源），消除页面冷调内容与外框/头部的白边；
+  /// - FScaffold.childPadding 随同一缩放系数缩放，字号切换时间距全局联动。
   static FThemeData build({
     required ThemeStyle style,
     required Brightness brightness,
+    double baseFontSize = AppTokens.baseFontSizeNormal,
   }) {
     final isLight = brightness == Brightness.light;
     // touch 变体 = 移动端触控尺寸（desktop 变体控件更紧凑，移动端勿用错）
-    final base = isLight ? FTheme.neutral.light.touch : FTheme.neutral.dark.touch;
+    final base = isLight
+        ? FTheme.neutral.light.touch
+        : FTheme.neutral.dark.touch;
+    final primary = isLight ? style.lightPrimary : style.darkPrimary;
+    // 基准缩放：目标 md 像素 / forui 默认 md 像素（运行时取默认值，不硬编码版本号）
+    final defaultMd = base.typography.body.md.fontSize ?? 14;
+    final k = baseFontSize / defaultMd;
+    // 页面底色：background 叠 4%/6% 主色冷调（原 AppTokens.pageTint 逻辑上移至此）
+    final tint = Color.lerp(
+      base.colors.background,
+      primary,
+      isLight ? 0.04 : 0.06,
+    )!;
+    // 外框内边距随字号等比缩放：先在 base 样式实例上 copyWith 出缩放后的
+    // FScaffoldStyle，再传入 FThemeData（构造器的 scaffoldStyle 参数是样式实例，
+    // 不是回调；childPadding 的 delta 用官方 EdgeInsetsGeometryDelta.scale）。
+    // backgroundColor 透明：全局渐变背板（渐变 + 简单图案）由 app.dart 根容器绘制，
+    // scaffold/头部（decoration 默认透明）/页面全部透出背板 → 无任何色差分割与白边。
+    final scaledScaffold = base.scaffoldStyle.copyWith(
+      backgroundColor: Colors.transparent,
+      childPadding: EdgeInsetsGeometryDelta.scale(k),
+    );
     return FThemeData(
       touch: true,
       debugLabel: 'Jianli ${style.id} ${isLight ? 'L' : 'D'}',
       colors: base.colors.copyWith(
-        primary: isLight ? style.lightPrimary : style.darkPrimary,
+        primary: primary,
         primaryForeground: Colors.white,
+        background: tint,
       ),
+      typography: base.typography.scale(sizeScalar: k),
+      scaffoldStyle: scaledScaffold,
     );
   }
 }
@@ -113,6 +162,43 @@ class AppTheme {
 /// 颜色优先 forui `context.theme.colors`，暗色按 brightness 派生分层。
 class AppTokens {
   AppTokens._();
+
+  // —— 全局排版与布局配置（2026-09-05：统一调参入口，改这里全 App 生效） ——
+
+  /// 基准字号体系（阅览模式）：普通文本（typography md）的目标像素值。
+  /// 普通 = 12 / 大号 = 18；其他字型（xs/sm/lg/xl…）按 forui 默认比例随基准等比缩放。
+  static const double baseFontSizeNormal = 12;
+  static const double baseFontSizeLarge = 18;
+
+  /// 页面水平边距（页面级 ListView / 横幅 / 全屏页统一水平值，与 FScaffold childPad 对齐）
+  static const double pagePadding = 16;
+
+  /// 列表页顶部缝隙（贴横幅/首元素）
+  static const double listTopGap = 4;
+
+  /// 列表页底部留白（滚动余量基准值；实际用 pageBottomGapOf 随字号缩放）
+  static const double pageBottomGap = 24;
+
+  // —— 间距缩放（阅览模式切换时全局空隙随字号联动） ——
+
+  /// 间距缩放系数：当前主题 md 字号 / 基准字号（普通 = 1.0；大号 = 18/12 = 1.5）。
+  /// 页面级 padding 必须用下方 *Of 系列取值，禁止直接用静态常量（那是基准值）。
+  static double spacingScale(BuildContext context) {
+    final md = context.theme.typography.body.md.fontSize ?? baseFontSizeNormal;
+    return md / baseFontSizeNormal;
+  }
+
+  /// 页面水平边距（随字号缩放）
+  static double pagePaddingOf(BuildContext context) =>
+      pagePadding * spacingScale(context);
+
+  /// 列表页顶部缝隙（随字号缩放）
+  static double listTopGapOf(BuildContext context) =>
+      listTopGap * spacingScale(context);
+
+  /// 列表页底部留白（随字号缩放）
+  static double pageBottomGapOf(BuildContext context) =>
+      pageBottomGap * spacingScale(context);
 
   // —— 形状（圆角档位，替代散落的 12/16/24 魔法数） ——
   static const double radiusSm = 12;
@@ -140,8 +226,9 @@ class AppTokens {
     if (i == 0) return const [];
     return [
       BoxShadow(
-        color: (isDark ? Colors.black : t.colors.foreground)
-            .withValues(alpha: alpha * (i + 1) / 4),
+        color: (isDark ? Colors.black : t.colors.foreground).withValues(
+          alpha: alpha * (i + 1) / 4,
+        ),
         offset: offsets[i],
         blurRadius: blurs[i],
       ),
@@ -159,8 +246,9 @@ class AppTokens {
   }
 
   /// 语义软底（success / warn / info 等状态底，叠在主色上是低密度提示）
-  static Color soft(BuildContext context, Color base) =>
-      base.withValues(alpha: Theme.brightnessOf(context) == Brightness.dark ? 0.22 : 0.12);
+  static Color soft(BuildContext context, Color base) => base.withValues(
+    alpha: Theme.brightnessOf(context) == Brightness.dark ? 0.22 : 0.12,
+  );
 
   // —— 专属强调色板（2026 视觉个性来源：每个功能域一个专属色，磁贴/图标底盘用） ——
   static const List<Color> accents = [
@@ -178,19 +266,18 @@ class AppTokens {
 
   /// 强调色软底（入口磁贴底色，亮/暗自适应）
   static Color accentSoft(BuildContext context, Color base) => base.withValues(
-      alpha: Theme.brightnessOf(context) == Brightness.dark ? 0.16 : 0.10);
+    alpha: Theme.brightnessOf(context) == Brightness.dark ? 0.16 : 0.10,
+  );
 
   /// 强调色渐变（图标底盘 / 小面积强调）
   static LinearGradient accentGradient(Color base) => LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [base, Color.lerp(base, Colors.black, 0.25)!],
-      );
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [base, Color.lerp(base, Colors.black, 0.25)!],
+  );
 
-  /// 页面底色：在 background 上叠一点主色冷调，去「纯白苍白」感
-  static Color pageTint(BuildContext context) {
-    final t = context.theme;
-    final isDark = Theme.brightnessOf(context) == Brightness.dark;
-    return Color.lerp(t.colors.background, t.colors.primary, isDark ? 0.06 : 0.04)!;
-  }
+  /// 页面底色：全局渐变背板（渐变 + 简单图案）由 app.dart 根容器统一绘制，
+  /// 页面保持透明即可透出背板——头部/外框/内容同源，无分割无白边。
+  /// 保留函数兼容既有调用，返回透明色；新代码不要再包不透明底色。
+  static Color pageTint(BuildContext context) => Colors.transparent;
 }

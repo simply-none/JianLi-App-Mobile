@@ -27,33 +27,35 @@ part 'app_database.g.dart';
 
 /// 渐离移动端数据库
 /// 首批 22 张表 + 工具表 3 张（countdown / qr_history / qr_template），共 25 张。
-@DriftDatabase(tables: [
-  HabitDef,
-  HabitCheckin,
-  TodoList,
-  TodoTags,
-  Reminders,
-  NoteBook,
-  BasicInfo,
-  PomodoroStatus,
-  PomodoroMiniConfig,
-  Conversation,
-  ConversationTheme,
-  ConversationTag,
-  FileVaultConfig,
-  FileVaultFiles,
-  EbookBookshelf,
-  EbookProgress,
-  EbookBookmark,
-  EbookAnnotation,
-  EbookCategory,
-  EbookBookCategory,
-  EbookBgImage,
-  Screenshots,
-  Countdown,
-  QrHistory,
-  QrTemplate,
-])
+@DriftDatabase(
+  tables: [
+    HabitDef,
+    HabitCheckin,
+    TodoList,
+    TodoTags,
+    Reminders,
+    NoteBook,
+    BasicInfo,
+    PomodoroStatus,
+    PomodoroMiniConfig,
+    Conversation,
+    ConversationTheme,
+    ConversationTag,
+    FileVaultConfig,
+    FileVaultFiles,
+    EbookBookshelf,
+    EbookProgress,
+    EbookBookmark,
+    EbookAnnotation,
+    EbookCategory,
+    EbookBookCategory,
+    EbookBgImage,
+    Screenshots,
+    Countdown,
+    QrHistory,
+    QrTemplate,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -64,9 +66,8 @@ class AppDatabase extends _$AppDatabase {
   int get schemaVersion => 1;
 
   @override
-  MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
-      );
+  MigrationStrategy get migration =>
+      MigrationStrategy(onCreate: (m) => m.createAll());
 }
 
 /// 打开沙盒内数据库连接（后台 isolate 执行，避免阻塞 UI）

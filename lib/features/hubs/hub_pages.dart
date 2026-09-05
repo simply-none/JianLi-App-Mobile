@@ -95,7 +95,12 @@ class _HubList extends StatelessWidget {
     return ColoredBox(
       color: AppTokens.pageTint(context),
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        padding: EdgeInsets.fromLTRB(
+          AppTokens.pagePaddingOf(context),
+          8,
+          AppTokens.pagePaddingOf(context),
+          32,
+        ),
         children: [
           StaggerList(
             delayStep: 60,

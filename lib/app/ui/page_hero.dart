@@ -5,11 +5,7 @@ import 'package:flutter/widgets.dart';
 
 /// 共享元素容器
 class PageHero extends StatelessWidget {
-  const PageHero({
-    super.key,
-    required this.tag,
-    required this.child,
-  });
+  const PageHero({super.key, required this.tag, required this.child});
 
   final Object tag;
   final Widget child;

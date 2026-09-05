@@ -61,7 +61,12 @@ class BookshelfPage extends ConsumerWidget {
                   ),
                 ),
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  padding: EdgeInsets.fromLTRB(
+                    AppTokens.pagePaddingOf(context),
+                    12,
+                    AppTokens.pagePaddingOf(context),
+                    24,
+                  ),
                   sliver: SliverGrid(
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(

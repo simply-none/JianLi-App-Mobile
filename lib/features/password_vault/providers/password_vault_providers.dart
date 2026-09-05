@@ -9,8 +9,8 @@ import '../repositories/password_vault_repository.dart';
 /// 密码库仓库
 final Provider<PasswordVaultRepository> passwordVaultRepositoryProvider =
     Provider<PasswordVaultRepository>(
-  (ref) => PasswordVaultRepository(ref.watch(appDatabaseProvider)),
-);
+      (ref) => PasswordVaultRepository(ref.watch(appDatabaseProvider)),
+    );
 
 /// 是否已建库
 final FutureProvider<bool> passwordVaultExistsProvider = FutureProvider<bool>(
@@ -34,7 +34,9 @@ class PasswordVaultController extends AsyncNotifier<List<PasswordEntry>> {
   }
 
   Future<void> unlock(String passphrase) async {
-    final entries = await ref.read(passwordVaultRepositoryProvider).unlock(passphrase);
+    final entries = await ref
+        .read(passwordVaultRepositoryProvider)
+        .unlock(passphrase);
     _unlocked = true;
     state = AsyncData(entries);
   }
@@ -46,7 +48,9 @@ class PasswordVaultController extends AsyncNotifier<List<PasswordEntry>> {
 
   Future<void> _persist(String passphrase) async {
     final entries = state.value ?? const <PasswordEntry>[];
-    await ref.read(passwordVaultRepositoryProvider).saveAll(passphrase, entries);
+    await ref
+        .read(passwordVaultRepositoryProvider)
+        .saveAll(passphrase, entries);
   }
 
   /// 新增/编辑条目（passphrase 由 UI 保存的内存口令提供，不落任何状态）
@@ -80,7 +84,10 @@ class PasswordVaultController extends AsyncNotifier<List<PasswordEntry>> {
     await _persist(passphrase);
   }
 
-  Future<void> deleteEntry({required String passphrase, required String key}) async {
+  Future<void> deleteEntry({
+    required String passphrase,
+    required String key,
+  }) async {
     final entries = (state.value ?? const <PasswordEntry>[])
         .where((e) => e.key != key)
         .toList();
@@ -90,6 +97,7 @@ class PasswordVaultController extends AsyncNotifier<List<PasswordEntry>> {
 }
 
 final AsyncNotifierProvider<PasswordVaultController, List<PasswordEntry>>
-    passwordVaultEntriesProvider =
+passwordVaultEntriesProvider =
     AsyncNotifierProvider<PasswordVaultController, List<PasswordEntry>>(
-        PasswordVaultController.new);
+      PasswordVaultController.new,
+    );

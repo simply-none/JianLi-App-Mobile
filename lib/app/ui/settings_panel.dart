@@ -51,10 +51,10 @@ void showSettingsPanel(BuildContext context) {
       pageBuilder: (ctx, animation, secondaryAnimation) =>
           _SettingsPanel(originContext: origin),
       transitionsBuilder: (ctx, animation, secondaryAnimation, child) {
-        final slide = Tween<Offset>(
-          begin: const Offset(-1, 0),
-          end: Offset.zero,
-        ).animate(CurvedAnimation(parent: animation, curve: AppTokens.standard));
+        final slide =
+            Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero).animate(
+              CurvedAnimation(parent: animation, curve: AppTokens.standard),
+            );
         return SlideTransition(position: slide, child: child);
       },
     ),
@@ -73,6 +73,8 @@ class _SettingsPanel extends ConsumerWidget {
     final styleId = ref.watch(themeStyleProvider).value ?? 'zi';
     final mode = ref.watch(themeModeProvider).value ?? AppThemeMode.system;
     final modeIndex = AppThemeMode.values.indexOf(mode);
+    final readingMode =
+        ref.watch(readingModeProvider).value ?? ReadingMode.normal;
     final width = MediaQuery.of(context).size.width;
 
     return SafeArea(
@@ -95,7 +97,12 @@ class _SettingsPanel extends ConsumerWidget {
                   ),
                   Expanded(
                     child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      padding: EdgeInsets.fromLTRB(
+                        AppTokens.pagePaddingOf(context),
+                        8,
+                        AppTokens.pagePaddingOf(context),
+                        24,
+                      ),
                       children: [
                         const _SectionLabel('外观'),
                         _ThemeStyleRow(
@@ -114,8 +121,19 @@ class _SettingsPanel extends ConsumerWidget {
                             (FLucideIcons.moon, '深色'),
                           ],
                           selected: modeIndex,
-                          onSelect: (i) =>
-                              ref.read(themeModeProvider.notifier).set(AppThemeMode.values[i]),
+                          onSelect: (i) => ref
+                              .read(themeModeProvider.notifier)
+                              .set(AppThemeMode.values[i]),
+                        ),
+                        const SizedBox(height: 26),
+                        // 阅览模式：正文字号档位（普通/大号），卡片 tag 点击切换
+                        const _SectionLabel('阅览模式'),
+                        _ReadingModeRow(
+                          mode: readingMode,
+                          onPick: (m) {
+                            ref.read(readingModeProvider.notifier).set(m);
+                            haptic(HapticType.light, context);
+                          },
                         ),
                         const SizedBox(height: 26),
                         const _SectionLabel('数据与同步'),
@@ -130,8 +148,10 @@ class _SettingsPanel extends ConsumerWidget {
                                 GoRouter.of(originContext).push('/sync');
                               });
                             },
-                            prefix:
-                                Icon(FLucideIcons.refreshCw, color: AppTokens.accent(3)),
+                            prefix: Icon(
+                              FLucideIcons.refreshCw,
+                              color: AppTokens.accent(3),
+                            ),
                             title: const Text('局域网同步'),
                             subtitle: const Text('在受信局域网内与其他设备互传数据'),
                           ),
@@ -141,7 +161,10 @@ class _SettingsPanel extends ConsumerWidget {
                         AppCard(
                           margin: EdgeInsets.zero,
                           child: FTile(
-                            prefix: Icon(FLucideIcons.info, color: AppTokens.accent(0)),
+                            prefix: Icon(
+                              FLucideIcons.info,
+                              color: AppTokens.accent(0),
+                            ),
                             title: const Text('渐离 Jianli'),
                             subtitle: const Text('效率 · 内容 · 工具 一体工作台'),
                           ),
@@ -186,6 +209,100 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
+/// 阅览模式卡片选择（普通字体 / 大号字体）——卡片 tag 式点击切换
+class _ReadingModeRow extends StatelessWidget {
+  const _ReadingModeRow({required this.mode, required this.onPick});
+
+  final ReadingMode mode;
+  final ValueChanged<ReadingMode> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return Row(
+      children: [
+        for (final (i, m) in ReadingMode.values.indexed) ...[
+          Expanded(
+            child: _ModeCard(
+              // 图标名必须先在 forui_lucide assets.g.dart 里验证（alphabet 不存在，实踩）
+              icon: m == ReadingMode.large
+                  ? FLucideIcons.aLargeSmall
+                  : FLucideIcons.type,
+              label: m == ReadingMode.large ? '大号字体' : '普通字体',
+              subtitle:
+                  '基准 ${(m == ReadingMode.large ? AppTokens.baseFontSizeLarge : AppTokens.baseFontSizeNormal).toStringAsFixed(0)}px',
+              selected: mode == m,
+              onTap: () => onPick(m),
+            ),
+          ),
+          if (i < ReadingMode.values.length - 1) const SizedBox(width: 10),
+        ],
+      ],
+    );
+  }
+}
+
+/// 单张模式卡片（选中 = 主色软底 + 主色描边）
+class _ModeCard extends StatelessWidget {
+  const _ModeCard({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    final color = selected ? t.colors.primary : t.colors.mutedForeground;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: AppTokens.fast,
+        curve: AppTokens.standard,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTokens.accentSoft(context, t.colors.primary)
+              : t.colors.card,
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          border: Border.all(
+            color: selected ? t.colors.primary : t.colors.border,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 20, color: color),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: t.typography.body.sm.copyWith(
+                color: selected ? t.colors.primary : t.colors.foreground,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: t.typography.body.xs.copyWith(
+                color: t.colors.mutedForeground,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 5 套主题样式色板
 class _ThemeStyleRow extends StatelessWidget {
   const _ThemeStyleRow({required this.selectedId, required this.onPick});
@@ -219,7 +336,11 @@ class _ThemeStyleRow extends StatelessWidget {
                         : null,
                   ),
                   child: s.id == selectedId
-                      ? const Icon(FLucideIcons.check, color: Colors.white, size: 22)
+                      ? const Icon(
+                          FLucideIcons.check,
+                          color: Colors.white,
+                          size: 22,
+                        )
                       : null,
                 ),
                 const SizedBox(height: 6),

@@ -14,6 +14,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/ring_progress.dart';
 import '../../../app/ui/segmented.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
@@ -59,7 +60,7 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
       side: FLayout.btt,
       builder: (context) => ValueListenableBuilder<String>(
         valueListenable: mode,
-        builder: (context, modeValue, _) => Padding(
+        builder: (context, modeValue, _) => SheetSurface(
           padding: const EdgeInsets.fromLTRB(4, 8, 4, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -147,7 +148,10 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
           : ColoredBox(
               color: AppTokens.pageTint(context),
               child: ListView(
-                padding: const EdgeInsets.only(top: 4, bottom: 24),
+                padding: EdgeInsets.only(
+                  top: AppTokens.listTopGapOf(context),
+                  bottom: AppTokens.pageBottomGapOf(context),
+                ),
                 children: [
                   if (active != null) _buildActiveTimer(active),
                   const SectionHeader(title: '全部'),
@@ -171,7 +175,12 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
     final remaining = ((active.endTime ?? 0) - _nowMs).clamp(0, total);
     final progress = total <= 0 ? 0.0 : 1 - remaining / total;
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      margin: EdgeInsets.fromLTRB(
+        AppTokens.pagePaddingOf(context),
+        4,
+        AppTokens.pagePaddingOf(context),
+        8,
+      ),
       decoration: BoxDecoration(
         gradient: AppTokens.accentGradient(AppTokens.accent(0)),
         borderRadius: BorderRadius.circular(AppTokens.radiusLg),

@@ -50,7 +50,11 @@ String base32Encode(List<int> bytes) {
 
 /// TOTP 参数（与桌面端 TotpOptions 对齐）
 class TotpOptions {
-  const TotpOptions({this.algorithm = 'SHA1', this.digits = 6, this.period = 30});
+  const TotpOptions({
+    this.algorithm = 'SHA1',
+    this.digits = 6,
+    this.period = 30,
+  });
 
   /// SHA1 / SHA256 / SHA512
   final String algorithm;
@@ -74,7 +78,11 @@ class TotpWithMeta {
 }
 
 /// 生成指定时刻的 TOTP 码（动态截断算法，RFC 6238）
-String generateTotp(String secretBase32, {TotpOptions? options, int? atTimeMs}) {
+String generateTotp(
+  String secretBase32, {
+  TotpOptions? options,
+  int? atTimeMs,
+}) {
   final opts = options ?? const TotpOptions();
   final digits = opts.digits;
   final period = opts.period;
@@ -90,7 +98,8 @@ String generateTotp(String secretBase32, {TotpOptions? options, int? atTimeMs}) 
 
   // 动态截断：取末尾字节低 4 位作偏移
   final offset = hmac[hmac.length - 1] & 0x0f;
-  final binary = ((hmac[offset] & 0x7f) << 24) |
+  final binary =
+      ((hmac[offset] & 0x7f) << 24) |
       ((hmac[offset + 1] & 0xff) << 16) |
       ((hmac[offset + 2] & 0xff) << 8) |
       (hmac[offset + 3] & 0xff);
@@ -99,12 +108,19 @@ String generateTotp(String secretBase32, {TotpOptions? options, int? atTimeMs}) 
 }
 
 /// 生成当前码 + 下一周期码 + 剩余秒数
-TotpWithMeta generateTotpWithMeta(String secretBase32, {TotpOptions? options, int? atTimeMs}) {
+TotpWithMeta generateTotpWithMeta(
+  String secretBase32, {
+  TotpOptions? options,
+  int? atTimeMs,
+}) {
   final opts = options ?? const TotpOptions();
   final atTime = atTimeMs ?? DateTime.now().millisecondsSinceEpoch;
   final code = generateTotp(secretBase32, options: opts, atTimeMs: atTime);
-  final nextCode =
-      generateTotp(secretBase32, options: opts, atTimeMs: atTime + opts.period * 1000);
+  final nextCode = generateTotp(
+    secretBase32,
+    options: opts,
+    atTimeMs: atTime + opts.period * 1000,
+  );
   final remainingSeconds = opts.period - ((atTime ~/ 1000) % opts.period);
   return TotpWithMeta(
     code: code,
@@ -116,7 +132,12 @@ TotpWithMeta generateTotpWithMeta(String secretBase32, {TotpOptions? options, in
 
 /// 校验 TOTP 动态码：允许 ±1 个周期的时钟偏差容错
 /// （桌面端额外做了 timingSafeEqual 常量时间比对；本端仅本地校验，保持等价容错）
-bool verifyTotpCode(String secretBase32, String code, {TotpOptions? options, int? atTimeMs}) {
+bool verifyTotpCode(
+  String secretBase32,
+  String code, {
+  TotpOptions? options,
+  int? atTimeMs,
+}) {
   final clean = (code).replaceAll(RegExp(r'\D'), '');
   if (clean.isEmpty) return false;
   final opts = options ?? const TotpOptions();

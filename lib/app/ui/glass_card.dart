@@ -37,10 +37,12 @@ class GlassCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.theme;
     final isDark = Theme.brightnessOf(context) == Brightness.dark;
-    final fill = (isDark ? Colors.white : t.colors.primary)
-        .withValues(alpha: isDark ? 0.06 : 0.10);
-    final stroke = (isDark ? Colors.white : t.colors.foreground)
-        .withValues(alpha: 0.12);
+    final fill = (isDark ? Colors.white : t.colors.primary).withValues(
+      alpha: isDark ? 0.06 : 0.10,
+    );
+    final stroke = (isDark ? Colors.white : t.colors.foreground).withValues(
+      alpha: 0.12,
+    );
 
     final box = Container(
       width: double.infinity,

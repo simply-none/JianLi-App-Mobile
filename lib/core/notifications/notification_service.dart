@@ -20,22 +20,22 @@ class NotificationChannels {
 
   /// 全渠道清单（初始化时统一注册）
   static List<NotificationChannel> get all => [
-        NotificationChannel(
-          channelKey: habit,
-          channelName: '习惯提醒',
-          channelDescription: '习惯打卡到点提醒',
-        ),
-        NotificationChannel(
-          channelKey: todo,
-          channelName: '待办提醒',
-          channelDescription: '待办截止与重复实例提醒',
-        ),
-        NotificationChannel(
-          channelKey: pomodoro,
-          channelName: '番茄钟',
-          channelDescription: '番茄钟工作/休息阶段切换提醒',
-        ),
-      ];
+    NotificationChannel(
+      channelKey: habit,
+      channelName: '习惯提醒',
+      channelDescription: '习惯打卡到点提醒',
+    ),
+    NotificationChannel(
+      channelKey: todo,
+      channelName: '待办提醒',
+      channelDescription: '待办截止与重复实例提醒',
+    ),
+    NotificationChannel(
+      channelKey: pomodoro,
+      channelName: '番茄钟',
+      channelDescription: '番茄钟工作/休息阶段切换提醒',
+    ),
+  ];
 }
 
 /// 通知服务：App 启动时初始化；具体提醒计划由各 feature 调用 schedule* 方法
@@ -76,7 +76,12 @@ class NotificationService {
     required int minute,
   }) {
     return AwesomeNotifications().createNotification(
-      content: NotificationContent(id: id, channelKey: channelKey, title: title, body: body),
+      content: NotificationContent(
+        id: id,
+        channelKey: channelKey,
+        title: title,
+        body: body,
+      ),
       schedule: NotificationCalendar(
         hour: hour,
         minute: minute,
@@ -98,7 +103,12 @@ class NotificationService {
     required int weekday,
   }) {
     return AwesomeNotifications().createNotification(
-      content: NotificationContent(id: id, channelKey: channelKey, title: title, body: body),
+      content: NotificationContent(
+        id: id,
+        channelKey: channelKey,
+        title: title,
+        body: body,
+      ),
       schedule: NotificationCalendar(
         weekday: weekday,
         hour: hour,

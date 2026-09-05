@@ -21,9 +21,9 @@ class TwoFactorRepository {
 
   /// 读取 vault 文件路径；未配置时返回 null（移动端尚未导入 vault 的场景）
   Future<String?> getVaultPath() async {
-    final row = await (_db.select(_db.basicInfo)
-          ..where((tbl) => tbl.key.equals('twoFactorVaultPath')))
-        .getSingleOrNull();
+    final row = await (_db.select(
+      _db.basicInfo,
+    )..where((tbl) => tbl.key.equals('twoFactorVaultPath'))).getSingleOrNull();
     final path = row?.value;
     if (path == null || path.isEmpty) return null;
     return path;
@@ -31,12 +31,17 @@ class TwoFactorRepository {
 
   /// 记录 vault 文件路径（移动端 PoC：用户通过文件选择器导入桌面端 vault 后写入）
   Future<void> setVaultPath(String path) async {
-    final existing = await (_db.select(_db.basicInfo)
-          ..where((tbl) => tbl.key.equals('twoFactorVaultPath')))
-        .getSingleOrNull();
+    final existing = await (_db.select(
+      _db.basicInfo,
+    )..where((tbl) => tbl.key.equals('twoFactorVaultPath'))).getSingleOrNull();
     if (existing == null) {
-      await _db.into(_db.basicInfo).insert(
-            BasicInfoCompanion.insert(key: 'twoFactorVaultPath', value: Value(path)),
+      await _db
+          .into(_db.basicInfo)
+          .insert(
+            BasicInfoCompanion.insert(
+              key: 'twoFactorVaultPath',
+              value: Value(path),
+            ),
           );
     } else {
       await (_db.update(_db.basicInfo)
@@ -55,7 +60,10 @@ class TwoFactorRepository {
     if (!file.existsSync()) {
       throw StateError('vault 文件不存在：$path（移动端需先通过同步/导入把 vault 拷入可达路径）');
     }
-    final plainList = await decryptVaultEnvelope(file.readAsStringSync(), passphrase);
+    final plainList = await decryptVaultEnvelope(
+      file.readAsStringSync(),
+      passphrase,
+    );
     return plainList
         .whereType<Map<String, dynamic>>()
         .map(TwoFactorAccount.fromJson)
@@ -63,7 +71,11 @@ class TwoFactorRepository {
   }
 
   /// 把账户列表重新加密写回 vault 文件（移动端编辑后调用；布局与桌面端一致）
-  Future<void> saveAccounts(String vaultPath, String passphrase, List<TwoFactorAccount> accounts) async {
+  Future<void> saveAccounts(
+    String vaultPath,
+    String passphrase,
+    List<TwoFactorAccount> accounts,
+  ) async {
     final envelope = await encryptVaultEnvelope(
       accounts.map((a) => a.toJson()).toList(),
       passphrase,

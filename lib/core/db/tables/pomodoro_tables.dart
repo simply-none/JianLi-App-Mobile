@@ -20,7 +20,7 @@ class PomodoroStatus extends Table {
   TextColumn get mode => text().nullable()();
 
   /// 创建时间（桌面端为下划线列名，drift 默认转换即对齐，named() 显式锁定）
-    TextColumn get createTime => text().named('create_time').nullable()();
+  TextColumn get createTime => text().named('create_time').nullable()();
 
   TextColumn get date => text().nullable()();
 

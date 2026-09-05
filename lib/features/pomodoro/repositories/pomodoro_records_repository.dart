@@ -35,13 +35,20 @@ extension PomodoroRecordsQuery on AppDatabase {
         '${weekAgo.year}-${weekAgo.month.toString().padLeft(2, '0')}-${weekAgo.day.toString().padLeft(2, '0')}';
 
     final total = await countWhere(value: 'work');
-    final today = await countWhere(value: 'work', createTimePrefix: todayPrefix);
+    final today = await countWhere(
+      value: 'work',
+      createTimePrefix: todayPrefix,
+    );
     final week = await countWhere(
       value: 'work',
       createTimeFromPrefix: weekPrefix,
       createTimeToPrefix: todayPrefix,
     );
-    return PomodoroStats(todayWorkCount: today, weekWorkCount: week, totalCount: total);
+    return PomodoroStats(
+      todayWorkCount: today,
+      weekWorkCount: week,
+      totalCount: total,
+    );
   }
 
   /// 按条件计数（create_time 为 'yyyy-MM-dd HH:mm:ss' 文本，用前缀匹配）
@@ -51,7 +58,8 @@ extension PomodoroRecordsQuery on AppDatabase {
     String? createTimeFromPrefix,
     String? createTimeToPrefix,
   }) {
-    final query = selectOnly(pomodoroStatus)..addColumns([pomodoroStatus.id.count()]);
+    final query = selectOnly(pomodoroStatus)
+      ..addColumns([pomodoroStatus.id.count()]);
     if (value != null) {
       query.where(pomodoroStatus.value.equals(value));
     }
@@ -60,7 +68,9 @@ extension PomodoroRecordsQuery on AppDatabase {
     }
     final conds = <Expression<bool>>[];
     if (createTimeFromPrefix != null) {
-      conds.add(pomodoroStatus.createTime.isBiggerOrEqualValue(createTimeFromPrefix));
+      conds.add(
+        pomodoroStatus.createTime.isBiggerOrEqualValue(createTimeFromPrefix),
+      );
     }
     if (createTimeToPrefix != null) {
       // 含今日当天：以日期前缀上界（<'明日'）近似
@@ -73,6 +83,8 @@ extension PomodoroRecordsQuery on AppDatabase {
     if (conds.isNotEmpty) {
       query.where(conds.reduce((a, b) => a & b));
     }
-    return query.getSingle().then((row) => row.read(pomodoroStatus.id.count()) ?? 0);
+    return query.getSingle().then(
+      (row) => row.read(pomodoroStatus.id.count()) ?? 0,
+    );
   }
 }

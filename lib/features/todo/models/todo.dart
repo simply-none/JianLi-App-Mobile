@@ -56,10 +56,8 @@ class TodoTagView {
   const TodoTagView({required this.key, required this.color});
 
   /// 行类型为 TodoTag（drift 对 s 结尾表名单数化，注意不是 TodoTagsData）
-  factory TodoTagView.fromRow(TodoTag row) => TodoTagView(
-        key: row.key ?? '',
-        color: row.color ?? '#8b5cf6',
-      );
+  factory TodoTagView.fromRow(TodoTag row) =>
+      TodoTagView(key: row.key ?? '', color: row.color ?? '#8b5cf6');
 
   final String key;
   final String color;

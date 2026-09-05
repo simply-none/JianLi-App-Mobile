@@ -32,10 +32,13 @@ class StaggerList extends StatelessWidget {
           delay: Duration(milliseconds: (delayStep * i).round()),
           offset: offset,
           child: children[i],
-        )
+        ),
     ];
     return direction == Axis.vertical
-        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: items)
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: items,
+          )
         : Row(children: items);
   }
 }
@@ -61,8 +64,10 @@ class _StaggerItemState extends State<_StaggerItem>
     vsync: this,
     duration: AppTokens.base,
   );
-  late final Animation<double> _anim =
-      CurvedAnimation(parent: _ctrl, curve: AppTokens.standard);
+  late final Animation<double> _anim = CurvedAnimation(
+    parent: _ctrl,
+    curve: AppTokens.standard,
+  );
   bool _started = false;
 
   // 注意：不能在 initState 里读 MediaQuery（JianliMotion.enabled 内部依赖它，
@@ -89,13 +94,13 @@ class _StaggerItemState extends State<_StaggerItem>
 
   @override
   Widget build(BuildContext context) => FadeTransition(
-        opacity: _anim,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: Offset(0, widget.offset),
-            end: Offset.zero,
-          ).animate(_anim),
-          child: widget.child,
-        ),
-      );
+    opacity: _anim,
+    child: SlideTransition(
+      position: Tween<Offset>(
+        begin: Offset(0, widget.offset),
+        end: Offset.zero,
+      ).animate(_anim),
+      child: widget.child,
+    ),
+  );
 }

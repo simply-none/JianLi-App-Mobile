@@ -1,23 +1,22 @@
 // 主题偏好持久化（Riverpod 3 AsyncNotifier）
 //
-// 两个独立维度：
+// 三个独立维度：
 //   1. 主题「样式」——多套流行配色（AppTheme.styles），存 id。
 //   2. 主题「模式」——跟随系统 / 浅色 / 深色，存枚举名。
+//   3. 「阅览模式」——基准字号档位（普通 12px / 大号 18px），存枚举名；
+//      由 app.dart 读出后传给 AppTheme.build，驱动全 App 字号等比缩放。
 // 均用 shared_preferences 持久化，AppTheme + app.dart 启动时读取。
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 主题模式：跟随系统 / 浅色 / 深色
-enum AppThemeMode {
-  system,
-  light,
-  dark,
-}
+enum AppThemeMode { system, light, dark }
 
 /// 当前主题样式 id（持久化，缺省 'zi' 渐离紫）
-final themeStyleProvider =
-    AsyncNotifierProvider<ThemeStyleNotifier, String>(ThemeStyleNotifier.new);
+final themeStyleProvider = AsyncNotifierProvider<ThemeStyleNotifier, String>(
+  ThemeStyleNotifier.new,
+);
 
 class ThemeStyleNotifier extends AsyncNotifier<String> {
   static const _key = 'jianli.themeStyle';
@@ -37,7 +36,9 @@ class ThemeStyleNotifier extends AsyncNotifier<String> {
 
 /// 当前主题模式（持久化，缺省 system）
 final themeModeProvider =
-    AsyncNotifierProvider<ThemeModeNotifier, AppThemeMode>(ThemeModeNotifier.new);
+    AsyncNotifierProvider<ThemeModeNotifier, AppThemeMode>(
+      ThemeModeNotifier.new,
+    );
 
 class ThemeModeNotifier extends AsyncNotifier<AppThemeMode> {
   static const _key = 'jianli.themeMode';
@@ -68,5 +69,34 @@ ThemeMode toMaterialMode(AppThemeMode mode) {
       return ThemeMode.dark;
     case AppThemeMode.system:
       return ThemeMode.system;
+  }
+}
+
+/// 阅览模式（基准字号档位）：normal 普通字体 12px（默认）/ large 大号字体 18px
+enum ReadingMode { normal, large }
+
+/// 当前阅览模式（持久化，缺省 normal）
+final readingModeProvider =
+    AsyncNotifierProvider<ReadingModeNotifier, ReadingMode>(
+      ReadingModeNotifier.new,
+    );
+
+class ReadingModeNotifier extends AsyncNotifier<ReadingMode> {
+  static const _key = 'jianli.readingMode';
+
+  @override
+  Future<ReadingMode> build() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getString(_key);
+    return ReadingMode.values.firstWhere(
+      (e) => e.name == v,
+      orElse: () => ReadingMode.normal,
+    );
+  }
+
+  Future<void> set(ReadingMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, mode.name);
+    state = AsyncData(mode);
   }
 }

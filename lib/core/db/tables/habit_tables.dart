@@ -23,26 +23,26 @@ class HabitDef extends Table {
   /// 业务主键，形如 habit:mtdnjxqr-xc665i
   TextColumn get key => text().nullable()();
 
-    TextColumn get createTime => text().named('createTime').nullable()();
+  TextColumn get createTime => text().named('createTime').nullable()();
 
-    TextColumn get updateTime => text().named('updateTime').nullable()();
+  TextColumn get updateTime => text().named('updateTime').nullable()();
 
   /// 链式动作 JSON，如 [{"type":"themeConversation"}]
-    TextColumn get chainActions => text().named('chainActions').nullable()();
+  TextColumn get chainActions => text().named('chainActions').nullable()();
 
   /// 生效星期 JSON，如 []
-    TextColumn get weekDays => text().named('weekDays').nullable()();
+  TextColumn get weekDays => text().named('weekDays').nullable()();
 
   /// 是否启用：'1'/'0'（桌面端布尔即文本）
   TextColumn get enabled => text().nullable()();
 
   /// 提醒时间 JSON，如 ["08:39"]
-    TextColumn get reminderTimes => text().named('reminderTimes').nullable()();
+  TextColumn get reminderTimes => text().named('reminderTimes').nullable()();
 
   TextColumn get remark => text().nullable()();
 
   /// 频率类型，如 daily
-    TextColumn get freqType => text().named('freqType').nullable()();
+  TextColumn get freqType => text().named('freqType').nullable()();
 }
 
 /// 习惯打卡记录表 habit_checkin（打卡 key = habitKey#date 天然幂等，利于同步）
@@ -60,7 +60,7 @@ class HabitCheckin extends Table {
   TextColumn get key => text().nullable()();
 
   /// 所属习惯的 key
-    TextColumn get habitKey => text().named('habitKey').nullable()();
+  TextColumn get habitKey => text().named('habitKey').nullable()();
 
   TextColumn get note => text().nullable()();
 

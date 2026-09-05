@@ -71,22 +71,24 @@ test/
 - 主题入口 `lib/app/theme/app_theme.dart`：官方模式 `FThemeData(touch: true, debugLabel: ..., colors: FTheme.neutral.light/dark.touch.colors.copyWith(primary: seedColor, primaryForeground: Colors.white))` —— 只传 touch+colors，typography/style/icons 自动从 colors 推导继承；`toApproximateMaterialTheme()` 供 MaterialApp.theme 让残留 Material 组件同色系。
 - 根组件 `app.dart`：material_ui 的 `MaterialApp.router` → builder 注入 `FTheme`（跟随系统亮暗）+ `FToaster` + `FTooltipGroup`；本地化 `FLocalizations.localizationsDelegates`（已内置 Global Material/Cupertino/Widgets 三件套，支持 zh）。
 - 页面骨架：`FScaffold(header: FHeader(title:...) / FHeader.nested(title:, prefixes: [FHeaderAction.back(onPress: () => context.pop())]), child: ...)`；**FBottomNavigationBar 只能放 FScaffold.footer**（Material Scaffold 的 bottomNavigationBar 不可用），选中态由 `index`/`onChange` 驱动，item 无 onPress；`childPad` 默认提供水平内边距（全屏页设 `childPad: false`），ListView 只写垂直 padding。
-- 组件替换对照：AppBar→FHeader(.nested)；Card→AppCard 原子或 FCard；按钮→FButton（`variant:` primary/secondary/destructive/outline/ghost，无命名构造）；TextField→FTextField（**controller 放 `FTextFieldControl.managed(controller:)`，无 controller 参数**）；Switch/Checkbox→FSwitch/FCheckbox（value/onChange）；showDialog→`showFDialog`；SnackBar→`showFToast`；showModalBottomSheet→`showFSheet(side: FLayout.btt)`；ListTile→FTile/FTileGroup；CircularProgressIndicator→FCircularProgress；Linear→FDeterminateProgress(value: 0..1)。后三者（dialog/toast/sheet）是**顶层函数**，没有 context.toast 之类的扩展。
+- 组件替换对照：AppBar→FHeader(.nested)；Card→AppCard 原子或 FCard；按钮→FButton（`variant:` primary/secondary/destructive/outline/ghost，无命名构造）；TextField→FTextField（**controller 放 `FTextFieldControl.managed(controller:)`，无 controller 参数**；**监听输入变化也写在 managed control 的 `onChange:` 里，FTextField 本体无此参数**）；Switch/Checkbox→FSwitch/FCheckbox（value/onChange）；SnackBar→`showFToast`；showDialog→**仅破坏性确认用 `showFDialog`**（新增/编辑/展示一律走下条抽屉化约定）；ListTile→FTile/FTileGroup；CircularProgressIndicator→FCircularProgress；Linear→FDeterminateProgress(value: 0..1)。后三者（dialog/toast/sheet）是**顶层函数**，没有 context.toast 之类的扩展。
+- **小功能抽屉化约定（2026-09-05 用户定，全局强制）**：所有小功能的**新增/编辑/展示**弹层一律用底部抽屉 `showFSheet(side: FLayout.btt)`，**禁用居中 `showFDialog`**；`showFDialog` 仅保留给**破坏性操作二次确认**（删除等）。抽屉模板：① **builder 内容必须用 `SheetSurface`（`lib/app/ui/sheet_surface.dart`）包住**——forui 的 Sheet 链路（FModalSheetRoute→Sheet→ShiftedSheet）**不画任何背景**，直接给 Padding 会露出灰色 barrier（「透明灰」实踩）；SheetSurface = 主题 background（已叠冷调、跟随亮暗/主题样式）+ 顶部圆角，`padding` 参数与 `Padding` 同名直换；② 键盘避让 `padding: EdgeInsets.fromLTRB(16,16,16, MediaQuery.of(c).viewInsets.bottom + 24)`；③ 高表单（多字段）加 `mainAxisMaxRatio: null` + `SingleChildScrollView`（先例 2FA 添加账户、密码库条目）；④ 提交按钮统一 `GradientButton`（图标 `FLucideIcons.check`），标题 `body.lg + w700`、副标题 muted；⑤ 输入框 `autofocus + onSubmit` 回车提交与按钮双通道。已改造先例：待办新增、笔记编辑页新建分类/标签、密码库新增/编辑条目、保险箱文件预览、QR 识别结果、阅读器目录、习惯/提醒/倒计时/对话新建。
 - **FTabs 必看雷区**：Tab 内容含 viewport 类组件（ListView / GridView / FSelect 下拉菜单等）时**必须 `expands: true`**。默认 false 时 Tab 内容不经 Expanded 直接内联（无界高度），会触发 "Vertical viewport was given unbounded height" 连锁 render 异常，**整页白屏且 logcat 无 E/flutter 输出**（render 断言被吞，极难排查）。定位手段：最小 headless widget test 二分复现（先 FTabs 空内容 → 加真实内容，几秒锁定）。已有先例：`qr_page.dart`。
 - 排查技巧：`am start` 对已运行应用只是切前台（result code=3），要抓启动/导航日志必须 `adb shell am force-stop <pkg>` 后冷启动再复现；真机调试 Dart 异常优先 `flutter run` 控制台，logcat 只能看到 `I/flutter` 标签的系统级输出。
 - **FCard 无 title/subtitle 参数**：用 `FCard(builder: (c, style, _) => Column(children: [Text('标题', style: style.titleTextStyle), ...]))`。
 - ⚠️ **forui 的 `factory({...})` 是 Dart 新「声明式工厂构造」语法**：类内部写 `factory({...})` = 未命名工厂构造，**调用时用类名直呼**（`FSelect<String>(items:...)`、`FThemeData(touch:, colors:)`），写 `Xxx.factory(...)` 会报 undefined。forui 0.26 源码文档示例大量使用点简写（`.light`、`.new`），照抄前先确认 Dart 版本支持。
 - FTile/FItem 的 title/subtitle/details **不要放 Expanded/TextField**（不渲染，需 .raw 版）；FSelect 必须显式写泛型 `FSelect<String>`。
-- 图标：`FLucideIcons.*`（Lucide 命名，forui.dart 已导出；新图标名先到 forui_lucide 包 `lib/src/assets.g.dart` grep `static const <name> = IconData` 验证）。
+- 图标：`FLucideIcons.*`（Lucide 命名，forui.dart 已导出；**新图标名必须先到 forui_lucide 包 `lib/src/assets.g.dart` grep `static const <name> = IconData` 验证再用**，写不存在的名字是编译期报错——2026-09-05 实踩：`alphabet` 不存在，字号类图标用 `type`/`aLargeSmall`/`caseUpper`/`letterText`）。
 - 原子组件 `lib/app/ui/`：AppCard / SectionHeader / EmptyState / StatBlock / RingProgress / **PageBanner**（功能页渐变横幅，见「UI 现代化与动效」Phase 3→4 小节）—— 与业务无关的视觉复用入口，新页面优先用它们拼装。
 - 残留 Material 组件白名单（无 forui 等价物，material_ui 版已被近似主题着色）：RefreshIndicator、Dismissible（滑动删除）、ReorderableListView、Slider、mobile_scanner、qr_flutter。
 - 桌面 25 套主题映射（P2）：在 `app_theme.dart` 的 `_build` 加方案表，每套主题 = 一份 `FColors.copyWith` 主色（+可选中性色）覆盖。
 
-### 主题体系（5 套样式 + 三态模式，2026-09-05 新增）
+### 主题体系（5 套样式 + 三态模式 + 阅览模式，2026-09-05 更新）
 - `AppTheme.styles` 定义 5 套 `ThemeStyle{id,name,lightPrimary,darkPrimary}`：渐离紫 `zi`、远峰蓝 `blue`、森野绿 `green`、落日橙 `orange`、樱粉 `pink`；`styleById(id)` 按 id 取（缺省回落首套）。`AppTheme.build(style:, brightness:)` 是唯一构建入口，`materialLight/materialDark` 供 MaterialApp。
-- `lib/app/providers/theme_providers.dart`：`themeStyleProvider`（存样式 id，key `jianli.themeStyle`）+ `themeModeProvider`（存 `AppThemeMode.system/light/dark`，key `jianli.themeMode`），均 `AsyncNotifierProvider` + SharedPreferences 持久化；`toMaterialMode()` 把枚举转 Material 的 `ThemeMode`。
+- `lib/app/providers/theme_providers.dart`：`themeStyleProvider`（存样式 id，key `jianli.themeStyle`）+ `themeModeProvider`（存 `AppThemeMode.system/light/dark`，key `jianli.themeMode`）+ **`readingModeProvider`**（`ReadingMode.normal/large` 阅览模式，key `jianli.readingMode`，`ReadingModeX.scale` 扩展给正文缩放系数），均 `AsyncNotifierProvider` + SharedPreferences 持久化；`toMaterialMode()` 把枚举转 Material 的 `ThemeMode`。
 - `app.dart` 是 `ConsumerWidget`，读两个 provider 后把 `themeMode:` 与 `theme/darkTheme` 交给 MaterialApp，`builder` 里按 `Theme.brightnessOf(context)` 现算 `FTheme`（**这样切样式/模式即时全树重渲，不用重启**）。
-- **设置面板**：`lib/app/ui/settings_panel.dart` 的 `SettingsButton`（齿轮 SquircleBox）放在首页右上角与三个分组页 `FHeader.suffixes`；点击 `showSettingsPanel(context)` 推一个 `PageRouteBuilder`（`opaque:false` + `barrierColor: Colors.black54` + 左侧 `SlideTransition(-1,0)→(0,0)`），面板内含 5 色环样式选择 + 三态模式 `JianliSegmented` + 同步/关于入口。**刻意不用 forui 弹层**，规避与 material_ui 平行 Material 类的冲突。
+- **基准字号体系（阅览模式）**：`AppTheme.build(style:, brightness:, baseFontSize:)` 构造 FThemeData 时传 `typography: base.typography.scale(sizeScalar: baseFontSize / forui默认md像素)`——普通文本（md）精确对齐基准像素，其余字型（xs/sm/lg/xl…）按 forui 默认比例**等比缩放**；运行时取默认 md 值做分母（不硬编码版本号）。**必须构造期传入**——`copyWith(typography:)` 不会让 forui 组件内部样式重推导（官方文档同款姿势：改 colors/typography 要新建 FThemeData）。基准值在 `AppTokens.baseFontSizeNormal=12` / `baseFontSizeLarge=18`，改这两个数全 App 字号体系生效。
+- **设置面板**：`lib/app/ui/settings_panel.dart` 的 `SettingsButton`（齿轮 SquircleBox）放在首页右上角与三个分组页 `FHeader.suffixes`；点击 `showSettingsPanel(context)` 推一个 `PageRouteBuilder`（`opaque:false` + `barrierColor: Colors.black54` + 左侧 `SlideTransition(-1,0)→(0,0)`），面板内含 5 色环样式选择 + 三态模式 `JianliSegmented` + **阅览模式卡片选择（`_ReadingModeRow`，普通/大号字体）** + 同步/关于入口。**刻意不用 forui 弹层**，规避与 material_ui 平行 Material 类的冲突。
 
 ### ⚠️ Riverpod 3 / forui API 雷区（2026-09-05 实踩，写代码前必看）
 1. **Riverpod 3 移除了 `AsyncValue.valueOrNull`** —— 取异步值用 `.value`（如 `ref.watch(themeStyleProvider).value ?? 'zi'`）。写 `.valueOrNull` 直接报 undefined。
@@ -94,8 +96,23 @@ test/
 3. **`material_ui` 的 `ThemeMode` 与 `flutter/material` 的不是同一类型** —— provider/工具函数里若返回 `ThemeMode`，该文件必须 `import 'package:material_ui/material_ui.dart';`，否则赋给 `MaterialApp.themeMode` 类型不兼容。
 4. **`JianliSegmented` 的 `items` 类型是 `List<(IconData?, String)>`** —— 传 `Icon(FLucideIcons.sun)` 会类型不符，要传 **`FLucideIcons.sun`**（IconData 本体）。
 5. **drift 行类名不是猜的**：二维码历史是 `QrHistoryData`（不是 `QrHistoryRow`）；新增组件引用行类型前先 grep 确认。
+6. **`FTextField` 没有 `onChange` 命名参数**（2026-09-05 实踩，编译期报错）：监听输入变化必须写在 `FTextFieldControl.managed(controller:, onChange:)` 里，回调收 `TextEditingValue`（取文本用 `controller.text` 或 `_.text`）。直接写在 FTextField 上报「No named parameter with the name 'onChange'」。先例：`qr_page.dart`、`note_list_page.dart`。
+7. **FThemeData 构造期定制样式：先实例 copyWith 再传实例**（2026-09-05 实踩，两连报）：构造器的 `scaffoldStyle:`（等 style 参数）收 **`FScaffoldStyle` 实例**，传 `(s) => ...` 回调报 Function→FScaffoldStyle 类型错；正确姿势 = `base.scaffoldStyle.copyWith(...)` 先造出新实例再传入。而**样式实例自身 copyWith 的 delta 参数**（如 `childPadding: EdgeInsetsGeometryDelta?`）是 **Delta 类**（官方工厂 `EdgeInsetsGeometryDelta.add/.scale/.value`，`scale(k)` 即全边等比缩放），**不是 lambda**——传函数同样类型错。变量名先定义再用（`isDark ? 0.06 : 0.04` 写在只有 `isLight` 的作用域直接 Undefined name）。
+
+## 页面操作规范（共有交互，2026-09-05 起：新功能必须遵循，旧功能逐步对齐）
+> 目的：让同类操作在全 App 有同一心智。每新增一种共有交互先在此登记模式与组件，再实现；改先例时同步本节。
+
+1. **查询/筛选规范**：类型、标签、状态等**筛选条件一律收进底部「查询抽屉」**，用通用骨架 `showFilterSheet`（`lib/app/ui/filter_sheet.dart`）：
+   - 抽屉结构固定：顶部 = 左侧「查询」标题 + 右侧**关闭裸图标（无背景色）**（关闭 = 不应用更改）；中部 = 选项区可滚动；底部 = **「重置 / 查询」两按钮恒贴抽屉底部**（选项区吸收剩余空间，Column 填充分配不用 min；`FButton.outline` 重置 + `GradientButton` 查询，等宽各半）。
+   - **抽屉固定高度 50vh**（`SizedBox(height: 屏高×0.5)`，两改后定案：minHeight/松约束下按钮会随内容浮起，定高 + 选项区 `Expanded` 才能绝对贴底；选项多时中部滚动。调抽屉高度改 filter_sheet.dart 的 0.5）。
+   - **同抽屉内所有选项 chip 统一规格**（padding h14/v7 + body.sm 文字；标签 chip = 色点 + 名称 + 选中对勾），禁止大小混排。
+   - 交互语义：打开时**草稿从已生效条件初始化**；「重置」= 清空草稿（`refresh()` 刷新，不关闭）；「查询」= 应用草稿并关闭（草稿经 pop 值返回，record 传递）。
+   - 列表页形态：关键词搜索保留页内输入框（实时过滤，不走抽屉）；筛选入口 = 搜索框右侧的筛选按钮（激活时主题强调色软底 + 生效条件数角标），**高度写死 40 对齐 forui sm 输入框 touch 规格高度**（`FTappable` 不上报固有高度，IntrinsicHeight 方案会把按钮压小——实踩勿回退）；已生效条件在搜索框下方以**可点掉的摘要 chip** 呈现。先例：`note_list_page.dart`（分类单选 + 标签多选）。
+2. **新增/编辑保存规范**：保存/提交按钮**统一固定底部**——页面结构 = `Column[ Expanded(内容滚动区), 底部固定操作条(SafeArea + GradientButton，页面水平边距) ]`，按钮不随内容滚动、头部不放重复的保存入口（编辑态头部仅保留返回/删除等非保存动作）。先例：`note_editor_page.dart`（底部「保存笔记」渐变条，保存中变字+禁用）。
+3. 既有相关约定（见「UI 体系」）：小功能新增/编辑/展示一律底部抽屉 `SheetSurface` + `GradientButton`；破坏性确认才用 `showFDialog`。
 
 
+## 数据层（drift，对齐桌面端 db.sqlite）
 - 移动端自有库文件：沙盒 `Documents/db.sqlite`，`LazyDatabase` 后台 isolate 打开；当前 `schemaVersion = 1`，**扩表必须 schemaVersion+1 并写 onUpgrade 迁移**。
 - 25 张表（22 张首批对齐桌面端 + countdown / qr_history / qr_template 三张工具表，工具表与桌面端同构）：habit_def、habit_checkin、todo_list、todo_tags、reminders、note_book、basic_info、pomodoro_status、pomodoro_mini_config、conversation×3、file_vault×2、ebook×7、screenshots、countdown、qr_history、qr_template。
 - **三大铁律**：
@@ -114,10 +131,26 @@ test/
 
 ## 局域网同步（类 LocalSend，协议 v1，双端已全通）
 - 发现：UDP 广播端口 **47123**，请求包 `JIANLI_SYNC_DISCOVER_V1`，应答 `JIANLI_SYNC_INFO_V1|{json:{name,id,platform}}`（`core/sync/sync_discovery.dart`；PC 端 `syncModule.ts` 同协议应答）。
+- **⚠️ 热点场景发现雷区（2026-09-05 修复）**：扫描**不能只发 255.255.255.255**——手机开热点给 PC 时，热点接口不是手机的默认路由，受限广播从默认网络口出去、到不了热点网段（PC 收不到请求 → 不应答），表现为「PC 能搜到手机、手机搜不到 PC」的不对称。修复：`scan()` 走 `broadcastCandidates()` **逐 IPv4 网卡发 `/24` 定向广播（x.y.z.255）+ 全网广播兜底**，OS 按直连路由选对网卡，应答按 ip 去重。若修复后仍搜不到 PC，优先查 Windows 防火墙对 Electron 入站 UDP 47123 的放行（手动 IP 兜底仍可用）。
 - 数据面：HTTP 端口 **47124** —— `GET /ping` 设备信息、`POST /sync`（body `{table, rows}`）、`GET /export?table=`（对端拉取）。
 - 白名单 9 张 TEXT 主键表：habit_def / habit_checkin / todo_list / todo_tags / note_book / basic_info / countdown / qr_history / qr_template；行全列 toString 后按主键 `INSERT OR REPLACE`；写入前按 `PRAGMA table_info` 过滤实际存在的列，双端 schema 差异（桌面端旧 SQL 层遗留列）免疫。
 - **模拟器雷区**：NAT 广播不通扫不到宿主 → 同步页支持手动填 IP，Android 模拟器固定填 `10.0.2.2`；真机走正常广播。PC 端同步入口：系统与资源 → 局域网同步（扫描 / 手动 IP(ip:port) / 推送 / 拉取）。
 - vault 类数据跨设备：密钥为设备绑定/口令派生，**不能直传设备密钥**，需用户口令重新封装（会话加密 P3）。
+
+## 笔记标签双端契约（note_tags，2026-09-05 打通）
+**同步问题结论（需求变更记录）**：用户反馈「PC 同步数据到移动端后看不到笔记标签」。分析结论：**数据其实早已同步，是移动端从未读取/展示**——
+- 标签定义存 `basic_info` 表 `key='note_tags'` 行：桌面端 `src/utils/common.ts` 的 `getStore/setStore` → `electron/main/module/store.ts` 的 `get-store/set-store` IPC，**读写的就是 basic_info 表**，value 为 JSON 数组 `[{key: uuid, name, color:'#RRGGBB', createTime, updateTime, deleted?}]`；
+- 每条笔记 `note_book.tags` 存标签 **key 的 JSON 数组**（非名称）；
+- 两表都在同步白名单、移动端 drift 表也早有 `tags` 列（note_tables.dart），链路本身是通的。
+
+移动端补齐（桌面端零改动、无表结构变更、无需迁移/build_runner）：
+- 模型 `features/notes/models/note_tag.dart`：`NoteTag`（key/name/color/deleted + `colorValue`）+ `parseNoteTagDefs` + `kNoteTagPalette`（PC TagSelector 同款 10 色随机色板）。
+- 仓储 `note_repository.dart`：`watchTagDefs/loadTagDefs`（watch basic_info 单行，PC 推送后自动重发）、`createTagDef`（同名去重 + 随机取色）、`deleteTagDef`（**软删** deleted:true，笔记上已挂 key 保留，与 PC 一致）；`createNote/updateNote` 加 `tagKeys` 参数写回 `note_book.tags`。回写用 typed `insertOnConflictUpdate`（整行覆盖语义同桌面端 set-store，且能正确通知 watch 流——勿用 customUpdate，后者不会使 query 流失效）。
+- providers：`noteTagsProvider`（StreamProvider）。`NoteItem` 新增 `content/mdText` 字段与 `searchText` getter（excerpt/content/mdText/html 小写合并，等价 PC 四列 LIKE 范围）。
+- 列表页：搜索框（FTextField，`prefixBuilder` 放大镜）+ 标签彩色筛选 chips（**多选，任一命中即保留**，同 PC some 语义）+ **内容/标签双搜索**（关键词命中 searchText 或任意已挂标签名）；`_NoteCard` 加彩色标签徽标（最多 3 个 + 「+N」，key 无定义的不显示）。
+- 详情页：分类 chip 旁 Wrap 展示彩色标签徽标。
+- 编辑页 2026 重设计：标题/正文无 label 输入 + 「分类与标签」AppCard（分类 chips 单选[已有分类+新建抽屉]、标签 chips 多选[新建抽屉创建后自动选中]）+ 底部 `GradientButton` 渐变保存（顶栏对勾保留）。
+- 共用组件 `features/notes/components/note_tag_chip.dart`：`NoteTagChip`（可点，选中=标签色 16% 软底+对勾）/ `NoteTagBadge`（只读徽标，色点+名称）。
 
 ## 构建与验证
 ```bash
@@ -174,7 +207,33 @@ adb shell am start -n <applicationId>/.MainActivity   # 等价的显式启动方
 | **AVD 名称** | **`Pixel_8`**（`C:\Users\风起\.android\avd\Pixel_8.avd` + `Pixel_8.ini`） |
 | 在线设备 id | `emulator-5554` |
 
-**启动模拟器**（`flutter devices` 里没有设备时先做这步）：
+**代码级 paint 调试（布局排障利器，2026-09-05 新增）**：`lib/main.dart` 顶部有三个默认关闭的开关，排查布局时置 `true` 后热重载（r），用完关回：
+```dart
+const bool kDebugPaintSize = false;      // 所有组件画青色边框 + padding 可视化（≈ CSS outline）
+const bool kDebugPaintBaselines = false; // 文字基线
+const bool kDebugRepaintRainbow = false; // 重绘彩虹（颜色变了=发生了重绘，查多余重绘）
+```
+仅 debug/profile 生效（release 剥离 assert）；开关经 `flutter/rendering.dart show 限定导入`（避免与 material_ui 符号冲突）；配合 DevTools 的 Widget Inspector / Layout Explorer 使用效果最佳（`flutter run` 控制台按 `v` 打开）。
+
+**启动 SDK 虚拟机——完整可复制序列（2026-09-05 固化）**：
+```bash
+# ① 环境变量（每个新 shell 必设：中文用户名雷区 + 镜像 + SDK 工具入 PATH）
+export TMP=C:\src\tmp TEMP=C:\src\tmp
+export PUB_HOSTED_URL=https://pub.flutter-io.cn FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+export ANDROID_SDK_ROOT=C:\apps\Android\AndroidSDK
+export PATH="$PATH:/c/apps/Android/AndroidSDK/platform-tools:/c/apps/Android/AndroidSDK/emulator"
+cd /c/cod/jianli/jianli-mobile-app
+
+# ② 拉起虚拟机（后台运行，等它开机到锁屏/桌面）
+/c/apps/Android/AndroidSDK/emulator/emulator.exe -avd Pixel_8 &
+
+# ③ 确认在线（应出现 sdk gphone64 x86 64 (android-x64) → emulator-5554）
+flutter devices
+
+# ④ 编译并启动（首次构建数分钟属正常；运行会话内 r=热重载 / R=热重启 / q=退出）
+flutter run -d emulator-5554
+```
+备选启动方式（`flutter devices` 里没有设备时先做这步）：
 ```bash
 # 方式 1：直接拉起 AVD（最稳，推荐）
 /c/apps/Android/AndroidSDK/emulator/emulator.exe -avd Pixel_8 &
@@ -184,7 +243,7 @@ flutter emulators --launch Pixel_8
 
 # 方式 3：Android Studio → Device Manager → 启动 Pixel_8（GUI，最省事）
 ```
-启动后 `flutter devices` 复查出现 `emulator-5554`，再 `flutter run -d emulator-5554`。
+启动后 `flutter devices` 复查出现 `emulator-5554`，再 `flutter run -d emulator-5554`。**真机调试**：手机开 USB 调试连电脑 → `adb devices` 授权 → `flutter devices` 拿真机 id → `flutter run -d <真机id>`（arm64 的 libsqlite3.so 已在 jniLibs 就位，无需特殊处理）。
 
 ### 排障：常见报错
 - **`No supported devices found with name or id matching 'emulator-5554'`** → 模拟器进程根本没在跑（**不是 id 写错**）。先 `tasklist | grep -iE "qemu|emulator"` 确认无进程，再按上面「启动模拟器」拉起来，然后 `flutter devices` 复查。
@@ -206,7 +265,7 @@ flutter emulators --launch Pixel_8
 | pomodoro | `/pomodoro`、`/pomodoro/records` | 状态机解析（reminders stateful）+ 只读倒计时 + 流水统计；**视觉焕新**：**PageBanner 红(6)**（当前阶段+剩余时间）+ 白卡进度环（红色弧）；记录页 **PageBanner 红(6)** 三统计 |
 | reminder | `/reminders` | 三模式 time/interval/stateful，启停联动本地通知；过滤 `source==='todo'`；**视觉焕新**：**PageBanner 琥珀(3)**（全部/启用中统计）+ 专属色图标盘 + StaggerList |
 | countdown | `/countdown` | 独立表（end_time 毫秒基准 + paused_remaining，与桌面同构抗休眠）+ 暂停/恢复/重置；**视觉焕新**：大计时器整卡 **PageBanner 同款紫(0) 渐变**（白色 RingProgress + `trackColor` 半透明白 + 装饰圆） |
-| notes | `/notes` | 列表（分类 chips）/ 详情（flutter_widget_from_html 渲染）/ 编辑（轻量文本，html 段落化落库，桌面 vue-quill 可渲染；flutter_quill 富文本 P2）；**视觉焕新**：**PageBanner 琥珀(3)**（篇数/分类数统计）+ `_NoteCard`（琥珀图标盘）+ StaggerList；详情页分类改琥珀软底 chip |
+| notes | `/notes` | 列表（**关键词页内实时搜索 + 「查询抽屉」筛选**：分类单选/标签多选，已生效条件可点掉）/ 详情（flutter_widget_from_html 渲染 + 彩色标签徽标）/ 编辑（轻量文本 + 分类/标签 chips + **底部固定保存条**，html 段落化落库，桌面 vue-quill 可渲染；flutter_quill 富文本 P2）；**标签能力已全量对齐 PC**（内容+标签双搜索、多选筛选、新建/软删，见「笔记标签双端契约」小节）；**视觉焕新**：PageBanner 琥珀(3)（结果数/标签数统计）+ 卡片彩色标签徽标 + StaggerList |
 | conversation | `/conversation` | 主题列表 + 消息流 + 新建（过滤 `is_deleted`）；LLM 后端未定；**视觉焕新**：**PageBanner 粉(4)**（主题数统计）+ `_ThemeCard`（粉首字头像盘）+ StaggerList；消息气泡改粉 `accentSoft` 软底 + 小头像盘 |
 | ebook | `/ebook` | file_picker 导入 → sha256 content_hash 身份键 → epubx（PascalCase 字段）/ TXT 正则分章 → 章节渲染 + 按章进度；PDF、CFI 精确进度未做；**视觉焕新**：**PageBanner 青(5)**（藏书数）+ **CustomScrollView+SliverGrid** 封面网格（按标题 hashCode 渐变 + 进度条）；阅读器正文 pageTint 护眼底 |
 | twofactor | `/twofactor` | TOTP 全算法 + vault 口令解锁 + 动态码卡片（复制/倒计时/锁定清内存）+ 添加；**视觉焕新**：**PageBanner 紫(0)**（账户数）+ 解锁表单 pageTint+紫渐变图标盘 + `AccountCodeTile` 紫图标盘 |
@@ -215,7 +274,7 @@ flutter emulators --launch Pixel_8
 | qr | `/qr` | 生成（text/url/wifi/vCard/email）+ 识别（mobile_scanner）+ 历史；**视觉焕新**：顶部 **PageBanner 琥珀(3)**（FTabs 包进 Expanded，`expands:true` 雷区照旧）+ 历史页 `_QrHistoryTile`（琥珀图标盘）+ StaggerList |
 | sync | `/sync` | 扫描/手动 IP/推送/拉取，四种组合全通；**视觉焕新**：**PageBanner 青(5)**（发现设备/可同步表统计）+ 设备行图标青 `accent(5)` SquircleBox |
 | screenshots | — | 未开工；移动端无法系统级监听截图，重设计为相册导入/分享收纳 |
-| 主题 | — | **5 套主题样式**（渐离紫 `zi` / 远峰蓝 `blue` / 森野绿 `green` / 落日橙 `orange` / 樱粉 `pink`，`AppTheme.styles`）+ 三态模式（跟随系统/浅色/深色），SharedPreferences 持久化；切换入口在首页与三个分组页右上角的**设置按钮 → 左侧设置面板**。桌面 25 套 token 映射 P2 |
+| 主题 | — | **5 套主题样式**（渐离紫 `zi` / 远峰蓝 `blue` / 森野绿 `green` / 落日橙 `orange` / 樱粉 `pink`，`AppTheme.styles`）+ 三态模式（跟随系统/浅色/深色）+ **阅览模式**（普通/大号正文字体，卡片 tag 切换），均 SharedPreferences 持久化；切换入口在首页与三个分组页右上角的**设置按钮 → 左侧设置面板**。桌面 25 套 token 映射 P2 |
 
 ## 新增功能域落地清单
 1. 建 `lib/features/<module>/`（models / repositories / providers / components 按需原子拆分，带中文注释）。
@@ -269,6 +328,18 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 
 > 后续其他页面（习惯 / 待办 / 番茄 / 笔记 / 电子书 / 2FA 等）沿用同一语言：`pageTint` 打底 + `EntryCard`/`SquircleBox` 专属色 + `StaggerList` 入场 + `AnimatedCheck` 反馈。
 
+- **页面底色与白边（2026-09-05，三修：全局渐变背板）**：背景绘制权收归 app.dart 根容器——`builder` 里 `AnimatedContainer(gradient: 顶部强冷调→background)` + `CustomPaint(_BackdropPainter: 右上大圆/左中圆/右下圆环，primary 极低透明度)`；`FScaffoldStyle.backgroundColor` 透明、`FHeaderStyle.decoration`（forui 默认即透明）不画底色，`AppTokens.pageTint(context)` 返回**透明色**（保留兼容旧调用）。**任何页面/组件禁止再自绘不透明整页底色**，透出背板即可——头部/外框/边缘/内容同源，无色差无白边。抽屉 `SheetSurface` 保持不透明（弹层需与背板分离）。
+- **间距随字号联动**：`FScaffold.childPadding` 在主题构建时按同一缩放系数（`baseFontSize/forui默认md`）缩放；页面级边距走 `*Of(context)`（见「全局配置」小节）。
+
+**全局排版/布局配置 + 阅览模式（2026-09-05，二次修订为基准字号体系）**
+- **统一调参入口在 `AppTokens`**（app_theme.dart 顶部「全局排版与布局配置」区，改一处全 App 生效）：
+  - **基准字号体系**：`baseFontSizeNormal = 12` / `baseFontSizeLarge = 18`（普通文本 md 的目标像素）。阅览模式切换基准档，其他字型等比缩放；接线链路 = `app.dart` watch `readingModeProvider` → 算出 baseFontSize → 传给 `materialLight/materialDark`（MaterialApp.theme）与 `AppTheme.build`（builder 内 FTheme）→ 全树重渲必然生效。
+  - 边距 token：基准值 `pagePadding = 16` / `listTopGap = 4` / `pageBottomGap = 24`，**实际取值必须用随字号缩放的 `AppTokens.pagePaddingOf(context)` / `listTopGapOf(context)` / `pageBottomGapOf(context)`**（内部 = 基准 × `spacingScale` = 当前 md 字号 / 基准字号，大号档整体 ×1.5）——**新增页面严禁硬编码 16/4/24 边距，也严禁直接用静态常量**（那是基准值，不随阅览模式缩放）。含 viewInsets 的抽屉 padding 例外（键盘避让值不缩放）。根页（dashboard/editor）底部 32 为滚动尾部特例。
+- **阅览模式**（需求演进：v1 页内 1.15 缩放视觉无感＝「切换无效」→ v2 基准字号体系全局驱动）：
+  - `ReadingMode{normal,large}` + `readingModeProvider`（key `jianli.readingMode`，默认 normal），见「主题体系」；**不要在页面内做阅览模式缩放**——主题已全局缩放，页面只需直接用 `context.theme.typography`。
+  - 生效面 = 全 App（forui 组件内部样式 + 页面排版）；笔记详情 `NoteHtmlView` / 阅读器正文额外给了 `height: 1.7/1.8` 阅读行高，fontSize 直接取 `md.fontSize`（已被主题缩放）。
+  - 设置面板 UI：`_ReadingModeRow` 两张 `_ModeCard`（图标 + 名称 + 「基准 Npx」副标题，选中主色软底 + 主色描边 + `AnimatedContainer` 过渡）。
+
 **Phase 3→4 · 全页彩焕「PageBanner 渐变横幅」（已完成，2026-09-05）**
 用户要求所有功能页达到首页同款「颜色丰富」观感（渐变英雄卡视觉下沉到每个功能页）。新增与接线：
 
@@ -287,4 +358,10 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 - 2026-09-05：**启动崩溃修复**——`StaggerList`/`AnimatedCheck`/`RingProgress`/`ConfettiOverlay` 四个动效组件在 `initState` 内读 `JianliMotion.enabled/duration`（内部 `MediaQuery.of`），触发 `dependOnInheritedWidgetOfExactType ... called from initState` 启动崩溃。已全部改为 `didChangeDependencies` + 一次性守卫（`_started`/`_initialized`）。雷区 #8 已固化。修复后由用户本地 `flutter run -d emulator-5554` 验证（Agent 侧不跑 analyze，>30s 即交用户）。
 - **2026-09-05：主题系统 + 设置面板 + 剩余页面 UI 全量焕新（Phase 3→4）**。① 主题：`app_theme.dart` 参数化为 5 套 `ThemeStyle`（紫/蓝/绿/橙/粉）+ 新增 `theme_providers.dart`（`themeStyleProvider`/`themeModeProvider`，SharedPreferences 持久化），`app.dart` 改 `ConsumerWidget` 读 provider，切样式/模式即时全树重渲。② 入口：首页与三个分组页右上角装饰块换成 **`SettingsButton`**，点开 **左侧滑出设置面板**（自定义 `PageRouteBuilder`，刻意不用 forui 弹层以避免与 material_ui 平行 Material 类冲突），内含 5 色环样式选择 + 三态模式 `JianliSegmented`。③ 页面焕新（沿用 Phase 3 视觉语言 `pageTint` + 专属色 `SquircleBox` + `StaggerList` + `AppCard`）：效率类（habit/todo/reminder/pomodoro/countdown/pomodoro_records）、内容类（note 列表·详情·编辑、conversation 列表·消息流、bookshelf·reader）、工具类（2FA/密码库/文件保险箱/二维码/同步）。子页强调色与 Hub 入口色对齐（notes=3、conversation=4、ebook=按标题 hash、2FA=0、密码库=1、保险箱=2、QR=3、sync=5）。④ 新雷区已固化到「Riverpod 3 / forui API 雷区」小节（**`valueOrNull` 已移除改 `.value`；`FHeader` 用 `suffixes` 不是 `actions`；`material_ui` 的 `ThemeMode`；`JianliSegmented` items 传 IconData**）。
 - 2026-09-05：**全页彩焕「PageBanner 渐变横幅」落地（Phase 3→4 二次焕新）**——新原子组件 `lib/app/ui/page_banner.dart`（页面专属强调色渐变横幅：accentGradient + 白色装饰圆 + 半透明图标盘 + 白字统计行，纯数值自动 `AnimatedStat`；`accentIndex` 与 Hub 入口色对齐），13 个功能页全部接线：habit 绿(2) / todo 蓝(1) / pomodoro+records 红(6) / countdown 紫(0，大计时器整卡渐变 + 白色进度环) / reminder 琥珀(3) / notes 琥珀(3，详情分类改软底 chip) / conversation 粉(4，消息气泡改 accentSoft 软底) / bookshelf 青(5，GridView 改 CustomScrollView+SliverGrid) / 2FA 紫(0，解锁表单渐变盘) / 密码库 蓝(1) / 保险箱 绿(2) / QR 琥珀(3，横幅置于 FTabs 上方) / 同步 青(5)。组件增强：`RingProgress` 加可选 `trackColor`；`EmptyState` 图标升级主色软底盘。顺手清 4 条存量 lint + 删 `_WeekStrip` 死代码。静态检查 `dart analyze` **0 问题**（经 dart.exe 直连跑通）；`flutter test` 未代跑。**分工铁律更新：Agent 只写码改档，一切 flutter/dart 命令交用户执行**（「跑起来看效果」小节已改写，「30 秒规则」作废）。
+- 2026-09-05：**笔记标签功能对齐 PC（需求变更）**——用户反馈「同步 PC 数据后看不到笔记标签」，定位结论：标签定义在 `basic_info.note_tags` 行、笔记 tags 为 key 数组，两表均在同步白名单，**数据早已同步、移动端此前未消费**。移动端补齐：`NoteTag` 模型 + 仓储标签读写（watch/创建同名去重/软删 + `createNote/updateNote` 写回 tags）+ `noteTagsProvider`；列表页加搜索框、彩色标签筛选条、**内容+标签双搜索**；笔记卡与详情页彩色标签徽标；**编辑页重设计**（分类/标签 chips 化 + 「分类与标签」卡 + 渐变保存按钮）。契约与实现细节见「笔记标签双端契约」小节；无表变更零迁移；`dart format` 语法自查通过，analyze/test/run 一律交用户（分工铁律）。
+- 2026-09-05：**「小功能抽屉化」全局约定落地（需求变更）**——用户反馈新建标签的居中弹窗太丑，定为全局规则：**所有小功能的新增/编辑/展示弹层一律底部抽屉 `showFSheet(side: FLayout.btt)`，`showFDialog` 仅保留破坏性确认**（模板与先例见「UI 体系」抽屉化约定条目）。本轮改造 4 处：笔记编辑页新建分类/标签（抽 `_inputSheet` 共用 helper）、待办新增、密码库新增/编辑条目（高表单 `mainAxisMaxRatio: null` + 滚动）、保险箱文件预览。全 App 现仅剩笔记删除确认一处 `showFDialog`（合规）。`dart format` 自查通过，analyze/run 交用户。
+- 2026-09-05：**热点场景设备发现修复**——手机开热点给 PC 时手机搜不到 PC（反向正常）。根因：`scan()` 只发 255.255.255.255 受限广播，而热点接口非手机默认路由，广播出不去热点网段。`sync_discovery.dart` 新增 `broadcastCandidates()`（逐 IPv4 网卡 x.y.z.255 定向广播 + 全网广播兜底），取代原「逐网卡发送 TODO(P3)」；雷区已固化到「局域网同步」章节。
+- 2026-09-05：**阅览模式二次修订（基准字号体系）**——用户反馈 v1「切换无效 + 普通字体太大」（根因：页内 1.15 倍缩放视觉无感且只挂两个阅读页）。v2 改为**基准字号体系**：`AppTokens.baseFontSizeNormal=12 / baseFontSizeLarge=18`，`app.dart` 读阅览模式 → 传 `baseFontSize` 进 `AppTheme.build`（构造期 `typography.scale(sizeScalar: 基准/forui默认md)`）+ `materialLight/materialDark`，全 App（含组件内部样式）随档位等比缩放；笔记详情/阅读器移除页内缩放、正文字号直取 `md.fontSize`；设置面板卡片副标题显示「基准 Npx」。同步修正技能「主题体系/全局配置」小节。analyze/run 交用户。
+- 2026-09-05：**三处视觉修正（真机反馈，二次）**——修复编译错误 2 个（`isDark` 未定义；`scaffoldStyle` 参数收 FScaffoldStyle 实例而非回调，delta 用官方 `EdgeInsetsGeometryDelta.scale(k)` 类工厂——雷区 #7）；随后按截图升级为**全局渐变背板架构**：app.dart 根容器画「顶部强冷调→background」渐变 + `_BackdropPainter` 图案（大圆×2/圆环×1），scaffold 透明、header 默认透明、`pageTint` 返回透明色，三处色差/白边一次性消灭；新增规则「页面禁止自绘不透明整页底色」。虚拟机启动完整命令序列已固化到「构建与验证」。`dart format` 全库通过，analyze/run 交用户。
+- 2026-09-05：**页面操作规范落地（需求变更，先例=可归类笔记）**——① 新章节「页面操作规范（共有交互）」：查询/筛选统一走**通用查询抽屉**（新组件 `lib/app/ui/filter_sheet.dart`：顶部「查询」+关闭图标、中部选项滚动、底部固定「重置/查询」；草稿模式——打开时从已生效条件初始化，重置只清草稿，查询才应用并经 pop 值返回）；保存/提交按钮**统一固定底部**（`Column[Expanded(内容), SafeArea+GradientButton]`，头部不放重复保存入口）。② 可归类笔记先例改造：列表页分类/标签行内 chips 移入查询抽屉，搜索框右侧加筛选按钮（激活时琥珀软底+条件数角标），已生效条件以可点掉摘要 chip 呈现；编辑页保存条固定底部、头部对勾入口移除。后续新功能按该章节模式实现。
 - 剩余规划（截至 2026-09-05）：真机全量验证、桌面 25 套主题映射到 forui、flutter_quill 富文本编辑、PDF / CFI 精确进度、interval 通知精细化、QR 样式、同步会话加密、conversation LLM 后端、UI 现代化落地（按 `references/ui-modernization-plan.md` 分阶段）。

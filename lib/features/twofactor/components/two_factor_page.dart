@@ -23,6 +23,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/two_factor_account.dart';
@@ -153,97 +154,105 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
       // 表单较高且可滚动，不限制弹层最大高度
       mainAxisMaxRatio: null,
       builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FButton(
-                variant: FButtonVariant.outline,
-                prefix: const Icon(FLucideIcons.clipboardPaste, size: 18),
-                onPress: () async {
-                  final data = await Clipboard.getData(Clipboard.kTextPlain);
-                  if (!context.mounted) return;
-                  final parsed = parseOtpauthUri(data?.text ?? '');
-                  if (parsed == null) {
-                    showFToast(
-                      context: context,
-                      variant: FToastVariant.destructive,
-                      title: const Text('粘贴失败'),
-                      description: const Text('剪贴板不是有效的 otpauth://totp 链接'),
-                    );
-                    return;
-                  }
-                  setSheetState(() {
-                    issuer.text = parsed.account.issuer;
-                    account.text = parsed.account.account;
-                    secret.text = parsed.account.secret;
-                    algorithmController.value = parsed.account.algorithm;
-                  });
-                },
-                child: const Text('粘贴 otpauth:// URI 自动填充'),
-              ),
-              const SizedBox(height: 12),
-              FTextField(
-                control: FTextFieldControl.managed(controller: issuer),
-                label: const Text('服务名（如 GitHub）'),
-              ),
-              const SizedBox(height: 10),
-              FTextField(
-                control: FTextFieldControl.managed(controller: account),
-                label: const Text('账户（邮箱/用户名）'),
-              ),
-              const SizedBox(height: 10),
-              FTextField(
-                control: FTextFieldControl.managed(controller: secret),
-                label: const Text('密钥（base32）'),
-              ),
-              const SizedBox(height: 10),
-              FSelect<String>(
-                items: const {
-                  'SHA1（默认）': 'SHA1',
-                  'SHA256': 'SHA256',
-                  'SHA512': 'SHA512',
-                },
-                label: const Text('算法'),
-                hint: '请选择',
-                control: FSelectControl<String>.managed(
-                  controller: algorithmController,
-                ),
-              ),
-              const SizedBox(height: 14),
-              FButton(
-                onPress: () {
-                  final s = secret.text.trim().toUpperCase().replaceAll(
-                    RegExp('[^A-Z2-7]'),
-                    '',
-                  );
-                  if (s.isEmpty) return;
-                  final algorithm = algorithmController.value ?? 'SHA1';
-                  final now = DateTime.now().toIso8601String();
-                  ref
-                      .read(twoFactorAccountsProvider.notifier)
-                      .addAccount(
-                        passphrase: _sessionPassphrase,
-                        account: TwoFactorAccount(
-                          key: DateTime.now().microsecondsSinceEpoch
-                              .toRadixString(36),
-                          issuer: issuer.text.trim(),
-                          account: account.text.trim(),
-                          secret: s,
-                          algorithm: algorithm,
-                          digits: 6,
-                          period: 30,
-                          createdAt: now,
-                          updatedAt: now,
-                        ),
+        builder: (context, setSheetState) => SheetSurface(
+          padding: EdgeInsets.zero,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              AppTokens.pagePaddingOf(context),
+              16,
+              AppTokens.pagePaddingOf(context),
+              24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FButton(
+                  variant: FButtonVariant.outline,
+                  prefix: const Icon(FLucideIcons.clipboardPaste, size: 18),
+                  onPress: () async {
+                    final data = await Clipboard.getData(Clipboard.kTextPlain);
+                    if (!context.mounted) return;
+                    final parsed = parseOtpauthUri(data?.text ?? '');
+                    if (parsed == null) {
+                      showFToast(
+                        context: context,
+                        variant: FToastVariant.destructive,
+                        title: const Text('粘贴失败'),
+                        description: const Text('剪贴板不是有效的 otpauth://totp 链接'),
                       );
-                  Navigator.pop(context);
-                },
-                child: const Text('添加并加密保存'),
-              ),
-            ],
+                      return;
+                    }
+                    setSheetState(() {
+                      issuer.text = parsed.account.issuer;
+                      account.text = parsed.account.account;
+                      secret.text = parsed.account.secret;
+                      algorithmController.value = parsed.account.algorithm;
+                    });
+                  },
+                  child: const Text('粘贴 otpauth:// URI 自动填充'),
+                ),
+                const SizedBox(height: 12),
+                FTextField(
+                  control: FTextFieldControl.managed(controller: issuer),
+                  label: const Text('服务名（如 GitHub）'),
+                ),
+                const SizedBox(height: 10),
+                FTextField(
+                  control: FTextFieldControl.managed(controller: account),
+                  label: const Text('账户（邮箱/用户名）'),
+                ),
+                const SizedBox(height: 10),
+                FTextField(
+                  control: FTextFieldControl.managed(controller: secret),
+                  label: const Text('密钥（base32）'),
+                ),
+                const SizedBox(height: 10),
+                FSelect<String>(
+                  items: const {
+                    'SHA1（默认）': 'SHA1',
+                    'SHA256': 'SHA256',
+                    'SHA512': 'SHA512',
+                  },
+                  label: const Text('算法'),
+                  hint: '请选择',
+                  control: FSelectControl<String>.managed(
+                    controller: algorithmController,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FButton(
+                  onPress: () {
+                    final s = secret.text.trim().toUpperCase().replaceAll(
+                      RegExp('[^A-Z2-7]'),
+                      '',
+                    );
+                    if (s.isEmpty) return;
+                    final algorithm = algorithmController.value ?? 'SHA1';
+                    final now = DateTime.now().toIso8601String();
+                    ref
+                        .read(twoFactorAccountsProvider.notifier)
+                        .addAccount(
+                          passphrase: _sessionPassphrase,
+                          account: TwoFactorAccount(
+                            key: DateTime.now().microsecondsSinceEpoch
+                                .toRadixString(36),
+                            issuer: issuer.text.trim(),
+                            account: account.text.trim(),
+                            secret: s,
+                            algorithm: algorithm,
+                            digits: 6,
+                            period: 30,
+                            createdAt: now,
+                            updatedAt: now,
+                          ),
+                        );
+                    Navigator.pop(context);
+                  },
+                  child: const Text('添加并加密保存'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -368,7 +377,10 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
       child: ColoredBox(
         color: AppTokens.pageTint(context),
         child: ListView(
-          padding: const EdgeInsets.only(top: 4, bottom: 24),
+          padding: EdgeInsets.only(
+            top: AppTokens.listTopGapOf(context),
+            bottom: AppTokens.pageBottomGapOf(context),
+          ),
           children: [
             PageBanner(
               icon: FLucideIcons.keyRound,

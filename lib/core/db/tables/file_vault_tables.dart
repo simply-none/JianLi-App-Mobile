@@ -35,9 +35,9 @@ class FileVaultFiles extends Table {
   TextColumn get size => text().nullable()();
 
   /// 密文文件磁盘路径（桌面端路径；移动端需把密文拷进沙盒并重写）
-    TextColumn get ciphertextPath => text().named('ciphertext_path').nullable()();
+  TextColumn get ciphertextPath => text().named('ciphertext_path').nullable()();
 
-    TextColumn get createdAt => text().named('created_at').nullable()();
+  TextColumn get createdAt => text().named('created_at').nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

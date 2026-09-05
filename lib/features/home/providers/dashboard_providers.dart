@@ -26,12 +26,13 @@ class DashboardStats {
   final String? nextCountdownName;
   final int? nextCountdownEndMs;
 
-  String get habitProgressLabel => habitsTotal == 0 ? '0/0' : '$habitsDoneToday/$habitsTotal';
+  String get habitProgressLabel =>
+      habitsTotal == 0 ? '0/0' : '$habitsDoneToday/$habitsTotal';
 }
 
 /// 聚合统计（一次性查询；页面下拉刷新重取）
-final FutureProvider<DashboardStats> dashboardStatsProvider =
-    FutureProvider<DashboardStats>((ref) async {
+final FutureProvider<DashboardStats>
+dashboardStatsProvider = FutureProvider<DashboardStats>((ref) async {
   final db = ref.watch(appDatabaseProvider);
   final now = DateTime.now();
   final todayPrefix =
@@ -39,36 +40,54 @@ final FutureProvider<DashboardStats> dashboardStatsProvider =
 
   // 习惯
   final habits = await db.select(db.habitDef).get();
-  final habitItems = habits.map(HabitItem.fromRow).where((h) => h.enabled && h.key.isNotEmpty);
-  final checkins = await (db.select(db.habitCheckin)..where((t) => t.date.equals(todayPrefix))).get();
+  final habitItems = habits
+      .map(HabitItem.fromRow)
+      .where((h) => h.enabled && h.key.isNotEmpty);
+  final checkins = await (db.select(
+    db.habitCheckin,
+  )..where((t) => t.date.equals(todayPrefix))).get();
   final doneKeys = checkins.map((c) => c.habitKey ?? '').toSet();
 
   // 待办
   final todos = await db.select(db.todoList).get();
-  final activeTodos = todos.map(TodoItem.fromRow).where((t) => !t.completed).length;
+  final activeTodos = todos
+      .map(TodoItem.fromRow)
+      .where((t) => !t.completed)
+      .length;
 
   // 番茄钟今日记录
-  final pomodoroToday = await (db.selectOnly(db.pomodoroStatus)
-        ..addColumns([db.pomodoroStatus.id.count()])
-        ..where(db.pomodoroStatus.value.equals('work') &
-            db.pomodoroStatus.createTime.like('$todayPrefix%')))
-      .getSingle()
-      .then((r) => r.read(db.pomodoroStatus.id.count()) ?? 0);
+  final pomodoroToday =
+      await (db.selectOnly(db.pomodoroStatus)
+            ..addColumns([db.pomodoroStatus.id.count()])
+            ..where(
+              db.pomodoroStatus.value.equals('work') &
+                  db.pomodoroStatus.createTime.like('$todayPrefix%'),
+            ))
+          .getSingle()
+          .then((r) => r.read(db.pomodoroStatus.id.count()) ?? 0);
 
   // 启用的提醒
-  final enabledReminders = await (db.selectOnly(db.reminders)
-        ..addColumns([db.reminders.id.count()])
-        ..where(db.reminders.enabled.equals('1')))
-      .getSingle()
-      .then((r) => r.read(db.reminders.id.count()) ?? 0);
+  final enabledReminders =
+      await (db.selectOnly(db.reminders)
+            ..addColumns([db.reminders.id.count()])
+            ..where(db.reminders.enabled.equals('1')))
+          .getSingle()
+          .then((r) => r.read(db.reminders.id.count()) ?? 0);
 
   // 最近倒计时（running 且 end_time 最近）
-  final runningCountdowns = await (db.select(db.countdown)
-        ..where((t) => t.status.equals('running') & t.endTime.isBiggerThanValue(now.millisecondsSinceEpoch))
-        ..orderBy([(t) => OrderingTerm.asc(t.endTime)])
-        ..limit(1))
-      .get();
-  final nextCountdown = runningCountdowns.isEmpty ? null : runningCountdowns.first;
+  final runningCountdowns =
+      await (db.select(db.countdown)
+            ..where(
+              (t) =>
+                  t.status.equals('running') &
+                  t.endTime.isBiggerThanValue(now.millisecondsSinceEpoch),
+            )
+            ..orderBy([(t) => OrderingTerm.asc(t.endTime)])
+            ..limit(1))
+          .get();
+  final nextCountdown = runningCountdowns.isEmpty
+      ? null
+      : runningCountdowns.first;
 
   return DashboardStats(
     habitsTotal: habitItems.length,

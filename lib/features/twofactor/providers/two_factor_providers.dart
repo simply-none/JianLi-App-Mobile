@@ -9,17 +9,20 @@ import '../models/two_factor_account.dart';
 import '../repositories/two_factor_repository.dart';
 
 /// 2FA 仓库（依赖全局数据库）
-final Provider<TwoFactorRepository> twoFactorRepositoryProvider = Provider<TwoFactorRepository>(
-  (ref) => TwoFactorRepository(ref.watch(appDatabaseProvider)),
-);
+final Provider<TwoFactorRepository> twoFactorRepositoryProvider =
+    Provider<TwoFactorRepository>(
+      (ref) => TwoFactorRepository(ref.watch(appDatabaseProvider)),
+    );
 
 /// vault 文件路径状态（null = 未配置）
-final FutureProvider<String?> twoFactorVaultPathProvider = FutureProvider<String?>(
-  (ref) => ref.watch(twoFactorRepositoryProvider).getVaultPath(),
-);
+final FutureProvider<String?> twoFactorVaultPathProvider =
+    FutureProvider<String?>(
+      (ref) => ref.watch(twoFactorRepositoryProvider).getVaultPath(),
+    );
 
 /// 已解锁的 2FA 账户列表（未解锁时为空列表）
-class TwoFactorAccountsController extends AsyncNotifier<List<TwoFactorAccount>> {
+class TwoFactorAccountsController
+    extends AsyncNotifier<List<TwoFactorAccount>> {
   @override
   Future<List<TwoFactorAccount>> build() async => const [];
 
@@ -44,11 +47,14 @@ class TwoFactorAccountsController extends AsyncNotifier<List<TwoFactorAccount>> 
     final entries = [...(state.value ?? const <TwoFactorAccount>[])];
     entries.add(account);
     state = AsyncData(entries);
-    final vaultPath = _vaultPath ??
+    final vaultPath =
+        _vaultPath ??
         await ref.read(twoFactorRepositoryProvider).getVaultPath();
     if (vaultPath == null) throw StateError('vault 路径缺失');
     _vaultPath = vaultPath;
-    await ref.read(twoFactorRepositoryProvider).saveAccounts(vaultPath, passphrase, entries);
+    await ref
+        .read(twoFactorRepositoryProvider)
+        .saveAccounts(vaultPath, passphrase, entries);
   }
 
   /// 锁定（清空内存态）
@@ -59,5 +65,7 @@ class TwoFactorAccountsController extends AsyncNotifier<List<TwoFactorAccount>> 
 }
 
 final AsyncNotifierProvider<TwoFactorAccountsController, List<TwoFactorAccount>>
-    twoFactorAccountsProvider = AsyncNotifierProvider<TwoFactorAccountsController,
-        List<TwoFactorAccount>>(TwoFactorAccountsController.new);
+twoFactorAccountsProvider =
+    AsyncNotifierProvider<TwoFactorAccountsController, List<TwoFactorAccount>>(
+      TwoFactorAccountsController.new,
+    );

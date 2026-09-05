@@ -40,7 +40,12 @@ class DashboardPage extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () async => ref.invalidate(dashboardStatsProvider),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            padding: EdgeInsets.fromLTRB(
+              AppTokens.pagePaddingOf(context),
+              16,
+              AppTokens.pagePaddingOf(context),
+              32,
+            ),
             children: [
               StaggerList(
                 delayStep: 70,
@@ -74,7 +79,8 @@ class DashboardPage extends ConsumerWidget {
                   const SectionHeader(title: '快捷入口'),
                   Row(
                     children: [
-                      for (final (icon, label, route, accentIndex) in _quickEntries)
+                      for (final (icon, label, route, accentIndex)
+                          in _quickEntries)
                         Expanded(
                           child: _QuickTile(
                             icon: icon,
@@ -144,7 +150,9 @@ class _Header extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 '${now.month} 月 ${now.day} 日 · 周${weeks[now.weekday - 1]}',
-                style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                style: t.typography.body.sm.copyWith(
+                  color: t.colors.mutedForeground,
+                ),
               ),
             ],
           ),
@@ -202,13 +210,13 @@ class _HeroCard extends StatelessWidget {
   }
 
   Widget _decoCircle(double size, double alpha) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: alpha),
-        ),
-      );
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: Colors.white.withValues(alpha: alpha),
+    ),
+  );
 
   Widget _stat(BuildContext context, String value, String label) {
     final t = context.theme;
@@ -294,7 +302,9 @@ class _QuickTile extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 label,
-                style: t.typography.body.sm.copyWith(fontWeight: FontWeight.w600),
+                style: t.typography.body.sm.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),

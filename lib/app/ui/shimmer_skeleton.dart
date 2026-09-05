@@ -25,9 +25,10 @@ class ShimmerSkeleton extends StatefulWidget {
 
 class _ShimmerSkeletonState extends State<ShimmerSkeleton>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
-        ..repeat();
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat();
 
   @override
   void dispose() {
@@ -38,15 +39,19 @@ class _ShimmerSkeletonState extends State<ShimmerSkeleton>
   @override
   Widget build(BuildContext context) {
     if (!JianliMotion.enabled(context)) return _box(0.5);
-    return AnimatedBuilder(animation: _ctrl, builder: (_, animation) => _box(_ctrl.value));
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, animation) => _box(_ctrl.value),
+    );
   }
 
   Widget _box(double p) {
     final t = context.theme;
     final isDark = Theme.brightnessOf(context) == Brightness.dark;
     final base = t.colors.muted;
-    final hi = (isDark ? Colors.white : t.colors.foreground)
-        .withValues(alpha: isDark ? 0.18 : 0.12);
+    final hi = (isDark ? Colors.white : t.colors.foreground).withValues(
+      alpha: isDark ? 0.18 : 0.12,
+    );
     final a = (p - 0.5).clamp(0.0, 1.0);
     final b = p.clamp(0.0, 1.0);
     final c = (p + 0.5).clamp(0.0, 1.0);

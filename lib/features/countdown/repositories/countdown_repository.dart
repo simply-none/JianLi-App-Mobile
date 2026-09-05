@@ -19,9 +19,9 @@ class CountdownRepository {
 
   /// 全部倒计时流（创建时间倒序）
   Stream<List<CountdownData>> watchAll() {
-    return (_db.select(_db.countdown)
-          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
-        .watch();
+    return (_db.select(
+      _db.countdown,
+    )..orderBy([(t) => OrderingTerm.desc(t.createdAt)])).watch();
   }
 
   /// 新建倒计时（duration 模式：立即开始；datetime 模式：end 为目标时刻）
@@ -33,24 +33,31 @@ class CountdownRepository {
     bool notify = true,
     String? color,
   }) async {
-    await _db.into(_db.countdown).insert(CountdownCompanion.insert(
-          key: _uuid.v4(),
-          name: Value(name),
-          mode: Value(mode),
-          endTime: Value(endMs),
-          duration: Value(durationMs),
-          pausedRemaining: const Value(0),
-          status: const Value('running'),
-          notify: Value(notify ? '1' : '0'),
-          color: Value(color),
-          createdAt: Value(DateTime.now().millisecondsSinceEpoch),
-        ));
+    await _db
+        .into(_db.countdown)
+        .insert(
+          CountdownCompanion.insert(
+            key: _uuid.v4(),
+            name: Value(name),
+            mode: Value(mode),
+            endTime: Value(endMs),
+            duration: Value(durationMs),
+            pausedRemaining: const Value(0),
+            status: const Value('running'),
+            notify: Value(notify ? '1' : '0'),
+            color: Value(color),
+            createdAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ),
+        );
   }
 
   /// 暂停：冻结剩余
   Future<void> pause(CountdownData row) async {
-    final remaining = (row.endTime ?? 0) - DateTime.now().millisecondsSinceEpoch;
-    await (_db.update(_db.countdown)..where((t) => t.key.equals(row.key))).write(
+    final remaining =
+        (row.endTime ?? 0) - DateTime.now().millisecondsSinceEpoch;
+    await (_db.update(
+      _db.countdown,
+    )..where((t) => t.key.equals(row.key))).write(
       CountdownCompanion(
         pausedRemaining: Value(remaining > 0 ? remaining : 0),
         status: const Value('paused'),
@@ -61,7 +68,9 @@ class CountdownRepository {
   /// 恢复：end_time = now + paused_remaining
   Future<void> resume(CountdownData row) async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    await (_db.update(_db.countdown)..where((t) => t.key.equals(row.key))).write(
+    await (_db.update(
+      _db.countdown,
+    )..where((t) => t.key.equals(row.key))).write(
       CountdownCompanion(
         endTime: Value(nowMs + (row.pausedRemaining ?? 0)),
         pausedRemaining: const Value(0),
@@ -73,7 +82,9 @@ class CountdownRepository {
   /// 重置：按原始时长重新开始
   Future<void> reset(CountdownData row) async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    await (_db.update(_db.countdown)..where((t) => t.key.equals(row.key))).write(
+    await (_db.update(
+      _db.countdown,
+    )..where((t) => t.key.equals(row.key))).write(
       CountdownCompanion(
         endTime: Value(nowMs + (row.duration ?? 0)),
         pausedRemaining: const Value(0),
@@ -84,7 +95,9 @@ class CountdownRepository {
 
   /// 标记完成
   Future<void> finish(CountdownData row) async {
-    await (_db.update(_db.countdown)..where((t) => t.key.equals(row.key))).write(
+    await (_db.update(
+      _db.countdown,
+    )..where((t) => t.key.equals(row.key))).write(
       CountdownCompanion(
         status: const Value('finished'),
         finishedAt: Value(DateTime.now().millisecondsSinceEpoch),
@@ -100,11 +113,11 @@ class CountdownRepository {
 /// 倒计时仓库 provider
 final Provider<CountdownRepository> countdownRepositoryProvider =
     Provider<CountdownRepository>((ref) {
-  return CountdownRepository(ref.watch(appDatabaseProvider));
-});
+      return CountdownRepository(ref.watch(appDatabaseProvider));
+    });
 
 /// 倒计时列表流 provider
 final StreamProvider<List<CountdownData>> countdownListProvider =
     StreamProvider<List<CountdownData>>(
-  (ref) => ref.watch(countdownRepositoryProvider).watchAll(),
-);
+      (ref) => ref.watch(countdownRepositoryProvider).watchAll(),
+    );

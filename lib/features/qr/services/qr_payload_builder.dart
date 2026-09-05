@@ -32,7 +32,11 @@ class QrPayloadType {
 
 /// Wi-Fi 参数
 class WifiParams {
-  const WifiParams({required this.ssid, required this.password, this.encryption = 'WPA'});
+  const WifiParams({
+    required this.ssid,
+    required this.password,
+    this.encryption = 'WPA',
+  });
 
   final String ssid;
   final String password;
@@ -40,7 +44,12 @@ class WifiParams {
 }
 
 /// 拼装二维码内容（与桌面端格式一致，扫码端可互相识别）
-String buildQrPayload(String type, {String? text, WifiParams? wifi, Map<String, String>? contact}) {
+String buildQrPayload(
+  String type, {
+  String? text,
+  WifiParams? wifi,
+  Map<String, String>? contact,
+}) {
   switch (type) {
     case QrPayloadType.url:
       final v = text ?? '';
@@ -69,5 +78,9 @@ String buildQrPayload(String type, {String? text, WifiParams? wifi, Map<String, 
 }
 
 /// Wi-Fi/vCard 值转义（\ ; , : "）
-String _escape(String v) =>
-    v.replaceAll(r'\', r'\\').replaceAll(';', r'\;').replaceAll(',', r'\,').replaceAll(':', r'\:').replaceAll('"', r'\"');
+String _escape(String v) => v
+    .replaceAll(r'\', r'\\')
+    .replaceAll(';', r'\;')
+    .replaceAll(',', r'\,')
+    .replaceAll(':', r'\:')
+    .replaceAll('"', r'\"');

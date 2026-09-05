@@ -21,24 +21,24 @@ class Reminders extends Table {
   TextColumn get mode => text().nullable()();
 
   /// 状态机起始时间戳（ms）
-    TextColumn get startTime => text().named('startTime').nullable()();
+  TextColumn get startTime => text().named('startTime').nullable()();
 
   /// 状态机定义 JSON，如 [{"key":"work","label":"工作","duration":23,...}]
   TextColumn get states => text().nullable()();
 
   /// 生效星期 JSON
-    TextColumn get weekDays => text().named('weekDays').nullable()();
+  TextColumn get weekDays => text().named('weekDays').nullable()();
 
   /// 是否循环：'1'/'0'
   TextColumn get loop => text().nullable()();
 
-    TextColumn get recordAfter => text().named('recordAfter').nullable()();
+  TextColumn get recordAfter => text().named('recordAfter').nullable()();
 
   TextColumn get interval => text().nullable()();
   TextColumn get month => text().nullable()();
   TextColumn get minute => text().nullable()();
 
-    TextColumn get dayOfMonth => text().named('dayOfMonth').nullable()();
+  TextColumn get dayOfMonth => text().named('dayOfMonth').nullable()();
 
   TextColumn get unit => text().nullable()();
   TextColumn get title => text().nullable()();
@@ -48,7 +48,7 @@ class Reminders extends Table {
   TextColumn get enabled => text().nullable()();
 
   /// 免打扰时段 JSON，如 [{"start":"10:15","end":"10:57"}]
-    TextColumn get idleTime => text().named('idleTime').nullable()();
+  TextColumn get idleTime => text().named('idleTime').nullable()();
 
   TextColumn get time => text().nullable()();
   TextColumn get repeat => text().nullable()();

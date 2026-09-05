@@ -50,7 +50,8 @@ class PomodoroSnapshot {
   /// 周期内进度（0.0 ~ 1.0）
   double get progress => cycleSeconds <= 0
       ? 0
-      : (currentState.durationSeconds - remainingSeconds) / currentState.durationSeconds;
+      : (currentState.durationSeconds - remainingSeconds) /
+            currentState.durationSeconds;
 }
 
 /// 解析 states JSON 文本；空/非法返回空列表

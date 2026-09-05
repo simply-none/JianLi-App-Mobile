@@ -22,7 +22,12 @@ Future<ParsedBook> parseEpub(File file) async {
     for (final ch in subs) {
       final html = ch.HtmlContent;
       if (html != null && html.trim().isNotEmpty) {
-        chapters.add(BookChapter(title: ch.Title ?? '第 ${chapters.length + 1} 节', html: html));
+        chapters.add(
+          BookChapter(
+            title: ch.Title ?? '第 ${chapters.length + 1} 节',
+            html: html,
+          ),
+        );
       }
       walk(ch.SubChapters);
     }
@@ -49,7 +54,10 @@ Future<ParsedBook> parseBook(String path) async {
     return parseEpub(file);
   }
   final content = await file.readAsString();
-  return ParsedBook(title: _fileName(path), chapters: splitTxtChapters(content));
+  return ParsedBook(
+    title: _fileName(path),
+    chapters: splitTxtChapters(content),
+  );
 }
 
 String _fileName(String path) {

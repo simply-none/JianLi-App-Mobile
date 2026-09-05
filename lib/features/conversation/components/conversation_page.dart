@@ -9,6 +9,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -47,7 +48,10 @@ class ConversationPage extends ConsumerWidget {
               );
             }
             return ListView(
-              padding: const EdgeInsets.only(top: 4, bottom: 24),
+              padding: EdgeInsets.only(
+                top: AppTokens.listTopGapOf(context),
+                bottom: AppTokens.pageBottomGapOf(context),
+              ),
               children: [
                 // 页面专属粉渐变横幅（与内容分组页「主题对话」入口色对齐）
                 PageBanner(
@@ -81,7 +85,7 @@ class ConversationPage extends ConsumerWidget {
     await showFSheet<void>(
       context: context,
       side: FLayout.btt,
-      builder: (context) => Padding(
+      builder: (context) => SheetSurface(
         padding: EdgeInsets.fromLTRB(
           16,
           16,
