@@ -131,7 +131,13 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: ':id',
           pageBuilder: (context, state) => fadeSlidePage(
-            ConversationMessagesPage(themeId: state.pathParameters['id'] ?? ''),
+            // highlight：跨主题引用跳转时定位高亮的消息 id（右侧抽屉点入）
+            ConversationMessagesPage(
+              themeId: state.pathParameters['id'] ?? '',
+              highlightId: int.tryParse(
+                state.uri.queryParameters['highlight'] ?? '',
+              ),
+            ),
             state,
           ),
         ),

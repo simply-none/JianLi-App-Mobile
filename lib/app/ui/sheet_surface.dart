@@ -9,12 +9,20 @@ import 'package:material_ui/material_ui.dart';
 
 import '../theme/app_theme.dart';
 
-/// 底部抽屉表面
+/// 抽屉表面
 class SheetSurface extends StatelessWidget {
-  const SheetSurface({super.key, required this.child, this.padding});
+  const SheetSurface({
+    super.key,
+    required this.child,
+    this.padding,
+    this.borderRadius,
+  });
 
   final Widget child;
   final EdgeInsetsGeometry? padding;
+
+  /// 圆角覆盖（缺省顶部圆角，适配底部抽屉；右侧抽屉传左侧圆角）
+  final BorderRadiusGeometry? borderRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -22,9 +30,11 @@ class SheetSurface extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: t.colors.background,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppTokens.radiusLg),
-        ),
+        borderRadius:
+            borderRadius ??
+            const BorderRadius.vertical(
+              top: Radius.circular(AppTokens.radiusLg),
+            ),
       ),
       padding: padding,
       child: child,

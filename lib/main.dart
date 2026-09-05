@@ -15,9 +15,9 @@ import 'app/app.dart';
 // 排查布局问题时把对应开关置 true 后热重载（r），用完记得关回 false。
 // 仅 debug/profile 构建生效（release 下 assert 被剥离，无效果）。
 // 配套的可视化调试面板：flutter run 控制台按 v 打开 DevTools → Widget Inspector。
-const bool kDebugPaintSize = true; // 所有组件画青色边框 + padding 可视化（≈ CSS outline）
-const bool kDebugPaintBaselines = true; // 文字基线（对齐排 troubleshooting 用）
-const bool kDebugRepaintRainbow = true; // 重绘彩虹（颜色变化 = 发生了重绘，查多余重绘）
+const bool kDebugPaintSize = false; // 所有组件画青色边框 + padding 可视化（≈ CSS outline）
+const bool kDebugPaintBaselines = false; // 文字基线（对齐排 troubleshooting 用）
+const bool kDebugRepaintRainbow = false; // 重绘彩虹（颜色变化 = 发生了重绘，查多余重绘）
 
 void main() {
   debugPaintSizeEnabled = kDebugPaintSize;

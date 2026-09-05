@@ -25,7 +25,7 @@ agent_created: true
 4. 【加密对齐】vault 信封格式必须与桌面端 `electron/main/module/vault/crypto.ts` 逐字节一致（AES-256-GCM + PBKDF2 iter=200000，JSON 信封 `{v,kdf,iter,salt,iv,ct}` 全 b64）。改加密相关代码前先读「加密（vault 复刻）」一节。
 5. 【sqlite3 hooks】`pubspec.yaml` 里的 `hooks.user_defines.sqlite3`（Windows 用系统 `winsqlite3.dll`、Android 用裸名 `sqlite3` + jniLibs 手动分发 .so）是踩坑后固化的配置，**严禁删除或改回默认**（默认 hook 从 GitHub 下载 dll 国内超时；`name_android` 填 `libsqlite3.so` 会被再装饰成 `liblibsqlite3.so.so` 崩溃）。
 6. 【UI 约定·forui】全 App UI 组件用 **forui（shadcn 风格）**，详见下方「UI 体系（forui）」。三条铁律：① Material 导入统一用 `package:material_ui/material_ui.dart`（**严禁与 `flutter/material.dart` 混用**——两套平行 Material 类，混用会断 Theme 继承链、ThemeData 类型不兼容）；② 严禁硬编码颜色，取色一律 `context.theme.colors.*`，字体一律 `context.theme.typography.body.*`；③ feature-first 原子拆分，单文件职责单一，每个功能/组件带中文注释。
-7. 【同步白名单】新增可同步表必须是 **TEXT 主键**，且同时改两端白名单：移动端 `lib/core/sync/sync_service.dart` 的 `kSyncableTables` + 桌面端 `electron/main/module/sync/syncModule.ts` 的白名单（改桌面端需重启 Electron）。幂等写只有 `INSERT OR REPLACE`，传输当前为明文 JSON（仅限受信局域网，会话加密是 P3 TODO）。
+7. 【同步白名单】新增可同步表**默认 TEXT 主键**（INTEGER 主键表需双端 pk 适配，先例见「主题对话」小节），且同时改两端白名单：移动端 `lib/core/sync/sync_service.dart` 的 `kSyncableTables` + 桌面端 `electron/main/module/sync/syncModule.ts` 的 `SYNCABLE_TABLES` 与 `tablePk()`（PC UI 另有 `src/store/useSync.ts` 的 `SYNC_TABLES`；改桌面端需重启 Electron）。幂等写只有 `INSERT OR REPLACE`（移动端）/ `ON CONFLICT(pk) DO UPDATE`（桌面端 newSql upsert），传输当前为明文 JSON（仅限受信局域网，会话加密是 P3 TODO）。
 8. 【文档同步】每次大改动后同步更新本 SKILL.md（功能域状态、新雷区、新约定）；发现文档与代码不符，直接修正文档。
 
 ## 技术栈与桌面端对应
@@ -98,6 +98,7 @@ test/
 5. **drift 行类名不是猜的**：二维码历史是 `QrHistoryData`（不是 `QrHistoryRow`）；新增组件引用行类型前先 grep 确认。
 6. **`FTextField` 没有 `onChange` 命名参数**（2026-09-05 实踩，编译期报错）：监听输入变化必须写在 `FTextFieldControl.managed(controller:, onChange:)` 里，回调收 `TextEditingValue`（取文本用 `controller.text` 或 `_.text`）。直接写在 FTextField 上报「No named parameter with the name 'onChange'」。先例：`qr_page.dart`、`note_list_page.dart`。
 7. **FThemeData 构造期定制样式：先实例 copyWith 再传实例**（2026-09-05 实踩，两连报）：构造器的 `scaffoldStyle:`（等 style 参数）收 **`FScaffoldStyle` 实例**，传 `(s) => ...` 回调报 Function→FScaffoldStyle 类型错；正确姿势 = `base.scaffoldStyle.copyWith(...)` 先造出新实例再传入。而**样式实例自身 copyWith 的 delta 参数**（如 `childPadding: EdgeInsetsGeometryDelta?`）是 **Delta 类**（官方工厂 `EdgeInsetsGeometryDelta.add/.scale/.value`，`scale(k)` 即全边等比缩放），**不是 lambda**——传函数同样类型错。变量名先定义再用（`isDark ? 0.06 : 0.04` 写在只有 `isLight` 的作用域直接 Undefined name）。
+8. **forui typography 是两级结构**（2026-09-05 实踩）：`typography.body.{xs,sm,md,lg,xl}` / `typography.display.*`，**不存在 `typography.xs` 这类直取**——写错报「The getter 'xs' isn't defined for the type 'FTypography'」。
 
 ## 页面操作规范（共有交互，2026-09-05 起：新功能必须遵循，旧功能逐步对齐）
 > 目的：让同类操作在全 App 有同一心智。每新增一种共有交互先在此登记模式与组件，再实现；改先例时同步本节。
@@ -133,7 +134,7 @@ test/
 - 发现：UDP 广播端口 **47123**，请求包 `JIANLI_SYNC_DISCOVER_V1`，应答 `JIANLI_SYNC_INFO_V1|{json:{name,id,platform}}`（`core/sync/sync_discovery.dart`；PC 端 `syncModule.ts` 同协议应答）。
 - **⚠️ 热点场景发现雷区（2026-09-05 修复）**：扫描**不能只发 255.255.255.255**——手机开热点给 PC 时，热点接口不是手机的默认路由，受限广播从默认网络口出去、到不了热点网段（PC 收不到请求 → 不应答），表现为「PC 能搜到手机、手机搜不到 PC」的不对称。修复：`scan()` 走 `broadcastCandidates()` **逐 IPv4 网卡发 `/24` 定向广播（x.y.z.255）+ 全网广播兜底**，OS 按直连路由选对网卡，应答按 ip 去重。若修复后仍搜不到 PC，优先查 Windows 防火墙对 Electron 入站 UDP 47123 的放行（手动 IP 兜底仍可用）。
 - 数据面：HTTP 端口 **47124** —— `GET /ping` 设备信息、`POST /sync`（body `{table, rows}`）、`GET /export?table=`（对端拉取）。
-- 白名单 9 张 TEXT 主键表：habit_def / habit_checkin / todo_list / todo_tags / note_book / basic_info / countdown / qr_history / qr_template；行全列 toString 后按主键 `INSERT OR REPLACE`；写入前按 `PRAGMA table_info` 过滤实际存在的列，双端 schema 差异（桌面端旧 SQL 层遗留列）免疫。
+- 白名单 12 张表（2026-09-05 加入主题对话三表）：habit_def / habit_checkin / todo_list / todo_tags / note_book / basic_info / countdown / qr_history / qr_template（TEXT 主键 key）+ conversation_theme / conversation / conversation_tag（**INTEGER 自增 id 主键**，行内携带 id 值，`INSERT OR REPLACE` 按 id 幂等；桌面端 `tablePk()` 同步适配）。行全列 toString 后按主键幂等写；写入前按 `PRAGMA table_info` 过滤实际存在的列，双端 schema 差异（桌面端旧 SQL 层遗留列）免疫。
 - **模拟器雷区**：NAT 广播不通扫不到宿主 → 同步页支持手动填 IP，Android 模拟器固定填 `10.0.2.2`；真机走正常广播。PC 端同步入口：系统与资源 → 局域网同步（扫描 / 手动 IP(ip:port) / 推送 / 拉取）。
 - vault 类数据跨设备：密钥为设备绑定/口令派生，**不能直传设备密钥**，需用户口令重新封装（会话加密 P3）。
 
@@ -151,6 +152,19 @@ test/
 - 详情页：分类 chip 旁 Wrap 展示彩色标签徽标。
 - 编辑页 2026 重设计：标题/正文无 label 输入 + 「分类与标签」AppCard（分类 chips 单选[已有分类+新建抽屉]、标签 chips 多选[新建抽屉创建后自动选中]）+ 底部 `GradientButton` 渐变保存（顶栏对勾保留）。
 - 共用组件 `features/notes/components/note_tag_chip.dart`：`NoteTagChip`（可点，选中=标签色 16% 软底+对勾）/ `NoteTagBadge`（只读徽标，色点+名称）。
+
+## 主题对话（移动端对齐 PC，2026-09-05 打通同步 + 功能对齐）
+**无数据根因与同步打通**：桌面端主题对话三表（`conversation_theme` / `conversation` / `conversation_tag`）用 **INTEGER 自增 id 主键**（newSql 默认），不满足旧「TEXT 主键」同步规则而长期未入白名单 → 移动端永远拉不到数据。2026-09-05 双端加入白名单并做 **pk 按表适配**：桌面端 `syncModule.ts` 新增 `tablePk()`（conversation* → `id`，其余 → `key`），upsert 走 `ON CONFLICT(id)`；PC UI 的 `src/store/useSync.ts` `SYNC_TABLES` 同步加表；移动端 `kSyncableTables` 直接加表（通用 INSERT OR REPLACE 天然兼容 id）。**改桌面端同步必须重启 Electron。**
+
+**桌面端表结构速查**（来源 `src/views/themeConversation/{db,types}.ts`，全部 snake_case、自增 id）：
+- `conversation_theme`：title / tags(JSON 标签 id 数组) / create_time / update_time / remark / parent_id(子主题，TEXT 存父 id)
+- `conversation`：theme_id / content / is_rich('1'=HTML) / ref_ids(引用 JSON) / cross_refs(跨主题引用 JSON) / tags / create_time / annotate_time / pinned('1'置顶) / is_deleted('1'软删)
+- `conversation_tag`：name / color('#RRGGBB') / scope(theme|conversation) / create_time
+
+**移动端已对齐**（`conversation_repository.dart` + `conversation_page.dart`）：主题列表（update_time 倒序 + 消息数角标 + 主题标签彩色徽标）；新建/编辑主题（标题+备注，底部抽屉 + 底部固定保存条——页面保存规范）；删除主题（子主题禁止 + 级联删消息，showFDialog 确认）；消息流（置顶 pinned 排前 + 图标、is_rich='1' 走 HtmlWidget 渲染 PC vue-quill 富文本、发送追加纯文本消息并刷新主题 update_time）；**引用关系**（2026-09-05）——① 气泡上显示四类关系 tag：`引用 N`（ref_ids）/`跨主题 N`（cross_refs）/`被引用 N`（同主题 ref_ids 反扫）/`被跨主题引用 N`（cross_refs 反扫，对齐 PC 气泡 footer），点击 tag 打开对应关系抽屉；② 长按气泡出操作菜单（对齐 PC 右键菜单子集：正向链接/反向链接/跨主题引用查看/置顶切换/删除）；③ 关系抽屉为**右侧抽屉**（`side: FLayout.rtl` + SheetSurface 左圆角），**点击条目跳转定位**：同主题 `Scrollable.ensureVisible` + 气泡高亮 1.8s（GlobalKey per message + AnimatedContainer），跨主题 `push('/conversation/<themeId>?highlight=<convId>')`（路由透传 highlight，进页后定位一次）。引用解析 `loadRefLinks`（全表 Dart 扫描，ref_ids/cross_refs JSON 解析）；气泡计数经 `allConversationsProvider` 全量流一次扫描建 `sameBack/crossBack` 两张 Map。
+**移动端裁剪未做**（桌面端有）：发起引用（把消息挂入输入框草稿）/ 发起跨主题引用、标注 annotate_time、多选、跨主题搜索、导出 Markdown、标签改名/改色/删除（新建已完成）、富文本编辑、子主题发起——需要时按桌面端 `useThemeConversation.ts` 语义补齐。
+**消息标签（2026-09-05）**：输入框上方固定工具条（「标签」入口 + 发送草稿 chips 可点掉，对齐 PC 输入工具条）；标签选择走查询抽屉（`showFilterSheet` title=选择标签/完成/清空，草稿模式），抽屉内「＋新建标签」再叠一层输入抽屉（scope='conversation'，配色对齐桌面 TAG_COLORS 按序取色，创建后自动选中）；发送时 tags 写 JSON（`addMessage(tagIds:)`）；长按菜单「编辑标签」改已发消息（`updateMessageTags`）；气泡显示消息标签彩色徽标。
+**排障**：主题列表角标 0 条 → 计数口径必须与 PC `loadThemeCounts` 一致（`GROUP BY theme_id` **不过滤 is_deleted**，NULL 免疫）；消息列表软删过滤需 NULL 安全（`isNull() | equals('0')`）；输入框与筛选按钮等高 → **双端写死同值**（forui 控件内部高度随字号缩放漂移；`FTappable` 不上报固有高度，IntrinsicHeight 会把按钮压小）。
 
 ## 构建与验证
 ```bash
@@ -266,7 +280,7 @@ flutter emulators --launch Pixel_8
 | reminder | `/reminders` | 三模式 time/interval/stateful，启停联动本地通知；过滤 `source==='todo'`；**视觉焕新**：**PageBanner 琥珀(3)**（全部/启用中统计）+ 专属色图标盘 + StaggerList |
 | countdown | `/countdown` | 独立表（end_time 毫秒基准 + paused_remaining，与桌面同构抗休眠）+ 暂停/恢复/重置；**视觉焕新**：大计时器整卡 **PageBanner 同款紫(0) 渐变**（白色 RingProgress + `trackColor` 半透明白 + 装饰圆） |
 | notes | `/notes` | 列表（**关键词页内实时搜索 + 「查询抽屉」筛选**：分类单选/标签多选，已生效条件可点掉）/ 详情（flutter_widget_from_html 渲染 + 彩色标签徽标）/ 编辑（轻量文本 + 分类/标签 chips + **底部固定保存条**，html 段落化落库，桌面 vue-quill 可渲染；flutter_quill 富文本 P2）；**标签能力已全量对齐 PC**（内容+标签双搜索、多选筛选、新建/软删，见「笔记标签双端契约」小节）；**视觉焕新**：PageBanner 琥珀(3)（结果数/标签数统计）+ 卡片彩色标签徽标 + StaggerList |
-| conversation | `/conversation` | 主题列表 + 消息流 + 新建（过滤 `is_deleted`）；LLM 后端未定；**视觉焕新**：**PageBanner 粉(4)**（主题数统计）+ `_ThemeCard`（粉首字头像盘）+ StaggerList；消息气泡改粉 `accentSoft` 软底 + 小头像盘 |
+| conversation | `/conversation` | **已对齐 PC（2026-09-05，同步已打通——见「主题对话」专节）**：主题列表（update_time 倒序 + 消息数角标 + 主题标签彩色徽标）/ 新建·编辑主题（底部抽屉+固定保存条）/ 删除主题（子主题禁止+级联删消息）/ 消息流（置顶排前 + is_rich 走 HtmlWidget 渲染 PC 富文本 + 长按软删）/ 发送追加记录；LLM 后端未定；**视觉焕新**：PageBanner 粉(4) + StaggerList + 粉软底气泡 |
 | ebook | `/ebook` | file_picker 导入 → sha256 content_hash 身份键 → epubx（PascalCase 字段）/ TXT 正则分章 → 章节渲染 + 按章进度；PDF、CFI 精确进度未做；**视觉焕新**：**PageBanner 青(5)**（藏书数）+ **CustomScrollView+SliverGrid** 封面网格（按标题 hashCode 渐变 + 进度条）；阅读器正文 pageTint 护眼底 |
 | twofactor | `/twofactor` | TOTP 全算法 + vault 口令解锁 + 动态码卡片（复制/倒计时/锁定清内存）+ 添加；**视觉焕新**：**PageBanner 紫(0)**（账户数）+ 解锁表单 pageTint+紫渐变图标盘 + `AccountCodeTile` 紫图标盘 |
 | password_vault | `/password-vault` | 移动端口令库（同信封格式 .jlv）；**视觉焕新**：**PageBanner 蓝(1)**（条目数）+ 门禁表单 pageTint+蓝渐变图标盘 + 条目首字母蓝 `accent(1)` 渐变 SquircleBox + StaggerList |
@@ -281,7 +295,7 @@ flutter emulators --launch Pixel_8
 2. 需要数据表：按「drift 三大铁律」加表定义并注册，跑 build_runner，老用户写 onUpgrade 迁移。
 3. 页面 UI 按「UI 体系（forui）」章节的骨架与组件对照表编写；在 `lib/app/router/app_router.dart` 加路由，并在 `lib/features/hubs/hub_pages.dart` 对应分组页加入口（对应桌面端「侧边栏菜单 + 可见开关」的移动端做法）。
 4. 涉及到点提醒：在 `core/notifications/notification_service.dart` 的 `NotificationChannels` 注册渠道，reminders → 通知计划翻译。
-5. 需要双端同步：表必须 TEXT 主键，同时加移动端 `kSyncableTables` 与桌面端 `syncModule.ts` 白名单。
+5. 需要双端同步：默认 TEXT 主键（INTEGER 主键表参考「主题对话」的 pk 按表适配先例），同时加移动端 `kSyncableTables` 与桌面端 `syncModule.ts` 白名单（PC UI `useSync.ts` 的 `SYNC_TABLES` 别漏）。
 6. `flutter analyze` + `flutter test` 过基线，更新本 SKILL.md 的功能域清单。
 
 ## 使用方式
@@ -364,4 +378,5 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 - 2026-09-05：**阅览模式二次修订（基准字号体系）**——用户反馈 v1「切换无效 + 普通字体太大」（根因：页内 1.15 倍缩放视觉无感且只挂两个阅读页）。v2 改为**基准字号体系**：`AppTokens.baseFontSizeNormal=12 / baseFontSizeLarge=18`，`app.dart` 读阅览模式 → 传 `baseFontSize` 进 `AppTheme.build`（构造期 `typography.scale(sizeScalar: 基准/forui默认md)`）+ `materialLight/materialDark`，全 App（含组件内部样式）随档位等比缩放；笔记详情/阅读器移除页内缩放、正文字号直取 `md.fontSize`；设置面板卡片副标题显示「基准 Npx」。同步修正技能「主题体系/全局配置」小节。analyze/run 交用户。
 - 2026-09-05：**三处视觉修正（真机反馈，二次）**——修复编译错误 2 个（`isDark` 未定义；`scaffoldStyle` 参数收 FScaffoldStyle 实例而非回调，delta 用官方 `EdgeInsetsGeometryDelta.scale(k)` 类工厂——雷区 #7）；随后按截图升级为**全局渐变背板架构**：app.dart 根容器画「顶部强冷调→background」渐变 + `_BackdropPainter` 图案（大圆×2/圆环×1），scaffold 透明、header 默认透明、`pageTint` 返回透明色，三处色差/白边一次性消灭；新增规则「页面禁止自绘不透明整页底色」。虚拟机启动完整命令序列已固化到「构建与验证」。`dart format` 全库通过，analyze/run 交用户。
 - 2026-09-05：**页面操作规范落地（需求变更，先例=可归类笔记）**——① 新章节「页面操作规范（共有交互）」：查询/筛选统一走**通用查询抽屉**（新组件 `lib/app/ui/filter_sheet.dart`：顶部「查询」+关闭图标、中部选项滚动、底部固定「重置/查询」；草稿模式——打开时从已生效条件初始化，重置只清草稿，查询才应用并经 pop 值返回）；保存/提交按钮**统一固定底部**（`Column[Expanded(内容), SafeArea+GradientButton]`，头部不放重复保存入口）。② 可归类笔记先例改造：列表页分类/标签行内 chips 移入查询抽屉，搜索框右侧加筛选按钮（激活时琥珀软底+条件数角标），已生效条件以可点掉摘要 chip 呈现；编辑页保存条固定底部、头部对勾入口移除。后续新功能按该章节模式实现。
+- 2026-09-05：**主题对话对齐 PC（需求变更）**——① 根因：桌面端主题对话三表（conversation_theme/conversation/conversation_tag）为 INTEGER 自增 id 主键，不满足旧 TEXT 主键同步规则而未入白名单 → 移动端无数据；② 双端白名单加三表并做 pk 按表适配（桌面端 `tablePk()` + `ON CONFLICT(id)`；PC `useSync.ts` 表清单同步；改桌面端需重启 Electron）；③ 移动端功能对齐：主题消息数角标/主题标签彩色徽标/编辑主题（抽屉+固定保存条）/删除主题（子主题禁止+级联）/消息置顶排序/is_rich 富文本 HtmlWidget 渲染/长按软删消息/发送后刷新主题 update_time；裁剪项（引用/标注/多选/搜索/导出 md/标签管理）记入「主题对话」专节待办。全局红线 7 与落地清单第 5 条的「TEXT 主键」规则已改为「按表 pk 适配」。桌面端改动见 jianli-app 技能 sync.md。
 - 剩余规划（截至 2026-09-05）：真机全量验证、桌面 25 套主题映射到 forui、flutter_quill 富文本编辑、PDF / CFI 精确进度、interval 通知精细化、QR 样式、同步会话加密、conversation LLM 后端、UI 现代化落地（按 `references/ui-modernization-plan.md` 分阶段）。

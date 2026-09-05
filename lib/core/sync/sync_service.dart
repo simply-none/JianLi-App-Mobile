@@ -14,7 +14,8 @@ import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
 import 'sync_discovery.dart';
 
-/// 可同步表白名单（TEXT 主键表；INTEGER 主键表 P3 再议）
+/// 可同步表白名单（主题对话三表为 INTEGER 自增 id 主键，2026-09-05 加入——
+/// INSERT OR REPLACE 按 id 幂等，桌面端 tablePk 同步适配）
 const List<String> kSyncableTables = [
   'habit_def',
   'habit_checkin',
@@ -25,6 +26,9 @@ const List<String> kSyncableTables = [
   'countdown',
   'qr_history',
   'qr_template',
+  'conversation_theme',
+  'conversation',
+  'conversation_tag',
 ];
 
 /// 同步服务
