@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
 import '../repositories/ebook_repository.dart';
@@ -17,9 +18,11 @@ class BookshelfPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final shelfAsync = ref.watch(StreamProvider<List<EbookBookshelfData>>(
-      (ref) => ref.watch(ebookRepositoryProvider).watchBookshelf(),
-    ));
+    final shelfAsync = ref.watch(
+      StreamProvider<List<EbookBookshelfData>>(
+        (ref) => ref.watch(ebookRepositoryProvider).watchBookshelf(),
+      ),
+    );
 
     return FScaffold(
       header: FHeader.nested(
@@ -45,25 +48,42 @@ class BookshelfPage extends ConsumerWidget {
                 subtitle: '支持 EPUB / TXT（PDF 列 P2）',
               );
             }
-            return GridView.builder(
-              padding: const EdgeInsets.only(top: 12, bottom: 24),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 0.62,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-              ),
-              itemCount: books.length,
-              itemBuilder: (context, i) {
-                final book = books[i];
-                return _BookCell(
-                  book: book,
-                  onOpen: () => context.push(
-                    '/ebook/reader?path=${Uri.encodeComponent(book.filePath)}',
+            // 页面专属青渐变横幅 + 封面网格（Sliver 组合，横幅随页面滚动）
+            return CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: PageBanner(
+                    icon: FLucideIcons.bookOpenText,
+                    title: '电子书',
+                    subtitle: 'EPUB / TXT 随身阅读',
+                    accentIndex: 5,
+                    stats: [('${books.length}', '本藏书')],
                   ),
-                  onRemove: () => ref.read(ebookRepositoryProvider).removeBook(book),
-                );
-              },
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          childAspectRatio: 0.62,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                        ),
+                    delegate: SliverChildBuilderDelegate((context, i) {
+                      final book = books[i];
+                      return _BookCell(
+                        book: book,
+                        onOpen: () => context.push(
+                          '/ebook/reader?path=${Uri.encodeComponent(book.filePath)}',
+                        ),
+                        onRemove: () =>
+                            ref.read(ebookRepositoryProvider).removeBook(book),
+                      );
+                    }, childCount: books.length),
+                  ),
+                ),
+              ],
             );
           },
         ),
@@ -83,7 +103,9 @@ class BookshelfPage extends ConsumerWidget {
     if (context.mounted) {
       showFToast(
         context: context,
-        title: Text(book == null ? '仅支持 EPUB / TXT' : '已导入《${book.title ?? book.name}》'),
+        title: Text(
+          book == null ? '仅支持 EPUB / TXT' : '已导入《${book.title ?? book.name}》',
+        ),
       );
     }
   }
@@ -91,7 +113,11 @@ class BookshelfPage extends ConsumerWidget {
 
 /// 单本书（封面占位 + 阅读进度条）
 class _BookCell extends StatelessWidget {
-  const _BookCell({required this.book, required this.onOpen, required this.onRemove});
+  const _BookCell({
+    required this.book,
+    required this.onOpen,
+    required this.onRemove,
+  });
 
   final EbookBookshelfData book;
   final VoidCallback onOpen;
@@ -101,7 +127,9 @@ class _BookCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.theme;
     // 按标题取专属强调色（同一本书颜色稳定）
-    final idx = (book.title ?? book.name ?? '').hashCode.abs() % AppTokens.accents.length;
+    final idx =
+        (book.title ?? book.name ?? '').hashCode.abs() %
+        AppTokens.accents.length;
     final accent = AppTokens.accent(idx);
     final percent = (book.percent ?? 0).clamp(0.0, 1.0);
     return FTappable(
@@ -114,14 +142,19 @@ class _BookCell extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 gradient: AppTokens.accentGradient(accent),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(12),
+                ),
               ),
               padding: const EdgeInsets.all(10),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(FLucideIcons.bookOpenText,
-                      color: Colors.white.withValues(alpha: 0.92), size: 26),
+                  Icon(
+                    FLucideIcons.bookOpenText,
+                    color: Colors.white.withValues(alpha: 0.92),
+                    size: 26,
+                  ),
                   const SizedBox(height: 10),
                   Text(
                     book.title ?? book.name ?? '未命名',
@@ -149,7 +182,9 @@ class _BookCell extends StatelessWidget {
             height: 4,
             decoration: BoxDecoration(
               color: accent.withValues(alpha: percent),
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(12),
+              ),
             ),
           ),
         ],

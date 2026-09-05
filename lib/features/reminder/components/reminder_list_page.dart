@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -41,8 +42,9 @@ class ReminderListPage extends ConsumerWidget {
         error: (e, _) => Center(
           child: Text(
             '加载失败：$e',
-            style: context.theme.typography.body.sm
-                .copyWith(color: context.theme.colors.error),
+            style: context.theme.typography.body.sm.copyWith(
+              color: context.theme.colors.error,
+            ),
             textAlign: TextAlign.center,
           ),
         ),
@@ -61,6 +63,17 @@ class ReminderListPage extends ConsumerWidget {
               children: [
                 StaggerList(
                   children: [
+                    // 页面专属琥珀渐变横幅（与效率分组页「提醒」入口色对齐）
+                    PageBanner(
+                      icon: FLucideIcons.bell,
+                      title: '提醒管理',
+                      subtitle: '定点 / 周期 / 多状态，一个都不少',
+                      accentIndex: 3,
+                      stats: [
+                        ('${items.length}', '全部提醒'),
+                        ('${items.where((e) => e.enabled).length}', '启用中'),
+                      ],
+                    ),
                     for (final item in items) _ReminderTile(item: item),
                   ],
                 ),
@@ -134,7 +147,9 @@ class ReminderListPage extends ConsumerWidget {
                   final t = title.text.trim();
                   final timeParts = time.text.trim().split(':');
                   if (t.isEmpty || timeParts.length != 2) return;
-                  ref.read(reminderRepositoryProvider).createReminder(
+                  ref
+                      .read(reminderRepositoryProvider)
+                      .createReminder(
                         title: t,
                         content: content.text.trim(),
                         time: time.text.trim(),
@@ -179,7 +194,9 @@ class _ReminderTile extends ConsumerWidget {
             gradient: AppTokens.accentGradient(AppTokens.accent(3)),
             alignment: Alignment.center,
             child: Icon(
-              item.isStateful ? FLucideIcons.refreshCw : FLucideIcons.alarmClock,
+              item.isStateful
+                  ? FLucideIcons.refreshCw
+                  : FLucideIcons.alarmClock,
               color: Colors.white,
               size: 18,
             ),
@@ -193,14 +210,17 @@ class _ReminderTile extends ConsumerWidget {
                   item.title,
                   style: t.typography.body.md.copyWith(
                     fontWeight: FontWeight.w600,
-                    decoration:
-                        item.enabled ? null : TextDecoration.lineThrough,
+                    decoration: item.enabled
+                        ? null
+                        : TextDecoration.lineThrough,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitleParts.join(' · '),
-                  style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                  style: t.typography.body.sm.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
                 ),
               ],
             ),

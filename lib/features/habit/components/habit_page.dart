@@ -10,6 +10,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/animated_check.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -72,6 +73,17 @@ class HabitPage extends ConsumerWidget {
                 children: [
                   StaggerList(
                     children: [
+                      // 页面专属绿渐变横幅（与效率分组页「习惯」入口色对齐）
+                      PageBanner(
+                        icon: FLucideIcons.calendarCheck,
+                        title: '习惯打卡',
+                        subtitle: '每天进步一点点，坚持带来大改变',
+                        accentIndex: 2,
+                        stats: [
+                          ('${habits.length}', '启用习惯'),
+                          ('${checked.length}', '今日已完成'),
+                        ],
+                      ),
                       for (var i = 0; i < habits.length; i++)
                         _HabitCard(
                           habit: habits[i],
@@ -151,7 +163,9 @@ class HabitPage extends ConsumerWidget {
                 onPress: () {
                   final name = nameController.text.trim();
                   if (name.isEmpty) return;
-                  ref.read(habitRepositoryProvider).createHabit(
+                  ref
+                      .read(habitRepositoryProvider)
+                      .createHabit(
                         name: name,
                         weekDays: weekDays.toList()..sort(),
                         reminderTime: timeController.text.trim(),
@@ -197,7 +211,11 @@ class _HabitCard extends StatelessWidget {
             radius: 13,
             gradient: AppTokens.accentGradient(accent),
             alignment: Alignment.center,
-            child: Icon(FLucideIcons.calendarCheck, color: Colors.white, size: 20),
+            child: Icon(
+              FLucideIcons.calendarCheck,
+              color: Colors.white,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -208,14 +226,15 @@ class _HabitCard extends StatelessWidget {
                   habit.name,
                   style: t.typography.body.md.copyWith(
                     fontWeight: FontWeight.w600,
-                    decoration:
-                        checked ? TextDecoration.lineThrough : null,
+                    decoration: checked ? TextDecoration.lineThrough : null,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '频次 ${habit.freqType}${habit.reminderTimes.isEmpty ? '' : ' · 提醒 ${habit.reminderTimes.join('/')}'}',
-                  style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                  style: t.typography.body.sm.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
                 ),
               ],
             ),
@@ -227,35 +246,14 @@ class _HabitCard extends StatelessWidget {
             size: FButtonSizeVariant.sm,
             onPress: onDelete,
             semanticsLabel: '删除',
-            child: Icon(FLucideIcons.trash2, size: 18, color: t.colors.mutedForeground),
+            child: Icon(
+              FLucideIcons.trash2,
+              size: 18,
+              color: t.colors.mutedForeground,
+            ),
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 近 7 天打卡记录条（简化：仅展示占位，数据接入见 recentCheckinMap）
-class _WeekStrip extends StatelessWidget {
-  const _WeekStrip();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.theme;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < 7; i++)
-          Container(
-            width: 10,
-            height: 10,
-            margin: const EdgeInsets.only(left: 3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: i == 6 ? t.colors.primary : t.colors.muted,
-            ),
-          ),
-      ],
     );
   }
 }

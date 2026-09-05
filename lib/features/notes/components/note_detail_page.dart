@@ -32,8 +32,9 @@ class NoteDetailPage extends ConsumerWidget {
         suffixes: [
           FHeaderAction(
             icon: const Icon(FLucideIcons.pencil),
-            onPress: () =>
-                context.push('/notes/edit?noteKey=${Uri.encodeComponent(noteKey)}'),
+            onPress: () => context.push(
+              '/notes/edit?noteKey=${Uri.encodeComponent(noteKey)}',
+            ),
           ),
           FHeaderAction(
             icon: Icon(FLucideIcons.trash2, color: t.colors.destructive),
@@ -65,18 +66,52 @@ class NoteDetailPage extends ConsumerWidget {
                         radius: 12,
                         gradient: AppTokens.accentGradient(AppTokens.accent(3)),
                         alignment: Alignment.center,
-                        child: Icon(FLucideIcons.notebookPen, color: Colors.white, size: 18),
+                        child: Icon(
+                          FLucideIcons.notebookPen,
+                          color: Colors.white,
+                          size: 18,
+                        ),
                       ),
                       const SizedBox(width: 12),
-                      Expanded(child: Text(note.title, style: t.typography.body.xl)),
+                      Expanded(
+                        child: Text(note.title, style: t.typography.body.xl),
+                      ),
                     ],
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Text(
-                    '${note.category ?? '未分类'} · 更新于 ${note.updateTime}',
-                    style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                  child: Row(
+                    children: [
+                      // 分类 chip：琥珀软底 + 专属色文字（与笔记域强调色一致）
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTokens.accentSoft(
+                            context,
+                            AppTokens.accent(3),
+                          ),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          note.category ?? '未分类',
+                          style: t.typography.body.xs.copyWith(
+                            color: AppTokens.accent(3),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '更新于 ${note.updateTime}',
+                        style: t.typography.body.sm.copyWith(
+                          color: t.colors.mutedForeground,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const FDivider(),

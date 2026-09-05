@@ -121,14 +121,15 @@ class AppTokens {
 | `ConfettiOverlay` | `confetti_overlay.dart` | 完成庆祝彩带（`confetti` 包或自绘，自动消失） | 连续打卡达成 / 专注结束 |
 | `PageHero` | `page_hero.dart` | 列表→详情共享元素（Hero tag） | 笔记 / 电子书封面 |
 | `SquircleBox` | `squircle_box.dart` | 超椭圆容器（`ContinuousRectangleBorder` 近似 squircle） | 头像 / 图标底盘 |
+| `PageBanner` | `page_banner.dart` | **功能页渐变横幅**（Phase 3→4 新增）：页面专属强调色 `accentGradient` + 白色装饰圆 + 半透明图标盘 + 白字标题/统计（纯数值自动 count-up） | 13 个功能页顶部（色与 Hub 入口对齐） |
 
 > 规则：这些原子组件**只吃 `context.theme` / `AppTokens`**，保持无业务依赖，与现有 `AppCard` / `SectionHeader` / `EmptyState` / `StatBlock` / `RingProgress` 同目录共存，逐步替换而非一次性重写。
 
 ### 2.3 现有原子升级（就地改，向后兼容）
 
 - `AppCard`：默认加 `AppTokens.elevation(context, level: 1)`（可由参数关掉），圆角提至 `radiusMd`；`onTap` 时包裹 `ScaleTransition` 轻微缩放（按压 0.97）。
-- `RingProgress`：把 `progress` 改为带 `Animation<double>` 的 tween（外部用 `AnimatedBuilder`），倒计时 / 番茄 / 2FA 周期平滑过渡而非跳变。
-- `EmptyState`：增加可选 `illustration` 参数（Lottie / SVG 插画），缺省仍是图标。
+- `RingProgress`：把 `progress` 改为带 `Animation<double>` 的 tween（外部用 `AnimatedBuilder`），倒计时 / 番茄 / 2FA 周期平滑过渡而非跳变；Phase 3→4 追加可选 `trackColor`（放彩色渐变底上传半透明白）。
+- `EmptyState`：增加可选 `illustration` 参数（Lottie / SVG 插画），缺省仍是图标；Phase 3→4 缺省图标升级为**主色软底 `SquircleBox` 盘**（76×76）。
 - `StatBlock`：内部可选委托给 `AnimatedStat`，旧调用方零改动。
 
 ---
@@ -248,6 +249,13 @@ void haptic(HapticType type) {
 - [ ] 弹层/对话：`showFSheet`/`showFDialog` scale 入场包装。
 - [ ] 验收：逐屏走查 + 真机录屏对比。
 
+### Phase 3.5 — 全页彩焕「PageBanner 渐变横幅」✅ 2026-09-05 完成（静态检查过，观感待用户真机验证）
+- [x] 新增 `lib/app/ui/page_banner.dart`：页面专属强调色渐变横幅（accentGradient + 装饰圆 + 半透明图标盘 + 白字统计行，`accentIndex` 与 Hub 入口色对齐）。
+- [x] 13 个功能页接线：habit 绿(2) / todo 蓝(1) / pomodoro+records 红(6) / countdown 紫(0，大计时器整卡渐变 + 白色进度环) / reminder 琥珀(3) / notes 琥珀(3，详情分类软底 chip) / conversation 粉(4，消息气泡 accentSoft 软底) / bookshelf 青(5，CustomScrollView+SliverGrid) / 2FA 紫(0，解锁表单渐变盘) / 密码库 蓝(1) / 保险箱 绿(2) / QR 琥珀(3，横幅置于 FTabs 上方) / 同步 青(5)。
+- [x] 组件增强：`RingProgress` 加可选 `trackColor`；`EmptyState` 缺省图标升级主色软底盘。
+- [x] 顺手清理：删 habit `_WeekStrip` 死代码；清 4 条存量 lint（unused_element / curly_braces ×2 / settings_panel 补 mounted 守卫）。
+- [ ] 验收：`flutter analyze` / `flutter test` / `flutter run -d emulator-5554` **由用户本地执行**（分工铁律，见 §6.5）。
+
 ### Phase 4 — 点睛与无障碍
 - [ ] 空态插画（Lottie / SVG）。
 - [ ] 完成庆祝（专注结束、连续打卡）。
@@ -274,11 +282,12 @@ void haptic(HapticType type) {
 
 ---
 
-## 6.5 构建与运行（**交给用户本地执行**，Agent 不代跑）
+## 6.5 构建与运行（**全部命令由用户本地执行**，Agent 不代跑任何 flutter/dart 命令）
 
-> **分工约定（2026-09-05 定）**：Agent 侧无图形界面、无法截图验证观感，且 `flutter build` 后台跑 3~4 分钟仍未完成（用户明确嫌慢）。
-> 因此：Agent 只负责改码 + `flutter analyze` / `flutter test` + **给出命令**；**构建与运行一律由用户在本地终端执行**。
-> 不要再替用户后台跑 `flutter build apk` / `flutter run`，直接把本节命令交给他。
+> **分工铁律（2026-09-05 用户明确指示，取代旧「30 秒规则」与「Agent 可跑 analyze/test」口径）**：
+> **Agent 只负责写代码与改文档；一切 flutter/dart 命令（analyze / test / build / run / pub get / build_runner…）一律由用户在本地终端执行。**
+> 实踩依据：① Agent 侧无图形界面，无法观感验证；② 后台构建过慢（3~4 分钟仍未完）；③ 经 Git Bash 调用 `dart.bat`/`flutter.bat` 包装脚本因本机 PowerShell 会话损坏直接失败（`InitialSessionState` 乱码报错），`dart.exe` 直连能跑 `analyze` 但 flutter tool 拉 git 子进程报「目录名称无效」——与其绕环境，不如全部交用户。
+> Agent 职责止于：改码 → 把下方命令清单原样交给用户 → 等用户回贴结果再继续修。
 
 ### 前置（每个新 shell 必设，缺一必踩）
 ```bash
@@ -329,7 +338,7 @@ adb shell am start -n <applicationId>/.MainActivity      # 等价显式启动
 - 查包名：`adb shell cmd package list packages | grep jianli`。
 - **冷启动抓日志**：`am start` 对已运行应用只是切前台（result code=3），必须先 `adb shell am force-stop <pkg>` 再冷启动。
 - build_runner 若报错 `Unable to read program.dill` → 就是 `%TEMP%` 含中文，确认上面 TMP/TEMP 已 export。
-- 静态检查（Agent 侧可跑，快）：`flutter analyze`（基线 0 问题）、`flutter test`（基线 5/5）。
+- 静态检查也交用户跑：`flutter analyze`（当前基线 0 问题，2026-09-05 全页彩焕后）、`flutter test`（基线 5/5）。Agent 侧不要代跑（见上分工铁律）；若未来确需诊断，`dart.bat`/`flutter.bat` 包装脚本会因 PowerShell 会话损坏失败，`dart.exe` 直连仅 `analyze` 可用、`test` 会在 flutter tool 拉 git 时报「目录名称无效」。
 
 ---
 

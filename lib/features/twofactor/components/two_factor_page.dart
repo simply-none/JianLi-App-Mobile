@@ -22,6 +22,8 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/two_factor_account.dart';
 import '../providers/two_factor_providers.dart';
@@ -70,9 +72,12 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
       if (_pickedVaultPath != null) {
         await repo.setVaultPath(_pickedVaultPath!);
       }
-      await ref.read(twoFactorAccountsProvider.notifier).unlock(_passphraseController.text);
-      final accounts =
-          await ref.read(twoFactorAccountsProvider.future).catchError((_) => <TwoFactorAccount>[]);
+      await ref
+          .read(twoFactorAccountsProvider.notifier)
+          .unlock(_passphraseController.text);
+      final accounts = await ref
+          .read(twoFactorAccountsProvider.future)
+          .catchError((_) => <TwoFactorAccount>[]);
       if (!mounted) return;
       setState(() {
         _accounts = accounts;
@@ -196,22 +201,34 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
               ),
               const SizedBox(height: 10),
               FSelect<String>(
-                items: const {'SHA1（默认）': 'SHA1', 'SHA256': 'SHA256', 'SHA512': 'SHA512'},
+                items: const {
+                  'SHA1（默认）': 'SHA1',
+                  'SHA256': 'SHA256',
+                  'SHA512': 'SHA512',
+                },
                 label: const Text('算法'),
                 hint: '请选择',
-                control: FSelectControl<String>.managed(controller: algorithmController),
+                control: FSelectControl<String>.managed(
+                  controller: algorithmController,
+                ),
               ),
               const SizedBox(height: 14),
               FButton(
                 onPress: () {
-                  final s = secret.text.trim().toUpperCase().replaceAll(RegExp('[^A-Z2-7]'), '');
+                  final s = secret.text.trim().toUpperCase().replaceAll(
+                    RegExp('[^A-Z2-7]'),
+                    '',
+                  );
                   if (s.isEmpty) return;
                   final algorithm = algorithmController.value ?? 'SHA1';
                   final now = DateTime.now().toIso8601String();
-                  ref.read(twoFactorAccountsProvider.notifier).addAccount(
+                  ref
+                      .read(twoFactorAccountsProvider.notifier)
+                      .addAccount(
                         passphrase: _sessionPassphrase,
                         account: TwoFactorAccount(
-                          key: DateTime.now().microsecondsSinceEpoch.toRadixString(36),
+                          key: DateTime.now().microsecondsSinceEpoch
+                              .toRadixString(36),
                           issuer: issuer.text.trim(),
                           account: account.text.trim(),
                           secret: s,
@@ -233,87 +250,111 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
     );
   }
 
-  /// 解锁表单
+  /// 解锁表单（pageTint 冷调底 + 专属紫渐变图标盘，与工具分组页「2FA」入口色对齐）
   Widget _buildUnlockForm(BuildContext context) {
     final t = context.theme;
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Icon(FLucideIcons.keyRound, size: 56, color: t.colors.primary),
-            const SizedBox(height: 12),
-            Text(
-              '输入 2FA 口令解锁验证器',
-              textAlign: TextAlign.center,
-              style: t.typography.body.lg.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 20),
-            FTextField.password(
-              control: FTextFieldControl.managed(controller: _passphraseController),
-              label: const Text('口令'),
-              hint: '与桌面端 2FA 保险库口令一致',
-              onSubmit: (_) {
-                if (!_unlocking) _unlock();
-              },
-            ),
-            const SizedBox(height: 10),
-            // 选择桌面端导出的 vault 文件（写入 basic_info.twoFactorVaultPath）
-            // 注意：FButton 内部 Row 不带 Flexible，长文案会横向溢出 → raw 自组 Row + Expanded 截断
-            FButton.raw(
-              variant: FButtonVariant.outline,
-              onPress: () async {
-                final files = await FilePicker.pickFiles(type: FileType.any);
-                final path = files.isNotEmpty ? files.first.path : null;
-                if (path != null && mounted) setState(() => _pickedVaultPath = path);
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: Row(
-                  children: [
-                    Icon(
-                      _pickedVaultPath == null
-                          ? FLucideIcons.fileUp
-                          : FLucideIcons.circleCheck,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _pickedVaultPath == null
-                            ? '选择 vault 文件（桌面端导出的 2FA 保险库）'
-                            : '已选择：${_pickedVaultPath!.split(Platform.pathSeparator).last}',
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: context.theme.typography.body.md,
-                      ),
-                    ),
-                  ],
+    return ColoredBox(
+      color: AppTokens.pageTint(context),
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: SquircleBox(
+                  size: 76,
+                  radius: 26,
+                  gradient: AppTokens.accentGradient(AppTokens.accent(0)),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    FLucideIcons.keyRound,
+                    color: Colors.white,
+                    size: 34,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            FButton(
-              onPress: _unlocking ? null : _unlock,
-              child: Text(_unlocking ? '解锁中（PBKDF2 运算约数秒）…' : '解锁'),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              FAlert(
-                variant: FAlertVariant.destructive,
-                title: const Text('解锁失败'),
-                subtitle: Text(_error!),
+              const SizedBox(height: 14),
+              Text(
+                '输入 2FA 口令解锁验证器',
+                textAlign: TextAlign.center,
+                style: t.typography.body.lg.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              const SizedBox(height: 20),
+              FTextField.password(
+                control: FTextFieldControl.managed(
+                  controller: _passphraseController,
+                ),
+                label: const Text('口令'),
+                hint: '与桌面端 2FA 保险库口令一致',
+                onSubmit: (_) {
+                  if (!_unlocking) _unlock();
+                },
+              ),
+              const SizedBox(height: 10),
+              // 选择桌面端导出的 vault 文件（写入 basic_info.twoFactorVaultPath）
+              // 注意：FButton 内部 Row 不带 Flexible，长文案会横向溢出 → raw 自组 Row + Expanded 截断
+              FButton.raw(
+                variant: FButtonVariant.outline,
+                onPress: () async {
+                  final files = await FilePicker.pickFiles(type: FileType.any);
+                  final path = files.isNotEmpty ? files.first.path : null;
+                  if (path != null && mounted) {
+                    setState(() => _pickedVaultPath = path);
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _pickedVaultPath == null
+                            ? FLucideIcons.fileUp
+                            : FLucideIcons.circleCheck,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _pickedVaultPath == null
+                              ? '选择 vault 文件（桌面端导出的 2FA 保险库）'
+                              : '已选择：${_pickedVaultPath!.split(Platform.pathSeparator).last}',
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: context.theme.typography.body.md,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              FButton(
+                onPress: _unlocking ? null : _unlock,
+                child: Text(_unlocking ? '解锁中（PBKDF2 运算约数秒）…' : '解锁'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                FAlert(
+                  variant: FAlertVariant.destructive,
+                  title: const Text('解锁失败'),
+                  subtitle: Text(_error!),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
-  /// 动态码列表
+  /// 动态码列表（顶部专属紫渐变横幅 + 账户码卡片）
   Widget _buildCodes(BuildContext context) {
     if (_accounts.isEmpty) {
       return const EmptyState(
@@ -326,21 +367,31 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
       onRefresh: () async => setState(() => _tick++),
       child: ColoredBox(
         color: AppTokens.pageTint(context),
-        child: ListView.builder(
+        child: ListView(
           padding: const EdgeInsets.only(top: 4, bottom: 24),
-          itemCount: _accounts.length,
-          itemBuilder: (context, index) {
-            final account = _accounts[index];
-            final meta = generateTotpWithMeta(
-              account.secret,
-              options: TotpOptions(
-                algorithm: account.algorithm,
-                digits: account.digits,
-                period: account.period,
+          children: [
+            PageBanner(
+              icon: FLucideIcons.keyRound,
+              title: '2FA 动态码',
+              subtitle: 'TOTP 实时出码，点击卡片复制',
+              accentIndex: 0,
+              stats: [('${_accounts.length}', '已存账户')],
+            ),
+            for (final account in _accounts)
+              Builder(
+                builder: (context) {
+                  final meta = generateTotpWithMeta(
+                    account.secret,
+                    options: TotpOptions(
+                      algorithm: account.algorithm,
+                      digits: account.digits,
+                      period: account.period,
+                    ),
+                  );
+                  return AccountCodeTile(account: account, meta: meta);
+                },
               ),
-            );
-            return AccountCodeTile(account: account, meta: meta);
-          },
+          ],
         ),
       ),
     );

@@ -15,6 +15,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -70,7 +71,10 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
           : entriesAsync.when(
               loading: () => const Center(child: FCircularProgress()),
               error: (e, _) => Center(
-                child: Text('加载失败：$e', style: t.typography.body.sm.copyWith(color: t.colors.error)),
+                child: Text(
+                  '加载失败：$e',
+                  style: t.typography.body.sm.copyWith(color: t.colors.error),
+                ),
               ),
               data: (entries) => entries.isEmpty
                   ? const EmptyState(
@@ -83,6 +87,14 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
                       child: ListView(
                         padding: const EdgeInsets.only(top: 4, bottom: 24),
                         children: [
+                          // 页面专属蓝渐变横幅（与工具分组页「密码管理」入口色对齐）
+                          PageBanner(
+                            icon: FLucideIcons.lock,
+                            title: '账号密码管理',
+                            subtitle: 'AES-256 加密，仅驻留本机内存',
+                            accentIndex: 1,
+                            stats: [('${entries.length}', '已存条目')],
+                          ),
                           StaggerList(
                             children: [
                               for (final e in entries)
@@ -90,8 +102,13 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
                                   entry: e,
                                   onEdit: () => _editEntry(e),
                                   onDelete: () => ref
-                                      .read(passwordVaultEntriesProvider.notifier)
-                                      .deleteEntry(passphrase: _passphrase ?? '', key: e.key),
+                                      .read(
+                                        passwordVaultEntriesProvider.notifier,
+                                      )
+                                      .deleteEntry(
+                                        passphrase: _passphrase ?? '',
+                                        key: e.key,
+                                      ),
                                 ),
                             ],
                           ),
@@ -102,62 +119,81 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
     );
   }
 
-  /// 建库 / 解锁 门禁表单
+  /// 建库 / 解锁 门禁表单（pageTint 冷调底 + 专属蓝渐变图标盘）
   Widget _buildGate(bool exists) {
     final t = context.theme;
     final passController = TextEditingController();
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(FLucideIcons.keyRound, size: 56, color: t.colors.primary),
-            const SizedBox(height: 12),
-            Text(
-              exists ? '输入口令解锁密码库' : '首次使用：设置一个主口令',
-              style: t.typography.body.lg.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 20),
-            FTextField.password(
-              control: FTextFieldControl.managed(controller: passController),
-              label: const Text('主口令'),
-              hint: '仅驻留内存，锁定即清除',
-            ),
-            const SizedBox(height: 12),
-            FButton(
-              onPress: _working
-                  ? null
-                  : () async {
-                      setState(() {
-                        _working = true;
-                        _error = null;
-                      });
-                      try {
-                        final notifier = ref.read(passwordVaultEntriesProvider.notifier);
-                        if (exists) {
-                          await notifier.unlock(passController.text);
-                        } else {
-                          await notifier.createVault(passController.text);
-                        }
-                        if (mounted) _passphrase = passController.text;
-                      } catch (e) {
-                        if (mounted) _error = '口令错误或操作失败：$e';
-                      } finally {
-                        if (mounted) setState(() => _working = false);
-                      }
-                    },
-              child: Text(exists ? '解锁' : '创建密码库'),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 10),
-              FAlert(
-                variant: FAlertVariant.destructive,
-                title: const Text('操作失败'),
-                subtitle: Text(_error!),
+    return ColoredBox(
+      color: AppTokens.pageTint(context),
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: SquircleBox(
+                  size: 76,
+                  radius: 26,
+                  gradient: AppTokens.accentGradient(AppTokens.accent(1)),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    FLucideIcons.keyRound,
+                    color: Colors.white,
+                    size: 34,
+                  ),
+                ),
               ),
+              const SizedBox(height: 14),
+              Text(
+                exists ? '输入口令解锁密码库' : '首次使用：设置一个主口令',
+                style: t.typography.body.lg.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 20),
+              FTextField.password(
+                control: FTextFieldControl.managed(controller: passController),
+                label: const Text('主口令'),
+                hint: '仅驻留内存，锁定即清除',
+              ),
+              const SizedBox(height: 12),
+              FButton(
+                onPress: _working
+                    ? null
+                    : () async {
+                        setState(() {
+                          _working = true;
+                          _error = null;
+                        });
+                        try {
+                          final notifier = ref.read(
+                            passwordVaultEntriesProvider.notifier,
+                          );
+                          if (exists) {
+                            await notifier.unlock(passController.text);
+                          } else {
+                            await notifier.createVault(passController.text);
+                          }
+                          if (mounted) _passphrase = passController.text;
+                        } catch (e) {
+                          if (mounted) _error = '口令错误或操作失败：$e';
+                        } finally {
+                          if (mounted) setState(() => _working = false);
+                        }
+                      },
+                child: Text(exists ? '解锁' : '创建密码库'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                FAlert(
+                  variant: FAlertVariant.destructive,
+                  title: const Text('操作失败'),
+                  subtitle: Text(_error!),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -179,7 +215,10 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(entry == null ? '新增条目' : '编辑条目', style: style.titleTextStyle),
+              Text(
+                entry == null ? '新增条目' : '编辑条目',
+                style: style.titleTextStyle,
+              ),
               const SizedBox(height: 12),
               FTextField(
                 control: FTextFieldControl.managed(controller: title),
@@ -219,7 +258,9 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
                   ),
                   FButton(
                     onPress: () {
-                      ref.read(passwordVaultEntriesProvider.notifier).upsertEntry(
+                      ref
+                          .read(passwordVaultEntriesProvider.notifier)
+                          .upsertEntry(
                             passphrase: _passphrase ?? '',
                             key: entry?.key,
                             title: title.text.trim(),
@@ -244,7 +285,11 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
 
 /// 密码条目卡片（账号可见，密码默认遮挡，可复制）
 class _EntryTile extends StatelessWidget {
-  const _EntryTile({required this.entry, required this.onEdit, required this.onDelete});
+  const _EntryTile({
+    required this.entry,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final PasswordEntry entry;
   final VoidCallback onEdit;
@@ -265,7 +310,9 @@ class _EntryTile extends StatelessWidget {
             gradient: AppTokens.accentGradient(AppTokens.accent(1)),
             alignment: Alignment.center,
             child: Text(
-              entry.title.isEmpty ? '?' : entry.title.characters.first.toUpperCase(),
+              entry.title.isEmpty
+                  ? '?'
+                  : entry.title.characters.first.toUpperCase(),
               style: t.typography.body.md.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
@@ -279,13 +326,17 @@ class _EntryTile extends StatelessWidget {
               children: [
                 Text(
                   entry.title,
-                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  style: t.typography.body.md.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 if (entry.username.isNotEmpty)
                   Text(
                     entry.username,
-                    style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                    style: t.typography.body.sm.copyWith(
+                      color: t.colors.mutedForeground,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
               ],
@@ -310,7 +361,11 @@ class _EntryTile extends StatelessWidget {
           FButton.icon(
             variant: FButtonVariant.ghost,
             onPress: onDelete,
-            child: Icon(FLucideIcons.trash2, size: 18, color: t.colors.destructive),
+            child: Icon(
+              FLucideIcons.trash2,
+              size: 18,
+              color: t.colors.destructive,
+            ),
           ),
         ],
       ),

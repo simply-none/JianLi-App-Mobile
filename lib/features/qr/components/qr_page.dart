@@ -18,6 +18,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -54,15 +55,18 @@ class _QrPageState extends ConsumerState<QrPage> {
   }
 
   String get _currentPayload => buildQrPayload(
-        _type,
-        text: _contentController.text,
-        wifi: WifiParams(ssid: _ssidController.text, password: _wifiPasswordController.text),
-        contact: {
-          'name': _nameController.text,
-          'tel': _telController.text,
-          'email': _emailController.text,
-        },
-      );
+    _type,
+    text: _contentController.text,
+    wifi: WifiParams(
+      ssid: _ssidController.text,
+      password: _wifiPasswordController.text,
+    ),
+    contact: {
+      'name': _nameController.text,
+      'tel': _telController.text,
+      'email': _emailController.text,
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -75,12 +79,25 @@ class _QrPageState extends ConsumerState<QrPage> {
       ),
       // ⚠️ expands:true 必须开：默认 false 时 Tab 内容不走 Expanded，
       // 无界高度下内容区（ListView/FSelect 下拉）布局全灭 → 整页白屏且无异常打印
-      child: FTabs(
-        expands: true,
+      // 顶部加专属琥珀渐变横幅（与工具分组页「二维码」入口色对齐），Tab 区在 Expanded 内
+      child: Column(
         children: [
-          FTabEntry(label: const Text('生成'), child: _buildGenerate()),
-          FTabEntry(label: const Text('识别'), child: _buildScan()),
-          FTabEntry(label: const Text('历史'), child: _buildHistory()),
+          PageBanner(
+            icon: FLucideIcons.qrCode,
+            title: '二维码',
+            subtitle: '生成 / 识别 / 历史，一页搞定',
+            accentIndex: 3,
+          ),
+          Expanded(
+            child: FTabs(
+              expands: true,
+              children: [
+                FTabEntry(label: const Text('生成'), child: _buildGenerate()),
+                FTabEntry(label: const Text('识别'), child: _buildScan()),
+                FTabEntry(label: const Text('历史'), child: _buildHistory()),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -120,7 +137,9 @@ class _QrPageState extends ConsumerState<QrPage> {
           onPress: payload.isEmpty
               ? null
               : () async {
-                  await ref.read(qrHistoryRepositoryProvider).add(type: _type, content: payload);
+                  await ref
+                      .read(qrHistoryRepositoryProvider)
+                      .add(type: _type, content: payload);
                   if (mounted) {
                     showFToast(context: context, title: const Text('已存入历史'));
                   }
@@ -135,39 +154,46 @@ class _QrPageState extends ConsumerState<QrPage> {
   Widget _buildFields() {
     switch (_type) {
       case QrPayloadType.wifi:
-        return Column(children: [
-          FTextField(
-            control: FTextFieldControl.managed(
-              controller: _ssidController,
-              onChange: (_) => setState(() {}),
-            ),
-            label: const Text('Wi-Fi 名称'),
-          ),
-          const SizedBox(height: 10),
-          // Wi-Fi 密码：自带明/暗文切换
-          FTextField.password(
-            control: FTextFieldControl.managed(
-              controller: _wifiPasswordController,
-              onChange: (_) => setState(() {}),
-            ),
-            label: const Text('密码'),
-          ),
-        ]);
-      case QrPayloadType.contact:
-        return Column(children: [
-          for (final (c, label) in [
-            (_nameController, '姓名'),
-            (_telController, '电话'),
-            (_emailController, '邮箱'),
-          ])
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: FTextField(
-                control: FTextFieldControl.managed(controller: c, onChange: (_) => setState(() {})),
-                label: Text(label),
+        return Column(
+          children: [
+            FTextField(
+              control: FTextFieldControl.managed(
+                controller: _ssidController,
+                onChange: (_) => setState(() {}),
               ),
+              label: const Text('Wi-Fi 名称'),
             ),
-        ]);
+            const SizedBox(height: 10),
+            // Wi-Fi 密码：自带明/暗文切换
+            FTextField.password(
+              control: FTextFieldControl.managed(
+                controller: _wifiPasswordController,
+                onChange: (_) => setState(() {}),
+              ),
+              label: const Text('密码'),
+            ),
+          ],
+        );
+      case QrPayloadType.contact:
+        return Column(
+          children: [
+            for (final (c, label) in [
+              (_nameController, '姓名'),
+              (_telController, '电话'),
+              (_emailController, '邮箱'),
+            ])
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: FTextField(
+                  control: FTextFieldControl.managed(
+                    controller: c,
+                    onChange: (_) => setState(() {}),
+                  ),
+                  label: Text(label),
+                ),
+              ),
+          ],
+        );
       default:
         return FTextField(
           control: FTextFieldControl.managed(
@@ -203,7 +229,10 @@ class _QrPageState extends ConsumerState<QrPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('识别结果', style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600)),
+            Text(
+              '识别结果',
+              style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 10),
             SelectableText(value),
             const SizedBox(height: 16),
@@ -225,7 +254,9 @@ class _QrPageState extends ConsumerState<QrPage> {
                   child: FButton(
                     prefix: const Icon(FLucideIcons.save, size: 18),
                     onPress: () {
-                      ref.read(qrHistoryRepositoryProvider).add(type: 'scan', content: value);
+                      ref
+                          .read(qrHistoryRepositoryProvider)
+                          .add(type: 'scan', content: value);
                       Navigator.pop(context);
                     },
                     child: const Text('存历史'),
@@ -246,7 +277,10 @@ class _QrPageState extends ConsumerState<QrPage> {
     return historyAsync.when(
       loading: () => const Center(child: FCircularProgress()),
       error: (e, _) => Center(
-        child: Text('加载失败：$e', style: t.typography.body.sm.copyWith(color: t.colors.error)),
+        child: Text(
+          '加载失败：$e',
+          style: t.typography.body.sm.copyWith(color: t.colors.error),
+        ),
       ),
       data: (rows) {
         if (rows.isEmpty) {
@@ -263,10 +297,16 @@ class _QrPageState extends ConsumerState<QrPage> {
                     _QrHistoryTile(
                       row: row,
                       onCopy: () {
-                        Clipboard.setData(ClipboardData(text: row.content ?? ''));
-                        showFToast(context: context, title: const Text('内容已复制'));
+                        Clipboard.setData(
+                          ClipboardData(text: row.content ?? ''),
+                        );
+                        showFToast(
+                          context: context,
+                          title: const Text('内容已复制'),
+                        );
                       },
-                      onDelete: () => ref.read(qrHistoryRepositoryProvider).delete(row.key),
+                      onDelete: () =>
+                          ref.read(qrHistoryRepositoryProvider).delete(row.key),
                     ),
                 ],
               ),
@@ -280,7 +320,11 @@ class _QrPageState extends ConsumerState<QrPage> {
 
 /// 二维码历史条目卡（专属琥珀色图标盘 + 内容 + 删除），替换原 FTile
 class _QrHistoryTile extends StatelessWidget {
-  const _QrHistoryTile({required this.row, required this.onCopy, required this.onDelete});
+  const _QrHistoryTile({
+    required this.row,
+    required this.onCopy,
+    required this.onDelete,
+  });
 
   final QrHistoryData row;
   final VoidCallback onCopy;
@@ -309,14 +353,18 @@ class _QrHistoryTile extends StatelessWidget {
               children: [
                 Text(
                   row.content ?? '',
-                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  style: t.typography.body.md.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '${QrPayloadType.label(row.type ?? 'text')} · ${row.createdAt ?? ''}',
-                  style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
+                  style: t.typography.body.xs.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -326,7 +374,11 @@ class _QrHistoryTile extends StatelessWidget {
           FButton.icon(
             variant: FButtonVariant.ghost,
             onPress: onDelete,
-            child: Icon(FLucideIcons.trash2, size: 18, color: t.colors.destructive),
+            child: Icon(
+              FLucideIcons.trash2,
+              size: 18,
+              color: t.colors.destructive,
+            ),
           ),
         ],
       ),

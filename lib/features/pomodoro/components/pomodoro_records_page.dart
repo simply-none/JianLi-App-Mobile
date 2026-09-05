@@ -10,6 +10,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
@@ -20,7 +21,8 @@ class PomodoroRecordsPage extends ConsumerStatefulWidget {
   const PomodoroRecordsPage({super.key});
 
   @override
-  ConsumerState<PomodoroRecordsPage> createState() => _PomodoroRecordsPageState();
+  ConsumerState<PomodoroRecordsPage> createState() =>
+      _PomodoroRecordsPageState();
 }
 
 class _PomodoroRecordsPageState extends ConsumerState<PomodoroRecordsPage> {
@@ -35,7 +37,6 @@ class _PomodoroRecordsPageState extends ConsumerState<PomodoroRecordsPage> {
   @override
   Widget build(BuildContext context) {
     final db = ref.watch(appDatabaseProvider);
-    final t = context.theme;
     return FScaffold(
       header: FHeader.nested(
         title: const Text('番茄钟记录'),
@@ -46,37 +47,20 @@ class _PomodoroRecordsPageState extends ConsumerState<PomodoroRecordsPage> {
         builder: (context, snapshot) {
           final stats = snapshot.data;
           return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (stats != null)
-                // 统计横幅：primary 渐变 + 前景色数字（对齐首页概览卡视觉）
-                Container(
-                  margin: const EdgeInsets.only(top: 8, bottom: 6),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    gradient: AppTokens.primaryGradient(context),
-                    borderRadius: BorderRadius.circular(AppTokens.radiusLg),
-                    boxShadow: AppTokens.elevation(context, level: 3),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      StatBlock(
-                        value: '${stats.todayWorkCount}',
-                        label: '今日专注',
-                        color: t.colors.primaryForeground,
-                      ),
-                      StatBlock(
-                        value: '${stats.weekWorkCount}',
-                        label: '近 7 天',
-                        color: t.colors.primaryForeground,
-                      ),
-                      StatBlock(
-                        value: '${stats.totalCount}',
-                        label: '累计记录',
-                        color: t.colors.primaryForeground,
-                      ),
-                    ],
-                  ),
+                // 统计横幅：番茄红专属渐变（与番茄钟页/Hub 入口色对齐）+ 装饰圆
+                PageBanner(
+                  icon: FLucideIcons.timer,
+                  title: '专注统计',
+                  subtitle: '番茄钟流水概览',
+                  accentIndex: 6,
+                  stats: [
+                    ('${stats.todayWorkCount}', '今日专注'),
+                    ('${stats.weekWorkCount}', '近 7 天'),
+                    ('${stats.totalCount}', '累计记录'),
+                  ],
                 ),
               const SectionHeader(title: '最近记录'),
               Expanded(
@@ -133,7 +117,9 @@ class _RecordTile extends StatelessWidget {
           SquircleBox(
             size: 40,
             radius: 12,
-            gradient: AppTokens.accentGradient(AppTokens.accent(isWork ? 6 : 2)),
+            gradient: AppTokens.accentGradient(
+              AppTokens.accent(isWork ? 6 : 2),
+            ),
             alignment: Alignment.center,
             child: Icon(
               isWork ? FLucideIcons.briefcase : FLucideIcons.coffee,
@@ -148,13 +134,17 @@ class _RecordTile extends StatelessWidget {
               children: [
                 Text(
                   record.label ?? record.value ?? '-',
-                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  style: t.typography.body.md.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 if (record.createTime?.isNotEmpty ?? false) ...[
                   const SizedBox(height: 2),
                   Text(
                     record.createTime ?? '',
-                    style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
+                    style: t.typography.body.xs.copyWith(
+                      color: t.colors.mutedForeground,
+                    ),
                   ),
                 ],
               ],
@@ -163,7 +153,9 @@ class _RecordTile extends StatelessWidget {
           if (record.mode?.isNotEmpty ?? false)
             Text(
               record.mode ?? '',
-              style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+              style: t.typography.body.sm.copyWith(
+                color: t.colors.mutedForeground,
+              ),
             ),
         ],
       ),

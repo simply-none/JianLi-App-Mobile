@@ -78,7 +78,7 @@ test/
 - ⚠️ **forui 的 `factory({...})` 是 Dart 新「声明式工厂构造」语法**：类内部写 `factory({...})` = 未命名工厂构造，**调用时用类名直呼**（`FSelect<String>(items:...)`、`FThemeData(touch:, colors:)`），写 `Xxx.factory(...)` 会报 undefined。forui 0.26 源码文档示例大量使用点简写（`.light`、`.new`），照抄前先确认 Dart 版本支持。
 - FTile/FItem 的 title/subtitle/details **不要放 Expanded/TextField**（不渲染，需 .raw 版）；FSelect 必须显式写泛型 `FSelect<String>`。
 - 图标：`FLucideIcons.*`（Lucide 命名，forui.dart 已导出；新图标名先到 forui_lucide 包 `lib/src/assets.g.dart` grep `static const <name> = IconData` 验证）。
-- 原子组件 `lib/app/ui/`：AppCard / SectionHeader / EmptyState / StatBlock / RingProgress —— 与业务无关的视觉复用入口，新页面优先用它们拼装。
+- 原子组件 `lib/app/ui/`：AppCard / SectionHeader / EmptyState / StatBlock / RingProgress / **PageBanner**（功能页渐变横幅，见「UI 现代化与动效」Phase 3→4 小节）—— 与业务无关的视觉复用入口，新页面优先用它们拼装。
 - 残留 Material 组件白名单（无 forui 等价物，material_ui 版已被近似主题着色）：RefreshIndicator、Dismissible（滑动删除）、ReorderableListView、Slider、mobile_scanner、qr_flutter。
 - 桌面 25 套主题映射（P2）：在 `app_theme.dart` 的 `_build` 加方案表，每套主题 = 一份 `FColors.copyWith` 主色（+可选中性色）覆盖。
 
@@ -134,15 +134,12 @@ flutter build apk                # 真机 APK（默认三 ABI，已构建成功�
 flutter build apk --debug --target-platform android-x64   # 只出 x86_64 debug APK（给模拟器装，最快）
 ```
 
-### 跑起来看效果（UI 验证标准流程，**由用户在本地终端执行**）
-> ⚠️ Agent 侧环境**无图形界面，无法截图/观感验证**；且后台构建较慢（实测 3~4 分钟仍未完）。
-> 因此分工固定：**Agent 只改码 + 给命令，构建与运行交给用户在本地执行**（用户偏好如此）。
-> 不要替用户后台跑 `flutter build` / `flutter run`，直接把命令给他。
+### 跑起来看效果（UI 验证标准流程，**所有命令由用户在本地终端执行**）
+> ⛔ **分工铁律（2026-09-05 用户明确指示，最高优先级）**：**Agent 只负责写代码与改文档；一切 flutter/dart 命令（analyze / test / build / run / pub get / build_runner…）一律由用户在本地终端执行，Agent 不代跑**。此前「Agent 可跑 analyze/test」的口径作废。
+> 二次实踩依据（2026-09-05）：① Agent 侧无图形界面，无法观感验证；② 后台构建过慢（3~4 分钟仍未完）；③ 经 Git Bash 调用 `dart.bat`/`flutter.bat` 包装脚本会因本机 PowerShell 会话损坏直接失败（`InitialSessionState` 乱码报错），`dart.exe` 直连虽能跑 `analyze`，但 flutter tool 拉 git 子进程报「目录名称无效」——**结论：与其绕环境，不如全部交用户**。
+> Agent 的职责止于：改码 → 把下方命令清单原样交给用户 → 等用户回贴结果再继续修。
 >
-> ⏱️ **30 秒规则（2026-09-05 定）**：任何校验/构建命令（`flutter analyze` / `test` / `build`）**超过 30 秒没跑完就立即停止、跳到下一步**，
-> 把命令交用户手动跑，别卡住等结果——用户会自己执行并反馈。
-> 另注：本机 bash 偶发「输出被吞」（命令执行了但 stdout 全空、exit 1），且往 `C:/src/tmp` 写文件会 Permission denied；
-> 校验结果要落盘就写项目目录再用 Read 读。
+> 另注：本机 bash 偶发「输出被吞」（命令执行了但 stdout 全空、exit 1），校验结果要落盘就写项目目录再用 Read 读。
 
 ```bash
 # 0) 前置（每个新 shell 都要，中文用户名雷区 + 镜像）
@@ -204,19 +201,19 @@ flutter emulators --launch Pixel_8
 | 功能域 | 路由 | 状态与要点 |
 |---|---|---|
 | home | `/` | Dashboard 聚合：习惯/待办/专注/提醒统计 + 最近倒计时 + 快捷入口；**Phase 3 视觉重设计**（渐变英雄卡 + 专属色磁贴 + StaggerList）；右上角**设置按钮** |
-| habit | `/habit` | 今日打卡 + 幂等切换（key=`habitKey#date`）+ 近 7 天；**视觉焕新**：pageTint + 条目专属色 `SquircleBox` 图标盘 + `AnimatedCheck` + StaggerList |
-| todo | `/todo` | 列表/筛选/新增/勾选/滑动删除，uuid 主键，字段与桌面一致；**视觉焕新**：过滤改 `JianliSegmented` 滑块分段 + 专属色图标盘 |
-| pomodoro | `/pomodoro`、`/pomodoro/records` | 状态机解析（reminders stateful）+ 只读倒计时 + 流水统计；**视觉焕新**：英雄计时图标盘（`accent(6)`）+ 记录页统计横幅渐变 |
-| reminder | `/reminders` | 三模式 time/interval/stateful，启停联动本地通知；过滤 `source==='todo'`；**视觉焕新**：pageTint + 专属色图标盘 + StaggerList |
-| countdown | `/countdown` | 独立表（end_time 毫秒基准 + paused_remaining，与桌面同构抗休眠）+ 暂停/恢复/重置 |
-| notes | `/notes` | 列表（分类 chips）/ 详情（flutter_widget_from_html 渲染）/ 编辑（轻量文本，html 段落化落库，桌面 vue-quill 可渲染；flutter_quill 富文本 P2）；**视觉焕新**：pageTint + `_NoteCard`（琥珀专属色图标盘 + 标题/摘要）+ StaggerList；分类 chip 改圆角 pill（选中用 `accent(3)`） |
-| conversation | `/conversation` | 主题列表 + 消息流 + 新建（过滤 `is_deleted`）；LLM 后端未定；**视觉焕新**：pageTint + `_ThemeCard`（粉色 `accent(4)` 首字头像盘）+ StaggerList；消息气泡改「小头像盘 + 卡片气泡」（`t.colors.card`） |
-| ebook | `/ebook` | file_picker 导入 → sha256 content_hash 身份键 → epubx（PascalCase 字段）/ TXT 正则分章 → 章节渲染 + 按章进度；PDF、CFI 精确进度未做；**视觉焕新**：pageTint + 封面按标题 hashCode 取专属强调色渐变 + 底部进度条；阅读器正文 pageTint 护眼底 |
-| twofactor | `/twofactor` | TOTP 全算法 + vault 口令解锁 + 动态码卡片（复制/倒计时/锁定清内存）+ 添加；**视觉焕新**：`AccountCodeTile` 加紫 `accent(0)` 图标盘，码列表 pageTint |
-| password_vault | `/password-vault` | 移动端口令库（同信封格式 .jlv）；**视觉焕新**：pageTint + StaggerList，条目首字母徽标改蓝 `accent(1)` 渐变 SquircleBox |
-| file_vault | `/file-vault` | 与 PC 完全兼容：wrappedKey 解包 + JLV1 parse + 导入/预览/删除；**视觉焕新**：整页 pageTint，文件图标改绿 `accent(2)` 渐变 SquircleBox |
-| qr | `/qr` | 生成（text/url/wifi/vCard/email）+ 识别（mobile_scanner）+ 历史；**视觉焕新**：历史页改 `ColoredBox(pageTint)` + `_QrHistoryTile`（琥珀 `accent(3)` 图标盘 + AppCard）+ StaggerList，取代原 FTile/FTileGroup |
-| sync | `/sync` | 扫描/手动 IP/推送/拉取，四种组合全通；**视觉焕新**：pageTint，设备行图标改青 `accent(5)` SquircleBox |
+| habit | `/habit` | 今日打卡 + 幂等切换（key=`habitKey#date`）+ 近 7 天；**视觉焕新**：**PageBanner 绿(2)**（启用/今日完成统计）+ 条目专属色 `SquircleBox` 图标盘 + `AnimatedCheck` + StaggerList |
+| todo | `/todo` | 列表/筛选/新增/勾选/滑动删除，uuid 主键，字段与桌面一致；**视觉焕新**：**PageBanner 蓝(1)**（进行中/已完成，取全量不随过滤跳变）+ `JianliSegmented` 滑块分段 + 专属色图标盘 |
+| pomodoro | `/pomodoro`、`/pomodoro/records` | 状态机解析（reminders stateful）+ 只读倒计时 + 流水统计；**视觉焕新**：**PageBanner 红(6)**（当前阶段+剩余时间）+ 白卡进度环（红色弧）；记录页 **PageBanner 红(6)** 三统计 |
+| reminder | `/reminders` | 三模式 time/interval/stateful，启停联动本地通知；过滤 `source==='todo'`；**视觉焕新**：**PageBanner 琥珀(3)**（全部/启用中统计）+ 专属色图标盘 + StaggerList |
+| countdown | `/countdown` | 独立表（end_time 毫秒基准 + paused_remaining，与桌面同构抗休眠）+ 暂停/恢复/重置；**视觉焕新**：大计时器整卡 **PageBanner 同款紫(0) 渐变**（白色 RingProgress + `trackColor` 半透明白 + 装饰圆） |
+| notes | `/notes` | 列表（分类 chips）/ 详情（flutter_widget_from_html 渲染）/ 编辑（轻量文本，html 段落化落库，桌面 vue-quill 可渲染；flutter_quill 富文本 P2）；**视觉焕新**：**PageBanner 琥珀(3)**（篇数/分类数统计）+ `_NoteCard`（琥珀图标盘）+ StaggerList；详情页分类改琥珀软底 chip |
+| conversation | `/conversation` | 主题列表 + 消息流 + 新建（过滤 `is_deleted`）；LLM 后端未定；**视觉焕新**：**PageBanner 粉(4)**（主题数统计）+ `_ThemeCard`（粉首字头像盘）+ StaggerList；消息气泡改粉 `accentSoft` 软底 + 小头像盘 |
+| ebook | `/ebook` | file_picker 导入 → sha256 content_hash 身份键 → epubx（PascalCase 字段）/ TXT 正则分章 → 章节渲染 + 按章进度；PDF、CFI 精确进度未做；**视觉焕新**：**PageBanner 青(5)**（藏书数）+ **CustomScrollView+SliverGrid** 封面网格（按标题 hashCode 渐变 + 进度条）；阅读器正文 pageTint 护眼底 |
+| twofactor | `/twofactor` | TOTP 全算法 + vault 口令解锁 + 动态码卡片（复制/倒计时/锁定清内存）+ 添加；**视觉焕新**：**PageBanner 紫(0)**（账户数）+ 解锁表单 pageTint+紫渐变图标盘 + `AccountCodeTile` 紫图标盘 |
+| password_vault | `/password-vault` | 移动端口令库（同信封格式 .jlv）；**视觉焕新**：**PageBanner 蓝(1)**（条目数）+ 门禁表单 pageTint+蓝渐变图标盘 + 条目首字母蓝 `accent(1)` 渐变 SquircleBox + StaggerList |
+| file_vault | `/file-vault` | 与 PC 完全兼容：wrappedKey 解包 + JLV1 parse + 导入/预览/删除；**视觉焕新**：**PageBanner 绿(2)**（文件数）+ 门禁表单 pageTint+绿渐变图标盘 + 文件行绿 `accent(2)` 渐变 SquircleBox |
+| qr | `/qr` | 生成（text/url/wifi/vCard/email）+ 识别（mobile_scanner）+ 历史；**视觉焕新**：顶部 **PageBanner 琥珀(3)**（FTabs 包进 Expanded，`expands:true` 雷区照旧）+ 历史页 `_QrHistoryTile`（琥珀图标盘）+ StaggerList |
+| sync | `/sync` | 扫描/手动 IP/推送/拉取，四种组合全通；**视觉焕新**：**PageBanner 青(5)**（发现设备/可同步表统计）+ 设备行图标青 `accent(5)` SquircleBox |
 | screenshots | — | 未开工；移动端无法系统级监听截图，重设计为相册导入/分享收纳 |
 | 主题 | — | **5 套主题样式**（渐离紫 `zi` / 远峰蓝 `blue` / 森野绿 `green` / 落日橙 `orange` / 樱粉 `pink`，`AppTheme.styles`）+ 三态模式（跟随系统/浅色/深色），SharedPreferences 持久化；切换入口在首页与三个分组页右上角的**设置按钮 → 左侧设置面板**。桌面 25 套 token 映射 P2 |
 
@@ -272,6 +269,14 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 
 > 后续其他页面（习惯 / 待办 / 番茄 / 笔记 / 电子书 / 2FA 等）沿用同一语言：`pageTint` 打底 + `EntryCard`/`SquircleBox` 专属色 + `StaggerList` 入场 + `AnimatedCheck` 反馈。
 
+**Phase 3→4 · 全页彩焕「PageBanner 渐变横幅」（已完成，2026-09-05）**
+用户要求所有功能页达到首页同款「颜色丰富」观感（渐变英雄卡视觉下沉到每个功能页）。新增与接线：
+
+- **新组件 `lib/app/ui/page_banner.dart`（`PageBanner`）**：页面专属强调色渐变横幅 —— `accentGradient(accent)` 渐变底 + 白色装饰圆（右上/右下两枚）+ 半透明白 `SquircleBox` 图标盘 + 白字标题/副标题 + 可选统计行（`List<(String, String)>` 传 `(数值, 标签)`，纯数值自动 `AnimatedStat` 数字滚动）+ level-3 阴影；`accentIndex` 与 Hub 分组页入口色一一对齐，**每个功能域一色不撞色**。默认 margin `(16, 12, 16, 4)`，直接塞进各页 ListView/Column 即可。
+- **逐页接线**（横幅色 = Hub 入口色）：habit=2 绿（启用/今日完成双统计）、todo=1 蓝（统计基于全量计算，不随过滤切换跳变）、pomodoro=6 红（横幅显示当前阶段/剩余 + 白卡承托进度环，环改红色）、pomodoro_records=6（原 primaryGradient 统计横幅换成 PageBanner 三统计）、countdown=0 紫（**大计时器整卡渐变化**：白色 RingProgress + `trackColor` 半透明白 + 白字大时间 + 装饰圆，取消外层 AppCard）、reminder=3 琥珀（全部/启用中双统计）、notes=3 琥珀（列表横幅 + 详情页分类改琥珀软底 chip）、conversation=4 粉（列表横幅 + 消息气泡由 `colors.card` 改 `accentSoft(accent(4))` 粉软底）、bookshelf=5 青（GridView 改 **CustomScrollView + SliverGrid**，横幅随页面滚动）、2FA=0 紫（解锁表单套 pageTint + 渐变盘替代裸图标；码列表顶部横幅）、password_vault=1 蓝、file_vault=2 绿（两者门禁表单同 2FA 式样 + 列表横幅）、qr=3 琥珀（横幅置于 FTabs **之上**，FTabs 包进 `Expanded` —— `expands:true` 雷区照旧生效）、sync=5 青（发现设备/可同步表双统计）。
+- **组件增强**：`RingProgress` 新增可选 `trackColor`（放彩色渐变底上传半透明白，缺省仍 muted）；`EmptyState` 空态图标从裸 `border` 色图标升级为**主色软底 `SquircleBox` 盘**（76×76 圆角 26，全 App 空态一并变彩）。
+- **顺手清理**：删除 habit 页死代码 `_WeekStrip`；清掉 4 条存量 lint（unused_element ×1、curly_braces_in_flow_control_structures ×2、settings_panel 的 `use_build_context_synchronously`——`originContext` 补 `mounted` 守卫）。
+
 ## 维护说明
 - 本 skill 是移动端「项目知识基线」，随代码演进而更新；每完成一个功能域或踩出新雷区，同步「功能域清单」与「全局红线」。
 - 2026-09-05：UI 全量换装 forui（shadcn 风格）+ material_ui，全 App 页面已改造（骨架/组件对照见「UI 体系」章节）。
@@ -281,4 +286,5 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 - 剩余规划（截至 2026-09-05）：真机全量验证、桌面 25 套主题映射到 forui、flutter_quill 富文本编辑、PDF / CFI 精确进度、interval 通知精细化、QR 样式、同步会话加密、conversation LLM 后端、**UI 现代化 Phase 2（壳与导航动效）→ Phase 3（逐屏动效接线）→ Phase 4（点睛与无障碍）→ Phase 5（收口）**。
 - 2026-09-05：**启动崩溃修复**——`StaggerList`/`AnimatedCheck`/`RingProgress`/`ConfettiOverlay` 四个动效组件在 `initState` 内读 `JianliMotion.enabled/duration`（内部 `MediaQuery.of`），触发 `dependOnInheritedWidgetOfExactType ... called from initState` 启动崩溃。已全部改为 `didChangeDependencies` + 一次性守卫（`_started`/`_initialized`）。雷区 #8 已固化。修复后由用户本地 `flutter run -d emulator-5554` 验证（Agent 侧不跑 analyze，>30s 即交用户）。
 - **2026-09-05：主题系统 + 设置面板 + 剩余页面 UI 全量焕新（Phase 3→4）**。① 主题：`app_theme.dart` 参数化为 5 套 `ThemeStyle`（紫/蓝/绿/橙/粉）+ 新增 `theme_providers.dart`（`themeStyleProvider`/`themeModeProvider`，SharedPreferences 持久化），`app.dart` 改 `ConsumerWidget` 读 provider，切样式/模式即时全树重渲。② 入口：首页与三个分组页右上角装饰块换成 **`SettingsButton`**，点开 **左侧滑出设置面板**（自定义 `PageRouteBuilder`，刻意不用 forui 弹层以避免与 material_ui 平行 Material 类冲突），内含 5 色环样式选择 + 三态模式 `JianliSegmented`。③ 页面焕新（沿用 Phase 3 视觉语言 `pageTint` + 专属色 `SquircleBox` + `StaggerList` + `AppCard`）：效率类（habit/todo/reminder/pomodoro/countdown/pomodoro_records）、内容类（note 列表·详情·编辑、conversation 列表·消息流、bookshelf·reader）、工具类（2FA/密码库/文件保险箱/二维码/同步）。子页强调色与 Hub 入口色对齐（notes=3、conversation=4、ebook=按标题 hash、2FA=0、密码库=1、保险箱=2、QR=3、sync=5）。④ 新雷区已固化到「Riverpod 3 / forui API 雷区」小节（**`valueOrNull` 已移除改 `.value`；`FHeader` 用 `suffixes` 不是 `actions`；`material_ui` 的 `ThemeMode`；`JianliSegmented` items 传 IconData**）。
+- 2026-09-05：**全页彩焕「PageBanner 渐变横幅」落地（Phase 3→4 二次焕新）**——新原子组件 `lib/app/ui/page_banner.dart`（页面专属强调色渐变横幅：accentGradient + 白色装饰圆 + 半透明图标盘 + 白字统计行，纯数值自动 `AnimatedStat`；`accentIndex` 与 Hub 入口色对齐），13 个功能页全部接线：habit 绿(2) / todo 蓝(1) / pomodoro+records 红(6) / countdown 紫(0，大计时器整卡渐变 + 白色进度环) / reminder 琥珀(3) / notes 琥珀(3，详情分类改软底 chip) / conversation 粉(4，消息气泡改 accentSoft 软底) / bookshelf 青(5，GridView 改 CustomScrollView+SliverGrid) / 2FA 紫(0，解锁表单渐变盘) / 密码库 蓝(1) / 保险箱 绿(2) / QR 琥珀(3，横幅置于 FTabs 上方) / 同步 青(5)。组件增强：`RingProgress` 加可选 `trackColor`；`EmptyState` 图标升级主色软底盘。顺手清 4 条存量 lint + 删 `_WeekStrip` 死代码。静态检查 `dart analyze` **0 问题**（经 dart.exe 直连跑通）；`flutter test` 未代跑。**分工铁律更新：Agent 只写码改档，一切 flutter/dart 命令交用户执行**（「跑起来看效果」小节已改写，「30 秒规则」作废）。
 - 剩余规划（截至 2026-09-05）：真机全量验证、桌面 25 套主题映射到 forui、flutter_quill 富文本编辑、PDF / CFI 精确进度、interval 通知精细化、QR 样式、同步会话加密、conversation LLM 后端、UI 现代化落地（按 `references/ui-modernization-plan.md` 分阶段）。

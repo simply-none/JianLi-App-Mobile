@@ -20,6 +20,7 @@ class RingProgress extends StatefulWidget {
     this.size = 200,
     this.strokeWidth = 10,
     this.color,
+    this.trackColor,
   });
 
   /// 0.0 ~ 1.0
@@ -27,7 +28,12 @@ class RingProgress extends StatefulWidget {
   final Widget child;
   final double size;
   final double strokeWidth;
+
+  /// 进度弧颜色（缺省 primary；放渐变底上时传 Colors.white）
   final Color? color;
+
+  /// 轨道颜色（缺省 muted；放彩色底上时传半透明白）
+  final Color? trackColor;
 
   @override
   State<RingProgress> createState() => _RingProgressState();
@@ -92,7 +98,7 @@ class _RingProgressState extends State<RingProgress>
             CustomPaint(
               painter: _RingPainter(
                 progress: _anim.value.clamp(0, 1),
-                trackColor: t.colors.muted,
+                trackColor: widget.trackColor ?? t.colors.muted,
                 progressColor: widget.color ?? t.colors.primary,
                 strokeWidth: widget.strokeWidth,
               ),
@@ -140,5 +146,6 @@ class _RingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RingPainter oldDelegate) =>
-      oldDelegate.progress != progress || oldDelegate.progressColor != progressColor;
+      oldDelegate.progress != progress ||
+      oldDelegate.progressColor != progressColor;
 }

@@ -13,8 +13,8 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/ring_progress.dart';
-import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/pomodoro_state_machine.dart';
 import '../repositories/pomodoro_repository.dart';
@@ -73,10 +73,7 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
     );
     if (mounted) {
       // forui 化：SnackBar → FToast
-      showFToast(
-        context: context,
-        title: const Text('已写入番茄钟流水'),
-      );
+      showFToast(context: context, title: const Text('已写入番茄钟流水'));
     }
   }
 
@@ -101,51 +98,62 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
       ),
       child: ColoredBox(
         color: AppTokens.pageTint(context),
-        child: Center(
-          child: snapshot == null
-              ? EmptyState(
+        child: snapshot == null
+            ? Center(
+                child: EmptyState(
                   icon: FLucideIcons.timer,
                   title: _error ?? '未找到番茄钟配置（reminders.id=pomodoro）',
                   subtitle: '先在桌面端启用番茄钟并同步数据',
-                )
-              : Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SquircleBox(
-                      size: 64,
-                      radius: 20,
-                      gradient: AppTokens.accentGradient(AppTokens.accent(6)),
-                      alignment: Alignment.center,
-                      child: const Icon(FLucideIcons.timer, color: Colors.white, size: 30),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      snapshot.currentState.label,
-                      style: t.typography.body.lg.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 24),
-                    // 阶段进度环（forui 化原子组件）
-                    RingProgress(
-                      progress: snapshot.progress,
-                      size: 200,
-                      strokeWidth: 10,
-                      child: Text(
-                        _formatSeconds(snapshot.remainingSeconds),
-                        style: t.typography.body.lg.copyWith(
-                          fontSize: 44,
-                          fontWeight: FontWeight.w700,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      '周期 ${snapshot.cycleSeconds ~/ 60} 分钟 · 完成后自动进入下一阶段',
-                      style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
-                    ),
-                  ],
                 ),
-        ),
+              )
+            : ListView(
+                padding: const EdgeInsets.only(top: 4, bottom: 24),
+                children: [
+                  // 页面专属红渐变横幅：当前阶段 + 剩余时间（与效率分组页「番茄钟」入口色对齐）
+                  PageBanner(
+                    icon: FLucideIcons.timer,
+                    title: snapshot.currentState.label,
+                    subtitle: '周期 ${snapshot.cycleSeconds ~/ 60} 分钟',
+                    accentIndex: 6,
+                    stats: [
+                      (_formatSeconds(snapshot.remainingSeconds), '本阶段剩余'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // 阶段进度环（白卡承托，避免渐变上叠渐变）
+                  AppCard(
+                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Column(
+                      children: [
+                        RingProgress(
+                          progress: snapshot.progress,
+                          size: 200,
+                          strokeWidth: 10,
+                          color: AppTokens.accent(6),
+                          child: Text(
+                            _formatSeconds(snapshot.remainingSeconds),
+                            style: t.typography.body.lg.copyWith(
+                              fontSize: 44,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '完成后自动进入下一阶段',
+                          style: t.typography.body.sm.copyWith(
+                            color: t.colors.mutedForeground,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }

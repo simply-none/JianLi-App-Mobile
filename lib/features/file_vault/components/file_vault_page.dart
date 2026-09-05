@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
@@ -134,32 +135,45 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
           color: AppTokens.pageTint(context),
           child: Column(
             children: [
+              // 页面专属绿渐变横幅（与工具分组页「保险箱」入口色对齐）
+              if (items.isNotEmpty)
+                PageBanner(
+                  icon: FLucideIcons.folderLock,
+                  title: '私密文件保险箱',
+                  subtitle: 'AES-256 加密存储，随开随取',
+                  accentIndex: 2,
+                  stats: [('${items.length}', '已加密文件')],
+                ),
               // 导入入口（原 FAB.extended 改置区块尾部动作）
-              SectionHeader(title: '已加密文件', trailing: '导入', onTrailingTap: _importFiles),
+              SectionHeader(
+                title: '已加密文件',
+                trailing: '导入',
+                onTrailingTap: _importFiles,
+              ),
               Expanded(
-              child: items.isEmpty
-                  ? const EmptyState(
-                      icon: FLucideIcons.folderLock,
-                      title: '保险箱是空的',
-                      subtitle: '点击右上角「导入」添加文件',
-                    )
-                  : ListView(
-                      padding: const EdgeInsets.only(bottom: 24),
-                      children: [
-                        for (final item in items)
-                          _FileTile(
-                            item: item,
-                            onTap: () => _preview(item),
-                            onDelete: () async {
-                              await _service.deleteFile(item.meta);
-                              setState(() => _files = null); // 触发重载
-                            },
-                          ),
-                      ],
-                    ),
-            ),
-          ],
-        ),
+                child: items.isEmpty
+                    ? const EmptyState(
+                        icon: FLucideIcons.folderLock,
+                        title: '保险箱是空的',
+                        subtitle: '点击右上角「导入」添加文件',
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        children: [
+                          for (final item in items)
+                            _FileTile(
+                              item: item,
+                              onTap: () => _preview(item),
+                              onDelete: () async {
+                                await _service.deleteFile(item.meta);
+                                setState(() => _files = null); // 触发重载
+                              },
+                            ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -170,8 +184,13 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
     try {
       final bytes = await _service.decryptFile(item.meta);
       if (!mounted) return;
-      final isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp']
-          .any((e) => (item.meta.ext ?? '').toLowerCase().contains(e));
+      final isImage = [
+        'png',
+        'jpg',
+        'jpeg',
+        'gif',
+        'webp',
+      ].any((e) => (item.meta.ext ?? '').toLowerCase().contains(e));
       await showFDialog<void>(
         context: context,
         builder: (context, style, _) => FDialog(
@@ -187,7 +206,9 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
                   height: 320,
                   width: double.infinity,
                   child: InteractiveViewer(
-                    child: Center(child: Image.memory(Uint8List.fromList(bytes))),
+                    child: Center(
+                      child: Image.memory(Uint8List.fromList(bytes)),
+                    ),
                   ),
                 )
               else
@@ -271,39 +292,57 @@ class _GateForm extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(FLucideIcons.folderLock, size: 56, color: t.colors.primary),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: t.typography.body.lg.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 20),
-            FTextField.password(
-              control: FTextFieldControl.managed(controller: passController),
-              label: const Text('口令'),
-              hint: '仅驻留内存，锁定即清除',
-            ),
-            const SizedBox(height: 12),
-            FButton(
-              onPress: working ? null : onSubmit,
-              child: Text(working ? '处理中（PBKDF2 运算约数秒）…' : actionLabel),
-            ),
-            if (error != null) ...[
-              const SizedBox(height: 10),
-              FAlert(
-                variant: FAlertVariant.destructive,
-                title: const Text('操作失败'),
-                subtitle: Text(error!),
+    // pageTint 冷调底 + 专属绿渐变图标盘（与保险箱域强调色一致）
+    return ColoredBox(
+      color: AppTokens.pageTint(context),
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: SquircleBox(
+                  size: 76,
+                  radius: 26,
+                  gradient: AppTokens.accentGradient(AppTokens.accent(2)),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    FLucideIcons.folderLock,
+                    color: Colors.white,
+                    size: 34,
+                  ),
+                ),
               ),
+              const SizedBox(height: 14),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: t.typography.body.lg.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 20),
+              FTextField.password(
+                control: FTextFieldControl.managed(controller: passController),
+                label: const Text('口令'),
+                hint: '仅驻留内存，锁定即清除',
+              ),
+              const SizedBox(height: 12),
+              FButton(
+                onPress: working ? null : onSubmit,
+                child: Text(working ? '处理中（PBKDF2 运算约数秒）…' : actionLabel),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                FAlert(
+                  variant: FAlertVariant.destructive,
+                  title: const Text('操作失败'),
+                  subtitle: Text(error!),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -312,7 +351,11 @@ class _GateForm extends StatelessWidget {
 
 /// 单个加密文件行（图标按类型区分 + 名称/元信息 + 删除）
 class _FileTile extends StatelessWidget {
-  const _FileTile({required this.item, required this.onTap, required this.onDelete});
+  const _FileTile({
+    required this.item,
+    required this.onTap,
+    required this.onDelete,
+  });
 
   final ({FileVaultFile meta, String name}) item;
   final VoidCallback onTap;
@@ -348,12 +391,16 @@ class _FileTile extends StatelessWidget {
               children: [
                 Text(
                   item.name,
-                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  style: t.typography.body.md.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   '${item.meta.size ?? 0} 字节 · ${item.meta.createdAt ?? ''}',
-                  style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
+                  style: t.typography.body.xs.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
@@ -363,7 +410,11 @@ class _FileTile extends StatelessWidget {
           FButton.icon(
             variant: FButtonVariant.ghost,
             onPress: onDelete,
-            child: Icon(FLucideIcons.trash2, size: 18, color: t.colors.destructive),
+            child: Icon(
+              FLucideIcons.trash2,
+              size: 18,
+              color: t.colors.destructive,
+            ),
           ),
         ],
       ),

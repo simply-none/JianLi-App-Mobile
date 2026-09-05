@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/segmented.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
@@ -34,11 +35,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final t = context.theme;
 
     // 过滤项（与原 SegmentedButton 一一对应）
-    const filters = [
-      TodoFilter.active,
-      TodoFilter.completed,
-      TodoFilter.all,
-    ];
+    const filters = [TodoFilter.active, TodoFilter.completed, TodoFilter.all];
     const filterLabels = ['进行中', '已完成', '全部'];
 
     return FScaffold(
@@ -77,6 +74,9 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               ),
               data: (todos) {
                 final items = applyTodoFilter(todos, _filter);
+                // 横幅统计基于全量（不随过滤切换跳变）
+                final activeCount = todos.where((t) => !t.completed).length;
+                final doneCount = todos.length - activeCount;
                 if (items.isEmpty) {
                   return const EmptyState(
                     icon: FLucideIcons.listTodo,
@@ -90,6 +90,17 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                     children: [
                       StaggerList(
                         children: [
+                          // 页面专属蓝渐变横幅（与效率分组页「待办」入口色对齐）
+                          PageBanner(
+                            icon: FLucideIcons.listTodo,
+                            title: '待办',
+                            subtitle: '专注当下，一件一件来',
+                            accentIndex: 1,
+                            stats: [
+                              ('$activeCount', '进行中'),
+                              ('$doneCount', '已完成'),
+                            ],
+                          ),
                           for (var i = 0; i < items.length; i++)
                             _TodoTile(
                               todo: items[i],
@@ -97,9 +108,13 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                               tagCount: tagsAsync.value?.length ?? 0,
                               onToggle: () => ref
                                   .read(todoRepositoryProvider)
-                                  .toggleComplete(items[i].key, !items[i].completed),
-                              onDelete: () =>
-                                  ref.read(todoRepositoryProvider).deleteTodo(items[i].key),
+                                  .toggleComplete(
+                                    items[i].key,
+                                    !items[i].completed,
+                                  ),
+                              onDelete: () => ref
+                                  .read(todoRepositoryProvider)
+                                  .deleteTodo(items[i].key),
                             ),
                         ],
                       ),
@@ -202,10 +217,7 @@ class _TodoTile extends StatelessWidget {
               child: Icon(FLucideIcons.listTodo, color: Colors.white, size: 18),
             ),
             const SizedBox(width: 12),
-            FCheckbox(
-              value: todo.completed,
-              onChange: (_) => onToggle(),
-            ),
+            FCheckbox(value: todo.completed, onChange: (_) => onToggle()),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -215,26 +227,34 @@ class _TodoTile extends StatelessWidget {
                     todo.title,
                     style: t.typography.body.md.copyWith(
                       fontWeight: FontWeight.w600,
-                      decoration:
-                          todo.completed ? TextDecoration.lineThrough : null,
+                      decoration: todo.completed
+                          ? TextDecoration.lineThrough
+                          : null,
                     ),
                   ),
-                  if ((todo.dueDate?.isNotEmpty ?? false) || todo.tags.isNotEmpty) ...[
+                  if ((todo.dueDate?.isNotEmpty ?? false) ||
+                      todo.tags.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(
                       [
-                        if (todo.dueDate?.isNotEmpty ?? false) '截止 ${todo.dueDate}',
+                        if (todo.dueDate?.isNotEmpty ?? false)
+                          '截止 ${todo.dueDate}',
                         if (todo.tags.isNotEmpty) '${todo.tags.length} 个标签',
                       ].join(' · '),
-                      style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                      style: t.typography.body.sm.copyWith(
+                        color: t.colors.mutedForeground,
+                      ),
                     ),
                   ],
                 ],
               ),
             ),
             if (todo.isChild)
-              Icon(FLucideIcons.cornerDownRight,
-                  size: 16, color: t.colors.mutedForeground),
+              Icon(
+                FLucideIcons.cornerDownRight,
+                size: 16,
+                color: t.colors.mutedForeground,
+              ),
           ],
         ),
       ),

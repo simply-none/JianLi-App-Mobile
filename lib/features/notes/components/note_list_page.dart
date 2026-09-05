@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -63,15 +64,30 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
                     );
                   }
                   return ListView(
-                    padding: const EdgeInsets.only(top: 8, bottom: 24),
+                    padding: const EdgeInsets.only(top: 4, bottom: 24),
                     children: [
+                      // 页面专属琥珀渐变横幅（与内容分组页「笔记」入口色对齐）
+                      PageBanner(
+                        icon: FLucideIcons.notebookPen,
+                        title: '笔记',
+                        subtitle: '随手记录，分类收纳',
+                        accentIndex: 3,
+                        stats: [
+                          (
+                            '${notes.length}',
+                            _category == null ? '篇笔记' : '篇「$_category」',
+                          ),
+                          ('${categoriesAsync.value?.length ?? 0}', '个分类'),
+                        ],
+                      ),
                       StaggerList(
                         children: [
                           for (final note in notes)
                             _NoteCard(
                               note: note,
-                              onTap: () =>
-                                  context.push('/notes/${Uri.encodeComponent(note.key)}'),
+                              onTap: () => context.push(
+                                '/notes/${Uri.encodeComponent(note.key)}',
+                              ),
                             ),
                         ],
                       ),
@@ -116,7 +132,11 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
 
 /// 分类筛选 chip（圆角 pill；选中态用笔记域专属琥珀强调色）
 class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({required this.label, required this.selected, required this.onTap});
+  const _CategoryChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final bool selected;
@@ -139,7 +159,10 @@ class _CategoryChip extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: t.typography.body.sm.copyWith(color: fg, fontWeight: FontWeight.w600),
+          style: t.typography.body.sm.copyWith(
+            color: fg,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
@@ -165,7 +188,11 @@ class _NoteCard extends StatelessWidget {
             radius: 14,
             gradient: AppTokens.accentGradient(AppTokens.accent(3)),
             alignment: Alignment.center,
-            child: Icon(FLucideIcons.notebookPen, color: Colors.white, size: 20),
+            child: Icon(
+              FLucideIcons.notebookPen,
+              color: Colors.white,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -174,21 +201,29 @@ class _NoteCard extends StatelessWidget {
               children: [
                 Text(
                   note.title,
-                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  style: t.typography.body.md.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   note.excerpt,
-                  style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                  style: t.typography.body.sm.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          Icon(FLucideIcons.chevronRight, size: 18, color: t.colors.mutedForeground),
+          Icon(
+            FLucideIcons.chevronRight,
+            size: 18,
+            color: t.colors.mutedForeground,
+          ),
         ],
       ),
     );

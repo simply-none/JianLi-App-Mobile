@@ -124,9 +124,11 @@ class _SettingsPanel extends ConsumerWidget {
                           child: FTile(
                             onPress: () {
                               Navigator.of(context).pop();
-                              Future.microtask(
-                                () => GoRouter.of(originContext).push('/sync'),
-                              );
+                              // 面板已 pop，跨异步使用 originContext 前先查 mounted
+                              Future.microtask(() {
+                                if (!originContext.mounted) return;
+                                GoRouter.of(originContext).push('/sync');
+                              });
                             },
                             prefix:
                                 Icon(FLucideIcons.refreshCw, color: AppTokens.accent(3)),

@@ -36,7 +36,9 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
     super.initState();
     // 每秒刷新（基于 end_time 时间戳计算，与桌面端同构）
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _nowMs = DateTime.now().millisecondsSinceEpoch);
+      if (mounted) {
+        setState(() => _nowMs = DateTime.now().millisecondsSinceEpoch);
+      }
     });
   }
 
@@ -64,10 +66,7 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
             children: [
               // 模式切换（滑块分段，选中态下方渐变指示块）
               JianliSegmented(
-                items: const [
-                  (null, '倒计时长'),
-                  (null, '到某时刻'),
-                ],
+                items: const [(null, '倒计时长'), (null, '到某时刻')],
                 selected: modeValue == 'duration' ? 0 : 1,
                 onSelect: (i) => mode.value = i == 0 ? 'duration' : 'datetime',
               ),
@@ -80,7 +79,9 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
               const SizedBox(height: 12),
               // 时长模式：分钟；到时刻模式：简化为「再过 N 分钟到达」的具体时刻选择器 TODO(P2)
               FTextField(
-                control: FTextFieldControl.managed(controller: minutesController),
+                control: FTextFieldControl.managed(
+                  controller: minutesController,
+                ),
                 label: Text(modeValue == 'duration' ? '时长（分钟）' : '距离目标时刻（分钟）'),
                 hint: '10',
                 keyboardType: TextInputType.number,
@@ -90,7 +91,9 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
                 onPress: () {
                   final minutes = int.tryParse(minutesController.text) ?? 10;
                   final nowMs = DateTime.now().millisecondsSinceEpoch;
-                  ref.read(countdownRepositoryProvider).create(
+                  ref
+                      .read(countdownRepositoryProvider)
+                      .create(
                         name: nameController.text.trim().isEmpty
                             ? '倒计时'
                             : nameController.text.trim(),
@@ -116,7 +119,8 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
     // 大计时器：最临近结束的 running 项
     CountdownData? active;
     for (final r in rows) {
-      if (r.status == 'running' && (active == null || (r.endTime ?? 0) < (active.endTime ?? 0))) {
+      if (r.status == 'running' &&
+          (active == null || (r.endTime ?? 0) < (active.endTime ?? 0))) {
         active = r;
       }
     }
@@ -159,47 +163,96 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
     );
   }
 
-  /// 顶部大计时器（进度环 + 大数字）
+  /// 顶部大计时器：专属紫渐变英雄卡（装饰圆 + 白色进度环 + 白字大时间），
+  /// 与效率分组页「倒计时」入口色对齐
   Widget _buildActiveTimer(CountdownData active) {
     final t = context.theme;
     final total = active.duration ?? 1;
     final remaining = ((active.endTime ?? 0) - _nowMs).clamp(0, total);
     final progress = total <= 0 ? 0.0 : 1 - remaining / total;
-    return AppCard(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 3,
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        children: [
-          SquircleBox(
-            size: 56,
-            radius: 18,
-            gradient: AppTokens.accentGradient(AppTokens.accent(0)),
-            alignment: Alignment.center,
-            child: const Icon(FLucideIcons.hourglass, color: Colors.white, size: 26),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            active.name ?? '倒计时',
-            style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 14),
-          RingProgress(
-            progress: progress,
-            size: 210,
-            child: Text(
-              _format(remaining),
-              style: t.typography.body.lg.copyWith(
-                fontSize: 40,
-                fontWeight: FontWeight.w700,
-                fontFeatures: const [FontFeature.tabularFigures()],
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      decoration: BoxDecoration(
+        gradient: AppTokens.accentGradient(AppTokens.accent(0)),
+        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        boxShadow: AppTokens.elevation(context, level: 3),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+        child: Stack(
+          children: [
+            Positioned(right: -30, top: -30, child: _decoCircle(100, 0.12)),
+            Positioned(right: 48, bottom: -40, child: _decoCircle(80, 0.10)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 22),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SquircleBox(
+                        size: 34,
+                        radius: 11,
+                        color: Colors.white.withValues(alpha: 0.22),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          FLucideIcons.hourglass,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        active.name ?? '倒计时',
+                        style: t.typography.body.md.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  RingProgress(
+                    progress: progress,
+                    size: 190,
+                    strokeWidth: 9,
+                    color: Colors.white,
+                    trackColor: Colors.white.withValues(alpha: 0.25),
+                    child: Text(
+                      _format(remaining),
+                      style: t.typography.body.lg.copyWith(
+                        color: Colors.white,
+                        fontSize: 40,
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '进行中 · 到点自动提醒',
+                    style: t.typography.body.xs.copyWith(
+                      color: Colors.white.withValues(alpha: 0.78),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+
+  /// 渐变底上的白色装饰圆（同首页英雄卡）
+  Widget _decoCircle(double size, double alpha) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: Colors.white.withValues(alpha: alpha),
+    ),
+  );
 
   String _format(int ms) {
     final s = (ms / 1000).ceil();
@@ -214,7 +267,11 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
 
 /// 倒计时卡片（列表行：进度环 + 名称/剩余 + 暂停/重置/删除）
 class _CountdownCard extends ConsumerWidget {
-  const _CountdownCard({required this.row, required this.nowMs, this.isCurrent = false});
+  const _CountdownCard({
+    required this.row,
+    required this.nowMs,
+    this.isCurrent = false,
+  });
 
   final CountdownData row;
   final int nowMs;
@@ -237,8 +294,8 @@ class _CountdownCard extends ConsumerWidget {
     final label = row.status == 'finished'
         ? '已完成'
         : running || row.status == 'paused'
-            ? '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}'
-            : row.status ?? '';
+        ? '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}'
+        : row.status ?? '';
 
     return AppCard(
       onTap: isCurrent ? null : () {},
@@ -252,7 +309,9 @@ class _CountdownCard extends ConsumerWidget {
               size: 44,
               strokeWidth: 4,
               child: Icon(
-                row.status == 'finished' ? FLucideIcons.circleCheck : FLucideIcons.hourglass,
+                row.status == 'finished'
+                    ? FLucideIcons.circleCheck
+                    : FLucideIcons.hourglass,
                 size: 18,
                 color: t.colors.primary,
               ),
@@ -265,12 +324,16 @@ class _CountdownCard extends ConsumerWidget {
               children: [
                 Text(
                   row.name ?? '倒计时',
-                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  style: t.typography.body.md.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   label,
-                  style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                  style: t.typography.body.sm.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
                 ),
               ],
             ),
@@ -295,7 +358,11 @@ class _CountdownCard extends ConsumerWidget {
             size: FButtonSizeVariant.sm,
             onPress: () => repo.reset(row),
             semanticsLabel: '重置',
-            child: Icon(FLucideIcons.rotateCcw, size: 18, color: t.colors.mutedForeground),
+            child: Icon(
+              FLucideIcons.rotateCcw,
+              size: 18,
+              color: t.colors.mutedForeground,
+            ),
           ),
           // 删除
           FButton.icon(
@@ -303,7 +370,11 @@ class _CountdownCard extends ConsumerWidget {
             size: FButtonSizeVariant.sm,
             onPress: () => repo.delete(row.key),
             semanticsLabel: '删除',
-            child: Icon(FLucideIcons.trash2, size: 18, color: t.colors.destructive),
+            child: Icon(
+              FLucideIcons.trash2,
+              size: 18,
+              color: t.colors.destructive,
+            ),
           ),
         ],
       ),

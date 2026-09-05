@@ -12,6 +12,7 @@ import 'package:material_ui/material_ui.dart';
 import '../anim/jianli_haptics.dart';
 import '../theme/app_theme.dart';
 import 'animated_stat.dart';
+import 'squircle_box.dart';
 import 'tap_scale.dart';
 
 /// 通用圆角卡片 —— card 底色 + 1px border + 轻阴影（shadcn 观感），可点击缩放
@@ -69,7 +70,12 @@ class AppCard extends StatelessWidget {
 
 /// 区块标题（左侧色条 + 标题 + 尾部动作）
 class SectionHeader extends StatelessWidget {
-  const SectionHeader({super.key, required this.title, this.trailing, this.onTrailingTap});
+  const SectionHeader({
+    super.key,
+    required this.title,
+    this.trailing,
+    this.onTrailingTap,
+  });
 
   final String title;
   final String? trailing;
@@ -100,7 +106,10 @@ class SectionHeader extends StatelessWidget {
           if (trailing != null)
             GestureDetector(
               onTap: onTrailingTap,
-              child: Text(trailing!, style: t.typography.body.sm.copyWith(color: t.colors.primary)),
+              child: Text(
+                trailing!,
+                style: t.typography.body.sm.copyWith(color: t.colors.primary),
+              ),
             ),
         ],
       ),
@@ -135,14 +144,23 @@ class EmptyState extends StatelessWidget {
           if (illustration != null)
             illustration!
           else
-            Icon(icon, size: 56, color: t.colors.border),
-          const SizedBox(height: 12),
+            // 图标盘升级：主色软底超椭圆，替代裸描边色图标（空态也有色彩个性）
+            SquircleBox(
+              size: 76,
+              radius: 26,
+              color: AppTokens.accentSoft(context, t.colors.primary),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 32, color: t.colors.primary),
+            ),
+          const SizedBox(height: 14),
           Text(title, style: t.typography.body.md),
           if (subtitle != null) ...[
             const SizedBox(height: 4),
             Text(
               subtitle!,
-              style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+              style: t.typography.body.sm.copyWith(
+                color: t.colors.mutedForeground,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -191,7 +209,9 @@ class StatBlock extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
-          style: t.typography.body.xs.copyWith(color: color ?? t.colors.foreground),
+          style: t.typography.body.xs.copyWith(
+            color: color ?? t.colors.foreground,
+          ),
         ),
       ],
     );
