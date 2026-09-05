@@ -2,6 +2,9 @@
 //
 // 结构：StatefulShellRoute 四分支（首页/效率/内容/工具，底部导航保持各自状态）
 //       + 全屏功能路由（从各分组页 push 进入）。
+// 转场：全屏 push 路由用 pageBuilder 包 fadeSlidePage（横向滑入+淡入，见
+//       lib/app/anim/jianli_transitions.dart）；底部四分支保持 builder，由导航壳
+//       以 indexedStack 保持状态，转场在 Phase 2 再精细化（fadePage 已备好）。
 import 'package:go_router/go_router.dart';
 
 import '../../features/habit/components/habit_page.dart';
@@ -23,13 +26,14 @@ import '../../features/ebook/components/bookshelf_page.dart';
 import '../../features/ebook/components/epub_reader_page.dart';
 import '../../features/conversation/components/conversation_page.dart';
 import '../../features/sync/components/sync_page.dart';
+import '../anim/jianli_transitions.dart';
 import '../shell/main_shell.dart';
 
 /// 全局路由配置
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
   routes: [
-    // ---- 底部导航四分支 ----
+    // ---- 底部导航四分支（保持 builder，导航壳 indexedStack 管理状态） ----
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) => MainShell(navigationShell: navigationShell),
       branches: [
@@ -48,56 +52,97 @@ final GoRouter appRouter = GoRouter(
       ],
     ),
     // ---- 效率 ----
-    GoRoute(path: '/habit', builder: (context, state) => const HabitPage()),
-    GoRoute(path: '/todo', builder: (context, state) => const TodoPage()),
-    GoRoute(path: '/pomodoro', builder: (context, state) => const PomodoroPage()),
-    GoRoute(path: '/pomodoro/records', builder: (context, state) => const PomodoroRecordsPage()),
-    GoRoute(path: '/countdown', builder: (context, state) => const CountdownPage()),
-    GoRoute(path: '/reminders', builder: (context, state) => const ReminderListPage()),
+    GoRoute(
+      path: '/habit',
+      pageBuilder: (context, state) => fadeSlidePage(const HabitPage(), state),
+    ),
+    GoRoute(
+      path: '/todo',
+      pageBuilder: (context, state) => fadeSlidePage(const TodoPage(), state),
+    ),
+    GoRoute(
+      path: '/pomodoro',
+      pageBuilder: (context, state) => fadeSlidePage(const PomodoroPage(), state),
+    ),
+    GoRoute(
+      path: '/pomodoro/records',
+      pageBuilder: (context, state) => fadeSlidePage(const PomodoroRecordsPage(), state),
+    ),
+    GoRoute(
+      path: '/countdown',
+      pageBuilder: (context, state) => fadeSlidePage(const CountdownPage(), state),
+    ),
+    GoRoute(
+      path: '/reminders',
+      pageBuilder: (context, state) => fadeSlidePage(const ReminderListPage(), state),
+    ),
     // ---- 内容 ----
     GoRoute(
       path: '/notes',
-      builder: (context, state) => const NoteListPage(),
+      pageBuilder: (context, state) => fadeSlidePage(const NoteListPage(), state),
       routes: [
         GoRoute(
           path: 'edit',
-          builder: (context, state) =>
-              NoteEditorPage(noteKey: state.uri.queryParameters['noteKey']),
+          pageBuilder: (context, state) => fadeSlidePage(
+            NoteEditorPage(noteKey: state.uri.queryParameters['noteKey']),
+            state,
+          ),
         ),
         GoRoute(
           path: ':key',
-          builder: (context, state) =>
-              NoteDetailPage(noteKey: state.pathParameters['key'] ?? ''),
+          pageBuilder: (context, state) => fadeSlidePage(
+            NoteDetailPage(noteKey: state.pathParameters['key'] ?? ''),
+            state,
+          ),
         ),
       ],
     ),
     GoRoute(
       path: '/conversation',
-      builder: (context, state) => const ConversationPage(),
+      pageBuilder: (context, state) => fadeSlidePage(const ConversationPage(), state),
       routes: [
         GoRoute(
           path: ':id',
-          builder: (context, state) =>
-              ConversationMessagesPage(themeId: state.pathParameters['id'] ?? ''),
+          pageBuilder: (context, state) => fadeSlidePage(
+            ConversationMessagesPage(themeId: state.pathParameters['id'] ?? ''),
+            state,
+          ),
         ),
       ],
     ),
     GoRoute(
       path: '/ebook',
-      builder: (context, state) => const BookshelfPage(),
+      pageBuilder: (context, state) => fadeSlidePage(const BookshelfPage(), state),
       routes: [
         GoRoute(
           path: 'reader',
-          builder: (context, state) =>
-              EpubReaderPage(filePath: state.uri.queryParameters['path'] ?? ''),
+          pageBuilder: (context, state) => fadeSlidePage(
+            EpubReaderPage(filePath: state.uri.queryParameters['path'] ?? ''),
+            state,
+          ),
         ),
       ],
     ),
     // ---- 工具 ----
-    GoRoute(path: '/twofactor', builder: (context, state) => const TwoFactorPage()),
-    GoRoute(path: '/password-vault', builder: (context, state) => const PasswordVaultPage()),
-    GoRoute(path: '/file-vault', builder: (context, state) => const FileVaultPage()),
-    GoRoute(path: '/qr', builder: (context, state) => const QrPage()),
-    GoRoute(path: '/sync', builder: (context, state) => const SyncPage()),
+    GoRoute(
+      path: '/twofactor',
+      pageBuilder: (context, state) => fadeSlidePage(const TwoFactorPage(), state),
+    ),
+    GoRoute(
+      path: '/password-vault',
+      pageBuilder: (context, state) => fadeSlidePage(const PasswordVaultPage(), state),
+    ),
+    GoRoute(
+      path: '/file-vault',
+      pageBuilder: (context, state) => fadeSlidePage(const FileVaultPage(), state),
+    ),
+    GoRoute(
+      path: '/qr',
+      pageBuilder: (context, state) => fadeSlidePage(const QrPage(), state),
+    ),
+    GoRoute(
+      path: '/sync',
+      pageBuilder: (context, state) => fadeSlidePage(const SyncPage(), state),
+    ),
   ],
 );

@@ -51,3 +51,92 @@ class AppTheme {
     );
   }
 }
+
+/// 设计 token（UI 现代化 + 动效体系地基，Phase 0）
+///
+/// 收口所有「形状 / 阴影 / 渐变 / 语义软底 / 动效节律」，组件一律取这里，
+/// 严禁在页面里写死颜色、阴影、圆角、时长。所有方法吃 BuildContext，
+/// 颜色优先 forui `context.theme.colors`，暗色按 brightness 派生分层。
+class AppTokens {
+  AppTokens._();
+
+  // —— 形状（圆角档位，替代散落的 12/16/24 魔法数） ——
+  static const double radiusSm = 12;
+  static const double radiusMd = 16;
+  static const double radiusLg = 24;
+  static const double radiusXl = 32;
+
+  // —— 动效节律（统一时长与曲线，组件复用保持一致手感） ——
+  static const Duration fast = Duration(milliseconds: 160);
+  static const Duration base = Duration(milliseconds: 280);
+  static const Duration slow = Duration(milliseconds: 420);
+  static const Curve standard = Curves.easeOutCubic;
+  static const Curve emphasize = Curves.easeOutBack;
+
+  /// 柔和阴影（轻量、低透明度，避免 iOS 重阴影观感）
+  ///
+  /// level: 0=无 1=卡片悬浮 2=弹层 3=置顶/FAB。
+  static List<BoxShadow> elevation(BuildContext context, {int level = 1}) {
+    final t = context.theme;
+    final isDark = Theme.brightnessOf(context) == Brightness.dark;
+    final alpha = isDark ? 0.45 : 0.08;
+    const offsets = [Offset.zero, Offset(0, 2), Offset(0, 6), Offset(0, 12)];
+    const blurs = [0.0, 4.0, 12.0, 24.0];
+    final i = level.clamp(0, 3);
+    if (i == 0) return const [];
+    return [
+      BoxShadow(
+        color: (isDark ? Colors.black : t.colors.foreground)
+            .withValues(alpha: alpha * (i + 1) / 4),
+        offset: offsets[i],
+        blurRadius: blurs[i],
+      ),
+    ];
+  }
+
+  /// 主色渐变（品牌氛围：横幅 / 关键 CTA）
+  static LinearGradient primaryGradient(BuildContext context) {
+    final c = context.theme.colors.primary;
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [c, Color.lerp(c, Colors.black, 0.22)!],
+    );
+  }
+
+  /// 语义软底（success / warn / info 等状态底，叠在主色上是低密度提示）
+  static Color soft(BuildContext context, Color base) =>
+      base.withValues(alpha: Theme.brightnessOf(context) == Brightness.dark ? 0.22 : 0.12);
+
+  // —— 专属强调色板（2026 视觉个性来源：每个功能域一个专属色，磁贴/图标底盘用） ——
+  static const List<Color> accents = [
+    Color(0xFF6C5CE7), // 0 紫（主色系）
+    Color(0xFF3B82F6), // 1 蓝
+    Color(0xFF10B981), // 2 绿
+    Color(0xFFF59E0B), // 3 琥珀
+    Color(0xFFEC4899), // 4 粉
+    Color(0xFF06B6D4), // 5 青
+    Color(0xFFEF4444), // 6 红
+  ];
+
+  /// 取强调色（自动取模，越界安全）
+  static Color accent(int index) => accents[index % accents.length];
+
+  /// 强调色软底（入口磁贴底色，亮/暗自适应）
+  static Color accentSoft(BuildContext context, Color base) => base.withValues(
+      alpha: Theme.brightnessOf(context) == Brightness.dark ? 0.16 : 0.10);
+
+  /// 强调色渐变（图标底盘 / 小面积强调）
+  static LinearGradient accentGradient(Color base) => LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [base, Color.lerp(base, Colors.black, 0.25)!],
+      );
+
+  /// 页面底色：在 background 上叠一点主色冷调，去「纯白苍白」感
+  static Color pageTint(BuildContext context) {
+    final t = context.theme;
+    final isDark = Theme.brightnessOf(context) == Brightness.dark;
+    return Color.lerp(t.colors.background, t.colors.primary, isDark ? 0.06 : 0.04)!;
+  }
+}

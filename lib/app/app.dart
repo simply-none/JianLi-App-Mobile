@@ -26,12 +26,20 @@ class JianliApp extends StatelessWidget {
       darkTheme: AppTheme.materialDark(),
       themeMode: ThemeMode.system,
       routerConfig: appRouter,
-      builder: (context, child) => FTheme(
-        data: Theme.brightnessOf(context) == Brightness.light
+      builder: (context, child) {
+        // 主题切换时背景色平滑过渡（AppTokens.base 时长）；减弱动效时退回零时长直出。
+        final data = Theme.brightnessOf(context) == Brightness.light
             ? AppTheme.light()
-            : AppTheme.dark(),
-        child: FToaster(child: FTooltipGroup(child: child!)),
-      ),
+            : AppTheme.dark();
+        return FTheme(
+          data: data,
+          child: AnimatedContainer(
+            duration: AppTokens.base,
+            color: data.colors.background,
+            child: FToaster(child: FTooltipGroup(child: child!)),
+          ),
+        );
+      },
     );
   }
 }
