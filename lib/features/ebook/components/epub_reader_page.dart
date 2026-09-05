@@ -1,10 +1,13 @@
-// 阅读器页 —— 章节渲染（HTML）+ 上一/下一章 + 进度保存
+// 阅读器页 —— 章节渲染（HTML）+ 上一/下一章 + 进度保存（forui 化）
 //
 // epub CFI 级精确定位列 P2；首批按「章节索引」保存进度（cfi=chapter:<i>），
 // content_hash 与桌面端共享同一身份键，未来同步后可按章节比例近似互通。
-import 'package:flutter/material.dart';
+// 章节目录走 showFSheet 底部弹层（FTile 列表，当前章 selected 高亮）。
+import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:go_router/go_router.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../repositories/ebook_repository.dart';
 import '../services/epub_service.dart';
@@ -81,19 +84,22 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   @override
   Widget build(BuildContext context) {
     final book = _book;
-    return Scaffold(
-      appBar: AppBar(
+    final t = context.theme;
+    return FScaffold(
+      // 全屏阅读：关闭 childPad，正文自控边距
+      childPad: false,
+      header: FHeader.nested(
         title: Text(book?.title ?? '阅读'),
-        actions: [
-          IconButton(
-            tooltip: '章节',
-            icon: const Icon(Icons.format_list_numbered),
-            onPressed: book == null ? null : () => _showChapters(book),
+        prefixes: [FHeaderAction.back(onPress: () => context.pop())],
+        suffixes: [
+          FHeaderAction(
+            icon: const Icon(FLucideIcons.list),
+            onPress: book == null ? null : () => _showChapters(book),
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
+      child: _loading
+          ? const Center(child: FCircularProgress())
           : _error != null
               ? Center(child: Text(_error!))
               : Column(
@@ -104,24 +110,29 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                         child: HtmlWidget(book!.chapters[_chapter].html),
                       ),
                     ),
-                    const Divider(height: 1),
+                    const FDivider(),
                     SafeArea(
+                      top: false,
                       child: Row(
                         children: [
-                          TextButton(
-                            onPressed: _chapter > 0 ? () => _goChapter(_chapter - 1) : null,
+                          FButton(
+                            variant: FButtonVariant.ghost,
+                            onPress:
+                                _chapter > 0 ? () => _goChapter(_chapter - 1) : null,
                             child: const Text('上一章'),
                           ),
                           Expanded(
                             child: Center(
                               child: Text(
                                 '${_chapter + 1}/${book.chapters.length}',
-                                style: Theme.of(context).textTheme.bodySmall,
+                                style: t.typography.body.sm
+                                    .copyWith(color: t.colors.mutedForeground),
                               ),
                             ),
                           ),
-                          TextButton(
-                            onPressed: _chapter < book.chapters.length - 1
+                          FButton(
+                            variant: FButtonVariant.ghost,
+                            onPress: _chapter < book.chapters.length - 1
                                 ? () => _goChapter(_chapter + 1)
                                 : null,
                             child: const Text('下一章'),
@@ -134,23 +145,37 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     );
   }
 
+  /// 章节目录弹层（当前章 selected 高亮）
   void _showChapters(ParsedBook book) {
-    showModalBottomSheet<void>(
+    showFSheet<void>(
       context: context,
-      showDragHandle: true,
-      builder: (context) => ListView(
-        children: [
-          for (var i = 0; i < book.chapters.length; i++)
-            ListTile(
-              dense: true,
-              title: Text(book.chapters[i].title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              selected: i == _chapter,
-              onTap: () {
-                Navigator.pop(context);
-                _goChapter(i);
-              },
+      side: FLayout.btt,
+      mainAxisMaxRatio: null, // 目录可长，允许拖到更高
+      builder: (context) => SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text('目录', style: context.theme.typography.body.lg),
             ),
-        ],
+            FTileGroup(
+              divider: FItemDivider.none,
+              children: [
+                for (var i = 0; i < book.chapters.length; i++)
+                  FTile(
+                    title: Text(book.chapters[i].title,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    selected: i == _chapter,
+                    onPress: () {
+                      Navigator.pop(context);
+                      _goChapter(i);
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

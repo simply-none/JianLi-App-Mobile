@@ -1,11 +1,15 @@
-// 倒计时页 —— 列表 + 新建弹层（时长/指定时刻两种模式）
+// 倒计时页（forui 化）—— 列表 + 新建弹层（时长/指定时刻两种模式）
 //
 // 对齐桌面端 countdown 页心智：大计时器展示最近的一个 running 计时，
 // 列表卡片带进度环 + 暂停/恢复/重置/删除。
+// forui 改造点：FScaffold+FHeader.nested 骨架、RingProgress 进度环、FButton.icon 行内
+// 操作、showFSheet 新建弹层（FButton 模式切换 + FTextField）；计时与仓储调用原样保留。
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../app/ui/ring_progress.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -39,47 +43,63 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
     super.dispose();
   }
 
+  /// 新建倒计时弹层（时长 / 指定时刻两种模式）
   Future<void> _showCreateSheet() async {
     final nameController = TextEditingController();
     final minutesController = TextEditingController(text: '10');
     final mode = ValueNotifier<String>('duration');
 
-    await showModalBottomSheet<void>(
+    await showFSheet<void>(
       context: context,
-      showDragHandle: true,
+      side: FLayout.btt,
       builder: (context) => ValueListenableBuilder<String>(
         valueListenable: mode,
         builder: (context, modeValue, _) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 8, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'duration', label: Text('倒计时长')),
-                  ButtonSegment(value: 'datetime', label: Text('到某时刻')),
+              // 模式切换（选中 secondary / 未选 ghost）
+              Row(
+                spacing: 8,
+                children: [
+                  Expanded(
+                    child: FButton(
+                      variant: modeValue == 'duration'
+                          ? FButtonVariant.secondary
+                          : FButtonVariant.ghost,
+                      onPress: () => mode.value = 'duration',
+                      child: const Text('倒计时长'),
+                    ),
+                  ),
+                  Expanded(
+                    child: FButton(
+                      variant: modeValue == 'datetime'
+                          ? FButtonVariant.secondary
+                          : FButtonVariant.ghost,
+                      onPress: () => mode.value = 'datetime',
+                      child: const Text('到某时刻'),
+                    ),
+                  ),
                 ],
-                selected: {modeValue},
-                onSelectionChanged: (s) => mode.value = s.first,
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: '名称', border: OutlineInputBorder()),
+              FTextField(
+                control: FTextFieldControl.managed(controller: nameController),
+                label: const Text('名称'),
+                hint: '给这个倒计时起个名字',
               ),
               const SizedBox(height: 12),
               // 时长模式：分钟；到时刻模式：简化为「再过 N 分钟到达」的具体时刻选择器 TODO(P2)
-              TextField(
-                controller: minutesController,
+              FTextField(
+                control: FTextFieldControl.managed(controller: minutesController),
+                label: Text(modeValue == 'duration' ? '时长（分钟）' : '距离目标时刻（分钟）'),
+                hint: '10',
                 keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: modeValue == 'duration' ? '时长（分钟）' : '距离目标时刻（分钟）',
-                  border: const OutlineInputBorder(),
-                ),
               ),
               const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () {
+              FButton(
+                onPress: () {
                   final minutes = int.tryParse(minutesController.text) ?? 10;
                   final nowMs = DateTime.now().millisecondsSinceEpoch;
                   ref.read(countdownRepositoryProvider).create(
@@ -113,21 +133,27 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
       }
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('倒计时')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCreateSheet,
-        icon: const Icon(Icons.add_alarm),
-        label: const Text('新建'),
+    return FScaffold(
+      header: FHeader.nested(
+        title: const Text('倒计时'),
+        prefixes: [FHeaderAction.back(onPress: () => context.pop())],
+        // 右上角「新建」入口（替代原 FloatingActionButton.extended）
+        suffixes: [
+          FHeaderAction(
+            icon: const Icon(FLucideIcons.alarmClockPlus),
+            onPress: _showCreateSheet,
+            semanticsLabel: '新建倒计时',
+          ),
+        ],
       ),
-      body: rows.isEmpty
+      child: rows.isEmpty
           ? const EmptyState(
-              icon: Icons.hourglass_empty,
+              icon: FLucideIcons.hourglass,
               title: '暂无倒计时',
-              subtitle: '点击右下角新建一个',
+              subtitle: '点击右上角新建一个',
             )
           : ListView(
-              padding: const EdgeInsets.only(bottom: 88),
+              padding: const EdgeInsets.only(top: 4, bottom: 24),
               children: [
                 if (active != null) _buildActiveTimer(active),
                 const SectionHeader(title: '全部'),
@@ -144,6 +170,7 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
 
   /// 顶部大计时器（进度环 + 大数字）
   Widget _buildActiveTimer(CountdownData active) {
+    final t = context.theme;
     final total = active.duration ?? 1;
     final remaining = ((active.endTime ?? 0) - _nowMs).clamp(0, total);
     final progress = total <= 0 ? 0.0 : 1 - remaining / total;
@@ -151,17 +178,21 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
       padding: const EdgeInsets.symmetric(vertical: 20),
       child: Column(
         children: [
-          Text(active.name ?? '倒计时', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            active.name ?? '倒计时',
+            style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 14),
           RingProgress(
             progress: progress,
             size: 210,
             child: Text(
               _format(remaining),
-              style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+              style: t.typography.body.lg.copyWith(
+                fontSize: 40,
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ],
@@ -180,7 +211,7 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
   }
 }
 
-/// 倒计时卡片（列表行）
+/// 倒计时卡片（列表行：进度环 + 名称/剩余 + 暂停/重置/删除）
 class _CountdownCard extends ConsumerWidget {
   const _CountdownCard({required this.row, required this.nowMs, this.isCurrent = false});
 
@@ -191,7 +222,7 @@ class _CountdownCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.read(countdownRepositoryProvider);
-    final scheme = Theme.of(context).colorScheme;
+    final t = context.theme;
     final running = row.status == 'running';
     final remaining = row.status == 'paused'
         ? (row.pausedRemaining ?? 0)
@@ -220,9 +251,9 @@ class _CountdownCard extends ConsumerWidget {
               size: 44,
               strokeWidth: 4,
               child: Icon(
-                row.status == 'finished' ? Icons.check : Icons.hourglass_top,
+                row.status == 'finished' ? FLucideIcons.circleCheck : FLucideIcons.hourglass,
                 size: 18,
-                color: scheme.primary,
+                color: t.colors.primary,
               ),
             ),
           ),
@@ -231,33 +262,47 @@ class _CountdownCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(row.name ?? '倒计时', style: Theme.of(context).textTheme.titleSmall),
+                Text(
+                  row.name ?? '倒计时',
+                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 2),
                 Text(
                   label,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: scheme.outline),
+                  style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
                 ),
               ],
             ),
           ),
-          IconButton(
-            tooltip: running ? '暂停' : '继续',
-            icon: Icon(running ? Icons.pause_circle_outline : Icons.play_circle_outline),
-            onPressed: row.status == 'finished'
+          // 暂停 / 继续（已结束禁用）
+          FButton.icon(
+            variant: FButtonVariant.ghost,
+            size: FButtonSizeVariant.sm,
+            onPress: row.status == 'finished'
                 ? null
                 : () => running ? repo.pause(row) : repo.resume(row),
+            semanticsLabel: running ? '暂停' : '继续',
+            child: Icon(
+              running ? FLucideIcons.pause : FLucideIcons.play,
+              size: 18,
+              color: t.colors.primary,
+            ),
           ),
-          IconButton(
-            tooltip: '重置',
-            icon: const Icon(Icons.restart_alt),
-            onPressed: () => repo.reset(row),
+          // 重置
+          FButton.icon(
+            variant: FButtonVariant.ghost,
+            size: FButtonSizeVariant.sm,
+            onPress: () => repo.reset(row),
+            semanticsLabel: '重置',
+            child: Icon(FLucideIcons.rotateCcw, size: 18, color: t.colors.mutedForeground),
           ),
-          IconButton(
-            tooltip: '删除',
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => repo.delete(row.key),
+          // 删除
+          FButton.icon(
+            variant: FButtonVariant.ghost,
+            size: FButtonSizeVariant.sm,
+            onPress: () => repo.delete(row.key),
+            semanticsLabel: '删除',
+            child: Icon(FLucideIcons.trash2, size: 18, color: t.colors.destructive),
           ),
         ],
       ),

@@ -3,7 +3,8 @@
 // 纯 CustomPainter 绘制，无第三方依赖；倒计时 / 番茄钟 / 2FA 周期复用。
 import 'dart:math';
 
-import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 环形进度
 class RingProgress extends StatelessWidget {
@@ -25,7 +26,7 @@ class RingProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final t = context.theme;
     return SizedBox(
       width: size,
       height: size,
@@ -35,8 +36,8 @@ class RingProgress extends StatelessWidget {
           CustomPaint(
             painter: _RingPainter(
               progress: progress.clamp(0.0, 1.0),
-              trackColor: scheme.surfaceContainerHighest,
-              progressColor: color ?? scheme.primary,
+              trackColor: t.colors.muted,
+              progressColor: color ?? t.colors.primary,
               strokeWidth: strokeWidth,
             ),
           ),

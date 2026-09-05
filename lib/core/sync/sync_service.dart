@@ -37,12 +37,13 @@ class SyncService {
   /// 启动接收端（HTTP 数据面）；name/id 为空时回退本机信息
   Future<void> startServer({String name = '', String id = ''}) async {
     if (_server != null) return;
-    _serverName = name.isEmpty ? localDeviceName : name;
-    _serverId = id.isEmpty ? localDeviceId : id;
+    // 回退逻辑收敛为局部变量（原 _serverName/_serverId 未声明，属既有编译错误）
+    final resolvedName = name.isEmpty ? localDeviceName : name;
+    final resolvedId = id.isEmpty ? localDeviceId : id;
     _server = await HttpServer.bind(InternetAddress.anyIPv4, SyncProtocol.dataPort);
     _server!.listen((request) async {
       if (request.uri.path == '/ping') {
-        _json(request, {'name': name, 'id': id, 'platform': localPlatform});
+        _json(request, {'name': resolvedName, 'id': resolvedId, 'platform': localPlatform});
         return;
       }
       // 拉取端点：对端主动拉本机数据（与 PC 端 syncModule.ts 的 /export 对称）

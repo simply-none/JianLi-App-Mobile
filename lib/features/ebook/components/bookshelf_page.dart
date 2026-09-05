@@ -1,8 +1,10 @@
-// 书架页 —— 导入 + 网格封面列表（对标主流阅读 App 书架）
+// 书架页 —— 导入 + 网格封面列表（对标主流阅读 App 书架），forui 化
+// 导入入口在顶栏 +；导入结果走 showFToast。
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
@@ -18,30 +20,30 @@ class BookshelfPage extends ConsumerWidget {
       (ref) => ref.watch(ebookRepositoryProvider).watchBookshelf(),
     ));
 
-    return Scaffold(
-      appBar: AppBar(
+    return FScaffold(
+      header: FHeader.nested(
         title: const Text('电子书'),
-        actions: [
-          IconButton(
-            tooltip: '导入 epub/txt',
-            icon: const Icon(Icons.add),
-            onPressed: () => _import(context, ref),
+        prefixes: [FHeaderAction.back(onPress: () => context.pop())],
+        suffixes: [
+          FHeaderAction(
+            icon: const Icon(FLucideIcons.plus),
+            onPress: () => _import(context, ref),
           ),
         ],
       ),
-      body: shelfAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+      child: shelfAsync.when(
+        loading: () => const Center(child: FCircularProgress()),
         error: (e, _) => Center(child: Text('加载失败：$e')),
         data: (books) {
           if (books.isEmpty) {
             return const EmptyState(
-              icon: Icons.menu_book,
+              icon: FLucideIcons.bookOpenText,
               title: '书架空空',
               subtitle: '支持 EPUB / TXT（PDF 列 P2）',
             );
           }
           return GridView.builder(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.only(top: 12, bottom: 24),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
               childAspectRatio: 0.62,
@@ -75,14 +77,15 @@ class BookshelfPage extends ConsumerWidget {
     if (path == null) return;
     final book = await ref.read(ebookRepositoryProvider).importBook(path);
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(book == null ? '仅支持 EPUB / TXT' : '已导入《${book.title ?? book.name}》')),
+      showFToast(
+        context: context,
+        title: Text(book == null ? '仅支持 EPUB / TXT' : '已导入《${book.title ?? book.name}》'),
       );
     }
   }
 }
 
-/// 单本书
+/// 单本书（封面占位 + 阅读进度条）
 class _BookCell extends StatelessWidget {
   const _BookCell({required this.book, required this.onOpen, required this.onRemove});
 
@@ -92,10 +95,9 @@ class _BookCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: onOpen,
+    final t = context.theme;
+    return FTappable(
+      onPress: onOpen,
       onLongPress: onRemove,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -103,7 +105,7 @@ class _BookCell extends StatelessWidget {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: scheme.secondaryContainer,
+                color: t.colors.muted,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
               ),
               padding: const EdgeInsets.all(8),
@@ -115,8 +117,7 @@ class _BookCell extends StatelessWidget {
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: scheme.onSecondaryContainer,
+                    style: t.typography.body.sm.copyWith(
                       fontWeight: FontWeight.w600,
                       height: 1.2,
                     ),
@@ -124,7 +125,7 @@ class _BookCell extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     '已读 ${(book.percent ?? 0).toStringAsFixed(0)}%',
-                    style: TextStyle(color: scheme.onSecondaryContainer.withValues(alpha: 0.7), fontSize: 11),
+                    style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
                   ),
                 ],
               ),
@@ -133,7 +134,7 @@ class _BookCell extends StatelessWidget {
           Container(
             height: 4,
             decoration: BoxDecoration(
-              color: scheme.primary.withValues(alpha: (book.percent ?? 0).clamp(0.05, 1.0)),
+              color: t.colors.primary.withValues(alpha: (book.percent ?? 0).clamp(0.05, 1.0)),
               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10)),
             ),
           ),

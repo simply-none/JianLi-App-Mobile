@@ -1,10 +1,16 @@
 // 2FA 动态码条目组件：账户名 + 当前码 + 周期倒计时 + 下一周期码
 //
+// forui 化改造说明：Material Card + InkWell + LinearProgressIndicator 改为
+// AppCard（原子组件）+ FDeterminateProgress；取色/字体全部走 forui token；
+// 复制提示 SnackBar → showFToast。
+//
 // 出码刷新策略：由父页面每秒 setState 传入剩余秒数，本组件负责展示；
 // 点击复制当前码到剪贴板。
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:forui/forui.dart';
+import 'package:material_ui/material_ui.dart';
 
+import '../../../app/ui/ui_atoms.dart';
 import '../models/two_factor_account.dart';
 import '../services/totp_service.dart';
 
@@ -21,59 +27,55 @@ class AccountCodeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = meta.remainingSeconds / meta.period;
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => _copy(context),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final t = context.theme;
+    // 周期进度（0..1），clamp 防御异常 period 数据导致进度条断言失败
+    final progress = (meta.remainingSeconds / meta.period).clamp(0.0, 1.0);
+    return AppCard(
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      onTap: () => _copy(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      account.displayName,
-                      style: Theme.of(context).textTheme.titleMedium,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Text(
-                    '${meta.remainingSeconds}s',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+              Expanded(
+                child: Text(
+                  account.displayName,
+                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const SizedBox(height: 4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // 当前码：按 3+3 分组展示，符合验证器习惯
-                  Text(
-                    _grouped(meta.code),
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontFamily: 'monospace',
-                          letterSpacing: 2,
-                        ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '下一码 ${meta.nextCode}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).hintColor,
-                        ),
-                  ),
-                ],
+              Text(
+                '${meta.remainingSeconds}s',
+                style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
               ),
-              const SizedBox(height: 8),
-              // 周期倒计时进度条
-              LinearProgressIndicator(value: progress, minHeight: 3),
             ],
           ),
-        ),
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              // 当前码：按 3+3 分组展示，符合验证器习惯（等宽字体 + 宽字距）
+              Text(
+                _grouped(meta.code),
+                style: t.typography.body.lg.copyWith(
+                  fontFamily: 'monospace',
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '下一码 ${meta.nextCode}',
+                style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // 周期倒计时进度条（forui determinate progress，取值 0..1）
+          FDeterminateProgress(value: progress),
+        ],
       ),
     );
   }
@@ -84,12 +86,11 @@ class AccountCodeTile extends StatelessWidget {
     return code;
   }
 
+  /// 复制当前码到剪贴板并弹 toast 提示
   Future<void> _copy(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: meta.code));
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('${account.displayName} 验证码已复制')));
+      showFToast(context: context, title: Text('${account.displayName} 验证码已复制'));
     }
   }
 }

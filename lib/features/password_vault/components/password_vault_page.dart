@@ -1,9 +1,18 @@
 // 账号密码管理页 —— 建库/解锁门禁 + 条目列表 + 增改删（对标 Bitwarden 风格的极简版）
 //
+// forui 化改造说明：
+// - 骨架改为 FScaffold + FHeader.nested（返回键 + 新增/锁定头部动作）；
+// - 门禁表单：FTextField.password + FButton，错误提示改用 FAlert（destructive）；
+// - 增改弹窗：AlertDialog → showFDialog + FDialog（内含 FTextField 表单）；
+// - 条目行：AppCard + FButton.icon（复制/编辑/删除），SnackBar → showFToast；
+// - 业务逻辑（建库/解锁/条目增改删/内存口令策略）与原来完全一致。
+//
 // 安全约定：口令只在内存（State 字段），锁定/退出即丢；条目明文仅在内存态。
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:forui/forui.dart';
+import 'package:go_router/go_router.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../app/ui/ui_atoms.dart';
 import '../models/password_entry.dart';
@@ -24,39 +33,50 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.theme;
     final existsAsync = ref.watch(passwordVaultExistsProvider);
     final entriesAsync = ref.watch(passwordVaultEntriesProvider);
     final unlocked = ref.read(passwordVaultEntriesProvider.notifier).isUnlocked;
 
-    return Scaffold(
-      appBar: AppBar(
+    return FScaffold(
+      header: FHeader.nested(
         title: const Text('账号密码管理'),
-        actions: [
-          if (unlocked)
-            IconButton(
-              tooltip: '锁定',
-              icon: const Icon(Icons.lock),
-              onPressed: () {
+        prefixes: [FHeaderAction.back(onPress: () => context.pop())],
+        suffixes: [
+          if (unlocked) ...[
+            // 新增条目（原 FAB 的替代入口）
+            FHeaderAction(
+              icon: const Icon(FLucideIcons.plus, size: 20),
+              onPress: () => _editEntry(null),
+              semanticsTooltip: '新增条目',
+            ),
+            // 锁定：清空内存口令
+            FHeaderAction(
+              icon: const Icon(FLucideIcons.lock, size: 20),
+              onPress: () {
                 ref.read(passwordVaultEntriesProvider.notifier).lock();
                 setState(() => _passphrase = null);
               },
+              semanticsTooltip: '锁定',
             ),
+          ],
         ],
       ),
-      floatingActionButton: unlocked
-          ? FloatingActionButton(
-              onPressed: () => _editEntry(null),
-              child: const Icon(Icons.add),
-            )
-          : null,
-      body: !unlocked
+      child: !unlocked
           ? _buildGate(existsAsync.value ?? false)
           : entriesAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('加载失败：$e')),
+              loading: () => const Center(child: FCircularProgress()),
+              error: (e, _) => Center(
+                child: Text('加载失败：$e', style: t.typography.body.sm.copyWith(color: t.colors.error)),
+              ),
               data: (entries) => entries.isEmpty
-                  ? const EmptyState(icon: Icons.key, title: '密码库为空', subtitle: '点击右下角添加第一条')
+                  ? const EmptyState(
+                      icon: FLucideIcons.keyRound,
+                      title: '密码库为空',
+                      subtitle: '点击右上角 + 添加第一条',
+                    )
                   : ListView(
+                      padding: const EdgeInsets.only(top: 4, bottom: 24),
                       children: [
                         for (final e in entries)
                           _EntryTile(
@@ -74,6 +94,7 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
 
   /// 建库 / 解锁 门禁表单
   Widget _buildGate(bool exists) {
+    final t = context.theme;
     final passController = TextEditingController();
     return Center(
       child: SingleChildScrollView(
@@ -81,19 +102,21 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.password, size: 64),
+            Icon(FLucideIcons.keyRound, size: 56, color: t.colors.primary),
             const SizedBox(height: 12),
-            Text(exists ? '输入口令解锁密码库' : '首次使用：设置一个主口令',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              exists ? '输入口令解锁密码库' : '首次使用：设置一个主口令',
+              style: t.typography.body.lg.copyWith(fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 20),
-            TextField(
-              controller: passController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '主口令', border: OutlineInputBorder()),
+            FTextField.password(
+              control: FTextFieldControl.managed(controller: passController),
+              label: const Text('主口令'),
+              hint: '仅驻留内存，锁定即清除',
             ),
             const SizedBox(height: 12),
-            FilledButton(
-              onPressed: _working
+            FButton(
+              onPress: _working
                   ? null
                   : () async {
                       setState(() {
@@ -118,7 +141,11 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 10),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              FAlert(
+                variant: FAlertVariant.destructive,
+                title: const Text('操作失败'),
+                subtitle: Text(_error!),
+              ),
             ],
           ],
         ),
@@ -134,51 +161,72 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
     final url = TextEditingController(text: entry?.url);
     final note = TextEditingController(text: entry?.note);
 
-    await showDialog<void>(
+    await showFDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(entry == null ? '新增条目' : '编辑条目'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            for (final (c, label, obscure) in [
-              (title, '名称', false),
-              (username, '账号', false),
-              (password, '密码', true),
-              (url, '网址', false),
-            ])
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: TextField(
-                  controller: c,
-                  obscureText: obscure,
-                  decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-                ),
+      builder: (context, style, _) => FDialog(
+        builder: (context, style) => SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(entry == null ? '新增条目' : '编辑条目', style: style.titleTextStyle),
+              const SizedBox(height: 12),
+              FTextField(
+                control: FTextFieldControl.managed(controller: title),
+                label: const Text('名称'),
               ),
-            TextField(
-              controller: note,
-              maxLines: 2,
-              decoration: const InputDecoration(labelText: '备注', border: OutlineInputBorder()),
-            ),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              ref.read(passwordVaultEntriesProvider.notifier).upsertEntry(
-                    passphrase: _passphrase ?? '',
-                    key: entry?.key,
-                    title: title.text.trim(),
-                    username: username.text,
-                    password: password.text,
-                    url: url.text,
-                    note: note.text,
-                  );
-              Navigator.pop(context);
-            },
-            child: const Text('保存'),
+              const SizedBox(height: 8),
+              FTextField(
+                control: FTextFieldControl.managed(controller: username),
+                label: const Text('账号'),
+              ),
+              const SizedBox(height: 8),
+              // 密码输入框：自带明/暗文切换
+              FTextField.password(
+                control: FTextFieldControl.managed(controller: password),
+                label: const Text('密码'),
+              ),
+              const SizedBox(height: 8),
+              FTextField(
+                control: FTextFieldControl.managed(controller: url),
+                label: const Text('网址'),
+              ),
+              const SizedBox(height: 8),
+              FTextField(
+                control: FTextFieldControl.managed(controller: note),
+                label: const Text('备注'),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                spacing: 8,
+                children: [
+                  FButton(
+                    variant: FButtonVariant.outline,
+                    onPress: () => Navigator.pop(context),
+                    child: const Text('取消'),
+                  ),
+                  FButton(
+                    onPress: () {
+                      ref.read(passwordVaultEntriesProvider.notifier).upsertEntry(
+                            passphrase: _passphrase ?? '',
+                            key: entry?.key,
+                            title: title.text.trim(),
+                            username: username.text,
+                            password: password.text,
+                            url: url.text,
+                            note: note.text,
+                          );
+                      Navigator.pop(context);
+                    },
+                    child: const Text('保存'),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -194,14 +242,24 @@ class _EntryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.theme;
     return AppCard(
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: [
-          CircleAvatar(
-            backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+          // 首字母徽标（secondary 底 + secondaryForeground 字）
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: t.colors.secondary, shape: BoxShape.circle),
             child: Text(
               entry.title.isEmpty ? '?' : entry.title.characters.first.toUpperCase(),
-              style: TextStyle(color: Theme.of(context).colorScheme.onSecondaryContainer),
+              style: t.typography.body.md.copyWith(
+                color: t.colors.secondaryForeground,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -209,26 +267,40 @@ class _EntryTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(entry.title, style: Theme.of(context).textTheme.titleSmall),
+                Text(
+                  entry.title,
+                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
                 if (entry.username.isNotEmpty)
-                  Text(entry.username, style: Theme.of(context).textTheme.bodySmall),
+                  Text(
+                    entry.username,
+                    style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                    overflow: TextOverflow.ellipsis,
+                  ),
               ],
             ),
           ),
-          IconButton(
-            tooltip: '复制密码',
-            icon: const Icon(Icons.copy_all_outlined),
-            onPressed: () {
+          // 复制密码
+          FButton.icon(
+            variant: FButtonVariant.ghost,
+            onPress: () {
               Clipboard.setData(ClipboardData(text: entry.password));
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('密码已复制')));
+              showFToast(context: context, title: const Text('密码已复制'));
             },
+            child: const Icon(FLucideIcons.copy, size: 18),
           ),
-          IconButton(icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
-          IconButton(
-            tooltip: '删除',
-            icon: const Icon(Icons.delete_outline),
-            onPressed: onDelete,
+          // 编辑
+          FButton.icon(
+            variant: FButtonVariant.ghost,
+            onPress: onEdit,
+            child: const Icon(FLucideIcons.pencil, size: 18),
+          ),
+          // 删除（破坏性操作：图标用 destructive 色）
+          FButton.icon(
+            variant: FButtonVariant.ghost,
+            onPress: onDelete,
+            child: Icon(FLucideIcons.trash2, size: 18, color: t.colors.destructive),
           ),
         ],
       ),

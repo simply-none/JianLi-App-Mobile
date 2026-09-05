@@ -1,10 +1,12 @@
-// 笔记编辑页 —— 新建/编辑（标题 + 纯文本正文 + 分类）
+// 笔记编辑页 —— 新建/编辑（标题 + 纯文本正文 + 分类），forui 化
 //
 // 首批用轻量文本编辑（html 段落化落库，桌面端 vue-quill 可正常渲染）；
-// flutter_quill 富文本工具条编辑器列 P2（依赖已在 pubspec，接入点在本页替换 TextField）。
-import 'package:flutter/material.dart';
+// flutter_quill 富文本工具条编辑器列 P2（依赖已在 pubspec，接入点在本页替换 FTextField）。
+// 保存入口在顶栏右侧勾按钮；反馈走 showFToast（app 根已有 FToaster）。
+import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../providers/note_providers.dart';
 
@@ -35,7 +37,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     final note = await ref.read(noteRepositoryProvider).getNote(widget.noteKey!);
     if (note == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('笔记不存在')));
+        showFToast(context: context, title: const Text('笔记不存在'));
         context.pop();
       }
       return;
@@ -63,7 +65,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
   Future<void> _save() async {
     final title = _title.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('标题不能为空')));
+      showFToast(context: context, title: const Text('标题不能为空'));
       return;
     }
     setState(() => _saving = true);
@@ -87,45 +89,40 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
+    return FScaffold(
+      header: FHeader.nested(
         title: Text(widget.noteKey == null ? '新建笔记' : '编辑笔记'),
-        actions: [
-          IconButton(
-            tooltip: '保存',
-            onPressed: _saving ? null : _save,
-            icon: const Icon(Icons.check),
+        prefixes: [FHeaderAction.back(onPress: () => context.pop())],
+        suffixes: [
+          FHeaderAction(
+            icon: const Icon(FLucideIcons.check),
+            // 保存中禁用（onPress 为 null 即禁用态）
+            onPress: _saving ? null : _save,
           ),
         ],
       ),
-      body: widget.noteKey != null && !_loaded
-          ? const Center(child: CircularProgressIndicator())
+      child: widget.noteKey != null && !_loaded
+          ? const Center(child: FCircularProgress())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.only(top: 12, bottom: 24),
               children: [
-                TextField(
-                  controller: _title,
-                  style: Theme.of(context).textTheme.titleLarge,
-                  decoration: const InputDecoration(hintText: '标题', border: InputBorder.none),
-                ),
-                const Divider(),
-                TextField(
-                  controller: _category,
-                  decoration: const InputDecoration(
-                    hintText: '分类（可选）',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
+                // 标题
+                FTextField(
+                  control: FTextFieldControl.managed(controller: _title),
+                  label: const Text('标题'),
+                  hint: '给笔记起个名字',
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _content,
-                  maxLines: 14,
-                  decoration: const InputDecoration(
-                    hintText: '正文…（纯文本，按行分段）',
-                    border: OutlineInputBorder(),
-                    alignLabelWithHint: true,
-                  ),
+                // 分类（可选）
+                FTextField(
+                  control: FTextFieldControl.managed(controller: _category),
+                  hint: '分类（可选）',
+                ),
+                const SizedBox(height: 12),
+                // 正文（多行）
+                FTextField.multiline(
+                  control: FTextFieldControl.managed(controller: _content),
+                  hint: '正文…（纯文本，按行分段）',
                 ),
               ],
             ),

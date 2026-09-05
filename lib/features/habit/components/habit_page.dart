@@ -1,8 +1,12 @@
-// 习惯打卡页 —— 今日待打卡列表 + 点击打卡 + 近 7 天记录条
+// 习惯打卡页（forui 化）—— 今日待打卡列表 + 点击打卡 + 近 7 天记录条
 //
-// 交互：点卡片任意处切换打卡；右侧 7 格小方块展示近 7 天记录（今天在最右）。
-import 'package:flutter/material.dart';
+// 交互：点卡片任意处切换打卡；右侧 7 格小圆点展示近 7 天记录（今天在最右）。
+// forui 改造点：FScaffold+FHeader.nested 骨架、AppCard 列表、showFSheet 新建弹层、
+// FTextField 输入、FButton 周几选择，取色/字体全部走 forui token。
+import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../app/ui/ui_atoms.dart';
 import '../models/habit.dart';
@@ -16,29 +20,49 @@ class HabitPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final habitsAsync = ref.watch(habitListProvider);
     final checkedAsync = ref.watch(todayCheckedProvider);
+    final t = context.theme;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('习惯打卡')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateSheet(context, ref),
-        child: const Icon(Icons.add),
+    return FScaffold(
+      header: FHeader.nested(
+        title: const Text('习惯打卡'),
+        prefixes: [FHeaderAction.back(onPress: () => context.pop())],
+        // 右上角「新建习惯」入口（替代原 FloatingActionButton）
+        suffixes: [
+          FHeaderAction(
+            icon: const Icon(FLucideIcons.plus),
+            onPress: () => _showCreateSheet(context, ref),
+            semanticsLabel: '新建习惯',
+          ),
+        ],
       ),
-      body: habitsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('加载失败：$e')),
+      child: habitsAsync.when(
+        loading: () => const Center(child: FCircularProgress()),
+        error: (e, _) => Center(
+          child: Text(
+            '加载失败：$e',
+            style: t.typography.body.sm.copyWith(color: t.colors.error),
+            textAlign: TextAlign.center,
+          ),
+        ),
         data: (habits) => checkedAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('加载失败：$e')),
+          loading: () => const Center(child: FCircularProgress()),
+          error: (e, _) => Center(
+            child: Text(
+              '加载失败：$e',
+              style: t.typography.body.sm.copyWith(color: t.colors.error),
+              textAlign: TextAlign.center,
+            ),
+          ),
           data: (checked) {
             if (habits.isEmpty) {
               return const EmptyState(
-                icon: Icons.event_available,
+                icon: FLucideIcons.calendarCheck,
                 title: '暂无启用的习惯',
-                subtitle: '点右下角新建，或等桌面端同步',
+                subtitle: '点右上角新建，或等桌面端同步',
               );
             }
             return ListView(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.only(top: 4, bottom: 24),
               children: [
                 for (final habit in habits)
                   _HabitCard(
@@ -66,51 +90,52 @@ class HabitPage extends ConsumerWidget {
     final timeController = TextEditingController(text: '08:00');
     final weekDays = <int>{};
 
-    await showModalBottomSheet<void>(
+    await showFSheet<void>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
+      side: FLayout.btt,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-              20, 8, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextField(
-                controller: nameController,
+              FTextField(
+                control: FTextFieldControl.managed(controller: nameController),
+                label: const Text('习惯名称'),
+                hint: '输入习惯名称',
                 autofocus: true,
-                decoration: const InputDecoration(
-                    labelText: '习惯名称', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: timeController,
-                decoration: const InputDecoration(
-                  labelText: '提醒时刻（HH:mm，留空不提醒）',
-                  border: OutlineInputBorder(),
-                ),
+              FTextField(
+                control: FTextFieldControl.managed(controller: timeController),
+                label: const Text('提醒时刻（HH:mm，留空不提醒）'),
+                hint: '08:00',
               ),
               const SizedBox(height: 12),
-              // 生效星期（空 = 每天）
+              // 生效星期（空 = 每天）：选中 secondary / 未选 outline
               Wrap(
                 spacing: 6,
+                runSpacing: 6,
                 children: [
                   for (var d = 1; d <= 7; d++)
-                    FilterChip(
-                      label: Text('周${'一二三四五六日'[d - 1]}'),
-                      selected: weekDays.contains(d),
-                      onSelected: (v) {
-                        setSheetState(() =>
-                            v ? weekDays.add(d) : weekDays.remove(d));
-                      },
+                    FButton(
+                      variant: weekDays.contains(d)
+                          ? FButtonVariant.secondary
+                          : FButtonVariant.outline,
+                      size: FButtonSizeVariant.sm,
+                      onPress: () => setSheetState(
+                        () => weekDays.contains(d)
+                            ? weekDays.remove(d)
+                            : weekDays.add(d),
+                      ),
+                      child: Text('周${'一二三四五六日'[d - 1]}'),
                     ),
                 ],
               ),
               const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () {
+              FButton(
+                onPress: () {
                   final name = nameController.text.trim();
                   if (name.isEmpty) return;
                   ref.read(habitRepositoryProvider).createHabit(
@@ -146,37 +171,46 @@ class _HabitCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        leading: Icon(
-          checked ? Icons.check_circle : Icons.radio_button_unchecked,
-          color: checked ? scheme.primary : scheme.outline,
-          size: 28,
-        ),
-        title: Text(
-          habit.name,
-          style: TextStyle(
-            decoration: checked ? TextDecoration.lineThrough : null,
+    final t = context.theme;
+    return AppCard(
+      onTap: onToggle,
+      child: Row(
+        children: [
+          Icon(
+            checked ? FLucideIcons.circleCheck : FLucideIcons.circle,
+            color: checked ? t.colors.primary : t.colors.mutedForeground,
+            size: 28,
           ),
-        ),
-        subtitle: Text(
-          '频次 ${habit.freqType}${habit.reminderTimes.isEmpty ? '' : ' · 提醒 ${habit.reminderTimes.join('/')}'}',
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const _WeekStrip(),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              tooltip: '删除',
-              icon: const Icon(Icons.delete_outline, size: 20),
-              onPressed: onDelete,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  habit.name,
+                  style: t.typography.body.md.copyWith(
+                    fontWeight: FontWeight.w600,
+                    decoration:
+                        checked ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '频次 ${habit.freqType}${habit.reminderTimes.isEmpty ? '' : ' · 提醒 ${habit.reminderTimes.join('/')}'}',
+                  style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                ),
+              ],
             ),
-          ],
-        ),
-        onTap: onToggle,
+          ),
+          const _WeekStrip(),
+          FButton.icon(
+            variant: FButtonVariant.ghost,
+            size: FButtonSizeVariant.sm,
+            onPress: onDelete,
+            semanticsLabel: '删除',
+            child: Icon(FLucideIcons.trash2, size: 18, color: t.colors.mutedForeground),
+          ),
+        ],
       ),
     );
   }
@@ -188,7 +222,7 @@ class _WeekStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final t = context.theme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -199,7 +233,7 @@ class _WeekStrip extends StatelessWidget {
             margin: const EdgeInsets.only(left: 3),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: i == 6 ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+              color: i == 6 ? t.colors.primary : t.colors.muted,
             ),
           ),
       ],

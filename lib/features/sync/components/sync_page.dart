@@ -1,6 +1,15 @@
 // 局域网同步页 —— 扫描设备 / 选择表 / 发送；接收端随 App 启动常驻
-import 'package:flutter/material.dart';
+//
+// forui 化改造说明：
+// - 骨架改为 FScaffold + FHeader.nested（返回键）；
+// - 扫描按钮 / 设备行的拉取与发送 / 手动添加 → FButton（含 sm 尺寸与禁用态）；
+// - 手动 IP 输入 → FTextField；表选择 FilterChip → FCheckbox；
+// - 取色/字体全部走 forui token（mutedForeground 辅助文案）；
+// - 扫描/推送/拉取/手动加设备业务逻辑与原来完全一致（日志仍走本地 _log）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:forui/forui.dart';
+import 'package:go_router/go_router.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/sync/sync_discovery.dart';
@@ -23,7 +32,6 @@ class _SyncPageState extends ConsumerState<SyncPage> {
   bool _scanning = false;
   Map<String, PeerDevice> _peers = const {};
   final List<String> _logs = [];
-
 
   @override
   void initState() {
@@ -61,6 +69,7 @@ class _SyncPageState extends ConsumerState<SyncPage> {
     setState(() => _logs.insert(0, '${DateTime.now().toIso8601String().substring(11, 19)}  $msg'));
   }
 
+  /// 向对端推送选中的表（手机 → PC 方向）
   Future<void> _send(PeerDevice peer) async {
     final service = ref.read(syncServiceProvider);
     final tables = _selectedTable.entries.where((e) => e.value).map((e) => e.key);
@@ -82,13 +91,17 @@ class _SyncPageState extends ConsumerState<SyncPage> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('局域网同步')),
-      body: ListView(
-        padding: const EdgeInsets.all(12),
+    final t = context.theme;
+    return FScaffold(
+      header: FHeader.nested(
+        title: const Text('局域网同步'),
+        prefixes: [FHeaderAction.back(onPress: () => context.pop())],
+      ),
+      child: ListView(
+        padding: const EdgeInsets.only(top: 4, bottom: 24),
         children: [
           // 设备区
+          const SectionHeader(title: '发现设备'),
           AppCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,74 +109,92 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text('发现设备（需 PC 端渐离在线）',
-                          style: Theme.of(context).textTheme.titleSmall),
+                      child: Text(
+                        '需 PC 端渐离在线',
+                        style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                      ),
                     ),
-                    TextButton.icon(
-                      onPressed: _scanning ? null : _scan,
-                      icon: _scanning
-                          ? const SizedBox(
-                              width: 14, height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.radar, size: 18),
-                      label: const Text('扫描'),
+                    FButton(
+                      variant: FButtonVariant.outline,
+                      size: FButtonSizeVariant.sm,
+                      onPress: _scanning ? null : _scan,
+                      prefix: _scanning
+                          // 扫描中的小尺寸加载指示
+                          ? const FCircularProgress(size: FCircularProgressSizeVariant.xs)
+                          : const Icon(FLucideIcons.radar, size: 16),
+                      child: const Text('扫描'),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 if (_peers.isEmpty)
                   Text(
                     '暂无设备。真机：PC 与手机连同一 Wi-Fi 后扫描；\n模拟器：广播不通，直接手动填宿主 IP 10.0.2.2。',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.outline),
+                    style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
                   )
                 else
+                  // 发现的设备行：名称/平台 + IP + 拉取/发送
                   for (final peer in _peers.values)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      leading: const Icon(Icons.devices),
-                      title: Text('${peer.name} (${peer.platform})'),
-                      subtitle: Text(peer.ip),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
                         children: [
-                          FilledButton.tonal(
-                            onPressed: () => _fetch(peer),
+                          const Icon(FLucideIcons.monitorSmartphone, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${peer.name} (${peer.platform})',
+                                  style: t.typography.body.sm.copyWith(fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  peer.ip,
+                                  style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          FButton(
+                            variant: FButtonVariant.outline,
+                            size: FButtonSizeVariant.sm,
+                            onPress: () => _fetch(peer),
                             child: const Text('拉取'),
                           ),
                           const SizedBox(width: 6),
-                          FilledButton(
-                            onPressed: () => _send(peer),
+                          FButton(
+                            size: FButtonSizeVariant.sm,
+                            onPress: () => _send(peer),
                             child: const Text('发送'),
                           ),
                         ],
                       ),
                     ),
                 // 手动添加设备（模拟器 NAT 场景广播不可达，直接填宿主 IP）
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
-                      child: TextField(
-                        controller: _manualIp,
+                      child: FTextField(
+                        control: FTextFieldControl.managed(controller: _manualIp),
+                        hint: '手动填 IP（模拟器填 10.0.2.2）',
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          hintText: '手动填 IP（模拟器填 10.0.2.2）',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
+                        size: FTextFieldSizeVariant.sm,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    OutlinedButton(
-                      onPressed: () {
+                    FButton(
+                      variant: FButtonVariant.outline,
+                      onPress: () {
                         final ip = _manualIp.text.trim();
                         if (ip.isEmpty) return;
                         setState(() {
                           _peers = {
                             ..._peers,
-                            ip: PeerDevice(
-                                ip: ip, name: '手动添加', id: ip, platform: '-')
+                            ip: PeerDevice(ip: ip, name: '手动添加', id: ip, platform: '-'),
                           };
                         });
                         _log('已添加手动设备 $ip');
@@ -176,38 +207,38 @@ class _SyncPageState extends ConsumerState<SyncPage> {
             ),
           ),
           // 表选择
+          const SectionHeader(title: '选择要同步的表'),
           AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 4,
               children: [
-                Text('选择要同步的表', style: Theme.of(context).textTheme.titleSmall),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: -8,
-                  children: [
-                    for (final t in kSyncableTables)
-                      FilterChip(
-                        label: Text(t),
-                        selected: _selectedTable[t] ?? false,
-                        onSelected: (v) => setState(() => _selectedTable[t] = v),
-                      ),
-                  ],
-                ),
+                for (final table in kSyncableTables)
+                  FCheckbox(
+                    value: _selectedTable[table] ?? false,
+                    label: Text(table, style: t.typography.body.sm),
+                    onChange: (v) => setState(() => _selectedTable[table] = v),
+                  ),
               ],
             ),
           ),
           // 日志
+          const SectionHeader(title: '同步日志'),
           AppCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('同步日志', style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 6),
                 if (_logs.isEmpty)
-                  Text('暂无记录', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.outline))
+                  Text(
+                    '暂无记录',
+                    style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
+                  )
                 else
                   for (final l in _logs.take(10))
-                    Text(l, style: Theme.of(context).textTheme.bodySmall),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Text(l, style: t.typography.body.xs),
+                    ),
               ],
             ),
           ),

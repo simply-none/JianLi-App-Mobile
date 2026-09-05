@@ -54,6 +54,8 @@ dependencies:
   flutter_widget_from_html: ^0.17.3
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0
+  forui: ^0.26.0
+  material_ui: ^1.1.1  # Flutter Material 独立发行版，forui 建于其上；勿与 flutter/material 混用
 
 dev_dependencies:
   flutter_test:
