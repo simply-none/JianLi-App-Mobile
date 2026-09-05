@@ -8,6 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/animated_check.dart';
+import '../../../app/ui/squircle_box.dart';
+import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/habit.dart';
 import '../providers/habit_providers.dart';
@@ -61,22 +65,31 @@ class HabitPage extends ConsumerWidget {
                 subtitle: '点右上角新建，或等桌面端同步',
               );
             }
-            return ListView(
-              padding: const EdgeInsets.only(top: 4, bottom: 24),
-              children: [
-                for (final habit in habits)
-                  _HabitCard(
-                    habit: habit,
-                    checked: checked.contains(habit.key),
-                    onToggle: () async {
-                      await ref
-                          .read(habitRepositoryProvider)
-                          .toggleCheckin(habit.key, DateTime.now());
-                    },
-                    onDelete: () =>
-                        ref.read(habitRepositoryProvider).deleteHabit(habit),
+            return ColoredBox(
+              color: AppTokens.pageTint(context),
+              child: ListView(
+                padding: const EdgeInsets.only(top: 4, bottom: 24),
+                children: [
+                  StaggerList(
+                    children: [
+                      for (var i = 0; i < habits.length; i++)
+                        _HabitCard(
+                          habit: habits[i],
+                          accentIndex: i,
+                          checked: checked.contains(habits[i].key),
+                          onToggle: () async {
+                            await ref
+                                .read(habitRepositoryProvider)
+                                .toggleCheckin(habits[i].key, DateTime.now());
+                          },
+                          onDelete: () => ref
+                              .read(habitRepositoryProvider)
+                              .deleteHabit(habits[i]),
+                        ),
+                    ],
                   ),
-              ],
+                ],
+              ),
             );
           },
         ),
@@ -159,12 +172,14 @@ class HabitPage extends ConsumerWidget {
 class _HabitCard extends StatelessWidget {
   const _HabitCard({
     required this.habit,
+    required this.accentIndex,
     required this.checked,
     required this.onToggle,
     required this.onDelete,
   });
 
   final HabitItem habit;
+  final int accentIndex;
   final bool checked;
   final Future<void> Function() onToggle;
   final Future<void> Function() onDelete;
@@ -172,14 +187,17 @@ class _HabitCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    final accent = AppTokens.accent(accentIndex);
     return AppCard(
       onTap: onToggle,
       child: Row(
         children: [
-          Icon(
-            checked ? FLucideIcons.circleCheck : FLucideIcons.circle,
-            color: checked ? t.colors.primary : t.colors.mutedForeground,
-            size: 28,
+          SquircleBox(
+            size: 42,
+            radius: 13,
+            gradient: AppTokens.accentGradient(accent),
+            alignment: Alignment.center,
+            child: Icon(FLucideIcons.calendarCheck, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -202,7 +220,8 @@ class _HabitCard extends StatelessWidget {
               ],
             ),
           ),
-          const _WeekStrip(),
+          AnimatedCheck(checked: checked, size: 28),
+          const SizedBox(width: 4),
           FButton.icon(
             variant: FButtonVariant.ghost,
             size: FButtonSizeVariant.sm,

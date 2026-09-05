@@ -8,6 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/squircle_box.dart';
+import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/reminder_item.dart';
 import '../providers/reminder_providers.dart';
@@ -51,11 +54,18 @@ class ReminderListPage extends ConsumerWidget {
               subtitle: '点右上角新建，或等桌面端同步',
             );
           }
-          return ListView(
-            padding: const EdgeInsets.only(top: 4, bottom: 24),
-            children: [
-              for (final item in items) _ReminderTile(item: item),
-            ],
+          return ColoredBox(
+            color: AppTokens.pageTint(context),
+            child: ListView(
+              padding: const EdgeInsets.only(top: 4, bottom: 24),
+              children: [
+                StaggerList(
+                  children: [
+                    for (final item in items) _ReminderTile(item: item),
+                  ],
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -163,10 +173,16 @@ class _ReminderTile extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: Row(
         children: [
-          Icon(
-            item.isStateful ? FLucideIcons.refreshCw : FLucideIcons.alarmClock,
-            color: item.enabled ? t.colors.primary : t.colors.mutedForeground,
-            size: 20,
+          SquircleBox(
+            size: 40,
+            radius: 12,
+            gradient: AppTokens.accentGradient(AppTokens.accent(3)),
+            alignment: Alignment.center,
+            child: Icon(
+              item.isStateful ? FLucideIcons.refreshCw : FLucideIcons.alarmClock,
+              color: Colors.white,
+              size: 18,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

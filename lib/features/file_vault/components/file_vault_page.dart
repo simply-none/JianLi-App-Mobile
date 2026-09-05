@@ -17,6 +17,8 @@ import 'package:forui/forui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
 import '../repositories/file_vault_repository.dart';
@@ -128,11 +130,13 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
         if (items == null) {
           return const Center(child: FCircularProgress());
         }
-        return Column(
-          children: [
-            // 导入入口（原 FAB.extended 改置区块尾部动作）
-            SectionHeader(title: '已加密文件', trailing: '导入', onTrailingTap: _importFiles),
-            Expanded(
+        return ColoredBox(
+          color: AppTokens.pageTint(context),
+          child: Column(
+            children: [
+              // 导入入口（原 FAB.extended 改置区块尾部动作）
+              SectionHeader(title: '已加密文件', trailing: '导入', onTrailingTap: _importFiles),
+              Expanded(
               child: items.isEmpty
                   ? const EmptyState(
                       icon: FLucideIcons.folderLock,
@@ -155,6 +159,7 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
                     ),
             ),
           ],
+        ),
         );
       },
     );
@@ -329,14 +334,12 @@ class _FileTile extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: t.colors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(_icon, color: t.colors.primary, size: 20),
+          SquircleBox(
+            size: 40,
+            radius: 12,
+            gradient: AppTokens.accentGradient(AppTokens.accent(2)),
+            alignment: Alignment.center,
+            child: Icon(_icon, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(

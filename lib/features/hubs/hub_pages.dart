@@ -8,6 +8,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../app/theme/app_theme.dart';
 import '../../app/ui/entry_card.dart';
+import '../../app/ui/settings_panel.dart';
 import '../../app/ui/stagger_list.dart';
 
 /// 入口元组：图标 / 标题 / 描述 / 路由 / 专属色索引
@@ -28,7 +29,10 @@ class EfficiencyHubPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FScaffold(
-      header: const FHeader(title: Text('效率')),
+      header: FHeader(
+        title: const Text('效率'),
+        suffixes: const [SettingsButton()],
+      ),
       child: _HubList(entries: _entries),
     );
   }
@@ -47,7 +51,10 @@ class ContentHubPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FScaffold(
-      header: const FHeader(title: Text('内容')),
+      header: FHeader(
+        title: const Text('内容'),
+        suffixes: const [SettingsButton()],
+      ),
       child: _HubList(entries: _entries),
     );
   }
@@ -68,7 +75,10 @@ class ToolsHubPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FScaffold(
-      header: const FHeader(title: Text('工具')),
+      header: FHeader(
+        title: const Text('工具'),
+        suffixes: const [SettingsButton()],
+      ),
       child: _HubList(entries: _entries),
     );
   }

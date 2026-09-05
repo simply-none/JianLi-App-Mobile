@@ -11,6 +11,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/animated_stat.dart';
 import '../../../app/ui/entry_card.dart';
+import '../../../app/ui/settings_panel.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/tap_scale.dart';
@@ -148,13 +149,7 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
-        SquircleBox(
-          size: 44,
-          radius: 14,
-          gradient: AppTokens.accentGradient(AppTokens.accent(0)),
-          alignment: Alignment.center,
-          child: const Icon(FLucideIcons.sparkles, color: Colors.white, size: 20),
-        ),
+        const SettingsButton(),
       ],
     );
   }

@@ -46,9 +46,11 @@ agent_created: true
 lib/
   main.dart                # 入口：ProviderScope 包根组件（通知等初始化走各 feature 首次进入，暂不在 main 阻塞）
   app/
-    app.dart               # 根组件（主题 + 路由挂载）
-    theme/app_theme.dart   # 主题入口（forui）：1 套中性底 + 渐离紫主色亮/暗；桌面 25 套 token 全量映射 P2
-    ui/                    # AppCard / SectionHeader / EmptyState / StatBlock / RingProgress 自绘环
+    app.dart               # 根组件：读 themeStyle/themeMode provider → MaterialApp.router + FTheme 注入
+    theme/app_theme.dart   # 主题入口（forui）：5 套主题样式（ThemeStyle / AppTheme.styles）+ 中性底亮/暗；桌面 25 套 token 全量映射 P2
+    providers/theme_providers.dart  # themeStyleProvider / themeModeProvider（SharedPreferences 持久化）
+    ui/settings_panel.dart # 设置面板（左侧滑出 PageRouteBuilder）+ SettingsButton（首页/三个分组页右上角）
+    ui/                    # AppCard / SectionHeader / EmptyState / StatBlock / RingProgress 自绘环 + Phase1 原子组件
     router/app_router.dart # StatefulShellRoute 四 Tab（/ /efficiency /content /tools）+ 全屏功能路由
     shell/main_shell.dart  # 底部导航壳（IndexedStack 保持各 Tab 状态）
     di/app_providers.dart  # 全局单例注册（appDatabaseProvider 等）
@@ -79,6 +81,19 @@ test/
 - 原子组件 `lib/app/ui/`：AppCard / SectionHeader / EmptyState / StatBlock / RingProgress —— 与业务无关的视觉复用入口，新页面优先用它们拼装。
 - 残留 Material 组件白名单（无 forui 等价物，material_ui 版已被近似主题着色）：RefreshIndicator、Dismissible（滑动删除）、ReorderableListView、Slider、mobile_scanner、qr_flutter。
 - 桌面 25 套主题映射（P2）：在 `app_theme.dart` 的 `_build` 加方案表，每套主题 = 一份 `FColors.copyWith` 主色（+可选中性色）覆盖。
+
+### 主题体系（5 套样式 + 三态模式，2026-09-05 新增）
+- `AppTheme.styles` 定义 5 套 `ThemeStyle{id,name,lightPrimary,darkPrimary}`：渐离紫 `zi`、远峰蓝 `blue`、森野绿 `green`、落日橙 `orange`、樱粉 `pink`；`styleById(id)` 按 id 取（缺省回落首套）。`AppTheme.build(style:, brightness:)` 是唯一构建入口，`materialLight/materialDark` 供 MaterialApp。
+- `lib/app/providers/theme_providers.dart`：`themeStyleProvider`（存样式 id，key `jianli.themeStyle`）+ `themeModeProvider`（存 `AppThemeMode.system/light/dark`，key `jianli.themeMode`），均 `AsyncNotifierProvider` + SharedPreferences 持久化；`toMaterialMode()` 把枚举转 Material 的 `ThemeMode`。
+- `app.dart` 是 `ConsumerWidget`，读两个 provider 后把 `themeMode:` 与 `theme/darkTheme` 交给 MaterialApp，`builder` 里按 `Theme.brightnessOf(context)` 现算 `FTheme`（**这样切样式/模式即时全树重渲，不用重启**）。
+- **设置面板**：`lib/app/ui/settings_panel.dart` 的 `SettingsButton`（齿轮 SquircleBox）放在首页右上角与三个分组页 `FHeader.suffixes`；点击 `showSettingsPanel(context)` 推一个 `PageRouteBuilder`（`opaque:false` + `barrierColor: Colors.black54` + 左侧 `SlideTransition(-1,0)→(0,0)`），面板内含 5 色环样式选择 + 三态模式 `JianliSegmented` + 同步/关于入口。**刻意不用 forui 弹层**，规避与 material_ui 平行 Material 类的冲突。
+
+### ⚠️ Riverpod 3 / forui API 雷区（2026-09-05 实踩，写代码前必看）
+1. **Riverpod 3 移除了 `AsyncValue.valueOrNull`** —— 取异步值用 `.value`（如 `ref.watch(themeStyleProvider).value ?? 'zi'`）。写 `.valueOrNull` 直接报 undefined。
+2. **forui `FHeader` 没有 `actions` 参数** —— 尾部动作是 **`suffixes`**，左侧是 **`prefixes`**（`FHeaderAction.back(onPress:)`）。写 `actions:` 报「named parameter doesn't exist」。
+3. **`material_ui` 的 `ThemeMode` 与 `flutter/material` 的不是同一类型** —— provider/工具函数里若返回 `ThemeMode`，该文件必须 `import 'package:material_ui/material_ui.dart';`，否则赋给 `MaterialApp.themeMode` 类型不兼容。
+4. **`JianliSegmented` 的 `items` 类型是 `List<(IconData?, String)>`** —— 传 `Icon(FLucideIcons.sun)` 会类型不符，要传 **`FLucideIcons.sun`**（IconData 本体）。
+5. **drift 行类名不是猜的**：二维码历史是 `QrHistoryData`（不是 `QrHistoryRow`）；新增组件引用行类型前先 grep 确认。
 
 
 - 移动端自有库文件：沙盒 `Documents/db.sqlite`，`LazyDatabase` 后台 isolate 打开；当前 `schemaVersion = 1`，**扩表必须 schemaVersion+1 并写 onUpgrade 迁移**。
@@ -188,22 +203,22 @@ flutter emulators --launch Pixel_8
 ## 功能域清单与状态
 | 功能域 | 路由 | 状态与要点 |
 |---|---|---|
-| home | `/` | Dashboard 聚合：习惯/待办/专注/提醒统计 + 最近倒计时 + 快捷入口 |
-| habit | `/habit` | 今日打卡 + 幂等切换（key=`habitKey#date`）+ 近 7 天 |
-| todo | `/todo` | 列表/筛选/新增/勾选/滑动删除，uuid 主键，字段与桌面一致 |
-| pomodoro | `/pomodoro`、`/pomodoro/records` | 状态机解析（reminders stateful）+ 只读倒计时 + 流水统计 |
-| reminder | `/reminders` | 三模式 time/interval/stateful，启停联动本地通知；过滤 `source==='todo'` |
+| home | `/` | Dashboard 聚合：习惯/待办/专注/提醒统计 + 最近倒计时 + 快捷入口；**Phase 3 视觉重设计**（渐变英雄卡 + 专属色磁贴 + StaggerList）；右上角**设置按钮** |
+| habit | `/habit` | 今日打卡 + 幂等切换（key=`habitKey#date`）+ 近 7 天；**视觉焕新**：pageTint + 条目专属色 `SquircleBox` 图标盘 + `AnimatedCheck` + StaggerList |
+| todo | `/todo` | 列表/筛选/新增/勾选/滑动删除，uuid 主键，字段与桌面一致；**视觉焕新**：过滤改 `JianliSegmented` 滑块分段 + 专属色图标盘 |
+| pomodoro | `/pomodoro`、`/pomodoro/records` | 状态机解析（reminders stateful）+ 只读倒计时 + 流水统计；**视觉焕新**：英雄计时图标盘（`accent(6)`）+ 记录页统计横幅渐变 |
+| reminder | `/reminders` | 三模式 time/interval/stateful，启停联动本地通知；过滤 `source==='todo'`；**视觉焕新**：pageTint + 专属色图标盘 + StaggerList |
 | countdown | `/countdown` | 独立表（end_time 毫秒基准 + paused_remaining，与桌面同构抗休眠）+ 暂停/恢复/重置 |
-| notes | `/notes` | 列表（分类 chips）/ 详情（flutter_widget_from_html 渲染）/ 编辑（轻量文本，html 段落化落库，桌面 vue-quill 可渲染；flutter_quill 富文本 P2） |
-| conversation | `/conversation` | 主题列表 + 消息流 + 新建（过滤 `is_deleted`）；LLM 后端未定 |
-| ebook | `/ebook` | file_picker 导入 → sha256 content_hash 身份键 → epubx（PascalCase 字段）/ TXT 正则分章 → 章节渲染 + 按章进度；PDF、CFI 精确进度未做 |
-| twofactor | `/twofactor` | TOTP 全算法 + vault 口令解锁 + 动态码卡片（复制/倒计时/锁定清内存）+ 添加 |
-| password_vault | `/password-vault` | 移动端口令库（同信封格式 .jlv） |
-| file_vault | `/file-vault` | 与 PC 完全兼容：wrappedKey 解包 + JLV1 parse + 导入/预览/删除 |
-| qr | `/qr` | 生成（text/url/wifi/vCard/email）+ 识别（mobile_scanner）+ 历史 |
-| sync | `/sync` | 扫描/手动 IP/推送/拉取，四种组合全通 |
+| notes | `/notes` | 列表（分类 chips）/ 详情（flutter_widget_from_html 渲染）/ 编辑（轻量文本，html 段落化落库，桌面 vue-quill 可渲染；flutter_quill 富文本 P2）；**视觉焕新**：pageTint + `_NoteCard`（琥珀专属色图标盘 + 标题/摘要）+ StaggerList；分类 chip 改圆角 pill（选中用 `accent(3)`） |
+| conversation | `/conversation` | 主题列表 + 消息流 + 新建（过滤 `is_deleted`）；LLM 后端未定；**视觉焕新**：pageTint + `_ThemeCard`（粉色 `accent(4)` 首字头像盘）+ StaggerList；消息气泡改「小头像盘 + 卡片气泡」（`t.colors.card`） |
+| ebook | `/ebook` | file_picker 导入 → sha256 content_hash 身份键 → epubx（PascalCase 字段）/ TXT 正则分章 → 章节渲染 + 按章进度；PDF、CFI 精确进度未做；**视觉焕新**：pageTint + 封面按标题 hashCode 取专属强调色渐变 + 底部进度条；阅读器正文 pageTint 护眼底 |
+| twofactor | `/twofactor` | TOTP 全算法 + vault 口令解锁 + 动态码卡片（复制/倒计时/锁定清内存）+ 添加；**视觉焕新**：`AccountCodeTile` 加紫 `accent(0)` 图标盘，码列表 pageTint |
+| password_vault | `/password-vault` | 移动端口令库（同信封格式 .jlv）；**视觉焕新**：pageTint + StaggerList，条目首字母徽标改蓝 `accent(1)` 渐变 SquircleBox |
+| file_vault | `/file-vault` | 与 PC 完全兼容：wrappedKey 解包 + JLV1 parse + 导入/预览/删除；**视觉焕新**：整页 pageTint，文件图标改绿 `accent(2)` 渐变 SquircleBox |
+| qr | `/qr` | 生成（text/url/wifi/vCard/email）+ 识别（mobile_scanner）+ 历史；**视觉焕新**：历史页改 `ColoredBox(pageTint)` + `_QrHistoryTile`（琥珀 `accent(3)` 图标盘 + AppCard）+ StaggerList，取代原 FTile/FTileGroup |
+| sync | `/sync` | 扫描/手动 IP/推送/拉取，四种组合全通；**视觉焕新**：pageTint，设备行图标改青 `accent(5)` SquircleBox |
 | screenshots | — | 未开工；移动端无法系统级监听截图，重设计为相册导入/分享收纳 |
-| 主题 | — | forui 中性底 + 渐离紫主色，亮/暗跟随系统（app_theme.dart）；桌面 25 套 token 映射 P2（_build 加方案表） |
+| 主题 | — | **5 套主题样式**（渐离紫 `zi` / 远峰蓝 `blue` / 森野绿 `green` / 落日橙 `orange` / 樱粉 `pink`，`AppTheme.styles`）+ 三态模式（跟随系统/浅色/深色），SharedPreferences 持久化；切换入口在首页与三个分组页右上角的**设置按钮 → 左侧设置面板**。桌面 25 套 token 映射 P2 |
 
 ## 新增功能域落地清单
 1. 建 `lib/features/<module>/`（models / repositories / providers / components 按需原子拆分，带中文注释）。
@@ -265,4 +280,5 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 - 2026-09-05：UI 现代化 **Phase 1 原子组件已完成**（详见「UI 现代化与动效」章节）——`lib/app/ui/` 新增 TapScale/GlassCard/GradientButton/ShimmerSkeleton/AnimatedStat/AnimatedCheck/StaggerList/JianliSegmented/ConfettiOverlay/PageHero/SquircleBox；AppCard/RingProgress/StatBlock/EmptyState 就地升级。lint/类型问题已全修（dispose 漏 super、context 在字段初始化器、record 空安全提升、builder 参数列表、haptic 参数名遮蔽），同章节已固化 7 条动效组件开发雷区。**构建与运行交用户本地执行**（Agent 侧无 GUI 且后台构建过慢），命令见「构建与验证」的「跑起来看效果」小节。
 - 剩余规划（截至 2026-09-05）：真机全量验证、桌面 25 套主题映射到 forui、flutter_quill 富文本编辑、PDF / CFI 精确进度、interval 通知精细化、QR 样式、同步会话加密、conversation LLM 后端、**UI 现代化 Phase 2（壳与导航动效）→ Phase 3（逐屏动效接线）→ Phase 4（点睛与无障碍）→ Phase 5（收口）**。
 - 2026-09-05：**启动崩溃修复**——`StaggerList`/`AnimatedCheck`/`RingProgress`/`ConfettiOverlay` 四个动效组件在 `initState` 内读 `JianliMotion.enabled/duration`（内部 `MediaQuery.of`），触发 `dependOnInheritedWidgetOfExactType ... called from initState` 启动崩溃。已全部改为 `didChangeDependencies` + 一次性守卫（`_started`/`_initialized`）。雷区 #8 已固化。修复后由用户本地 `flutter run -d emulator-5554` 验证（Agent 侧不跑 analyze，>30s 即交用户）。
+- **2026-09-05：主题系统 + 设置面板 + 剩余页面 UI 全量焕新（Phase 3→4）**。① 主题：`app_theme.dart` 参数化为 5 套 `ThemeStyle`（紫/蓝/绿/橙/粉）+ 新增 `theme_providers.dart`（`themeStyleProvider`/`themeModeProvider`，SharedPreferences 持久化），`app.dart` 改 `ConsumerWidget` 读 provider，切样式/模式即时全树重渲。② 入口：首页与三个分组页右上角装饰块换成 **`SettingsButton`**，点开 **左侧滑出设置面板**（自定义 `PageRouteBuilder`，刻意不用 forui 弹层以避免与 material_ui 平行 Material 类冲突），内含 5 色环样式选择 + 三态模式 `JianliSegmented`。③ 页面焕新（沿用 Phase 3 视觉语言 `pageTint` + 专属色 `SquircleBox` + `StaggerList` + `AppCard`）：效率类（habit/todo/reminder/pomodoro/countdown/pomodoro_records）、内容类（note 列表·详情·编辑、conversation 列表·消息流、bookshelf·reader）、工具类（2FA/密码库/文件保险箱/二维码/同步）。子页强调色与 Hub 入口色对齐（notes=3、conversation=4、ebook=按标题 hash、2FA=0、密码库=1、保险箱=2、QR=3、sync=5）。④ 新雷区已固化到「Riverpod 3 / forui API 雷区」小节（**`valueOrNull` 已移除改 `.value`；`FHeader` 用 `suffixes` 不是 `actions`；`material_ui` 的 `ThemeMode`；`JianliSegmented` items 传 IconData**）。
 - 剩余规划（截至 2026-09-05）：真机全量验证、桌面 25 套主题映射到 forui、flutter_quill 富文本编辑、PDF / CFI 精确进度、interval 通知精细化、QR 样式、同步会话加密、conversation LLM 后端、UI 现代化落地（按 `references/ui-modernization-plan.md` 分阶段）。

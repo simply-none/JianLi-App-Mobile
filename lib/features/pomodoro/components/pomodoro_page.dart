@@ -12,7 +12,9 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/di/app_providers.dart';
+import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/ring_progress.dart';
+import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/pomodoro_state_machine.dart';
 import '../repositories/pomodoro_repository.dart';
@@ -97,42 +99,53 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
             ),
         ],
       ),
-      child: Center(
-        child: snapshot == null
-            ? EmptyState(
-                icon: FLucideIcons.timer,
-                title: _error ?? '未找到番茄钟配置（reminders.id=pomodoro）',
-                subtitle: '先在桌面端启用番茄钟并同步数据',
-              )
-            : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    snapshot.currentState.label,
-                    style: t.typography.body.lg.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 24),
-                  // 阶段进度环（forui 化原子组件）
-                  RingProgress(
-                    progress: snapshot.progress,
-                    size: 200,
-                    strokeWidth: 10,
-                    child: Text(
-                      _formatSeconds(snapshot.remainingSeconds),
-                      style: t.typography.body.lg.copyWith(
-                        fontSize: 44,
-                        fontWeight: FontWeight.w700,
-                        fontFeatures: const [FontFeature.tabularFigures()],
+      child: ColoredBox(
+        color: AppTokens.pageTint(context),
+        child: Center(
+          child: snapshot == null
+              ? EmptyState(
+                  icon: FLucideIcons.timer,
+                  title: _error ?? '未找到番茄钟配置（reminders.id=pomodoro）',
+                  subtitle: '先在桌面端启用番茄钟并同步数据',
+                )
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SquircleBox(
+                      size: 64,
+                      radius: 20,
+                      gradient: AppTokens.accentGradient(AppTokens.accent(6)),
+                      alignment: Alignment.center,
+                      child: const Icon(FLucideIcons.timer, color: Colors.white, size: 30),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      snapshot.currentState.label,
+                      style: t.typography.body.lg.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 24),
+                    // 阶段进度环（forui 化原子组件）
+                    RingProgress(
+                      progress: snapshot.progress,
+                      size: 200,
+                      strokeWidth: 10,
+                      child: Text(
+                        _formatSeconds(snapshot.remainingSeconds),
+                        style: t.typography.body.lg.copyWith(
+                          fontSize: 44,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    '周期 ${snapshot.cycleSeconds ~/ 60} 分钟 · 完成后自动进入下一阶段',
-                    style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
-                  ),
-                ],
-              ),
+                    const SizedBox(height: 24),
+                    Text(
+                      '周期 ${snapshot.cycleSeconds ~/ 60} 分钟 · 完成后自动进入下一阶段',
+                      style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }

@@ -11,6 +11,8 @@ import 'package:forui/forui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/sync/sync_discovery.dart';
 import '../../../core/sync/sync_service.dart';
@@ -97,9 +99,11 @@ class _SyncPageState extends ConsumerState<SyncPage> {
         title: const Text('局域网同步'),
         prefixes: [FHeaderAction.back(onPress: () => context.pop())],
       ),
-      child: ListView(
-        padding: const EdgeInsets.only(top: 4, bottom: 24),
-        children: [
+      child: ColoredBox(
+        color: AppTokens.pageTint(context),
+        child: ListView(
+          padding: const EdgeInsets.only(top: 4, bottom: 24),
+          children: [
           // 设备区
           const SectionHeader(title: '发现设备'),
           AppCard(
@@ -139,7 +143,13 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
                         children: [
-                          const Icon(FLucideIcons.monitorSmartphone, size: 18),
+                          SquircleBox(
+                            size: 36,
+                            radius: 10,
+                            gradient: AppTokens.accentGradient(AppTokens.accent(5)),
+                            alignment: Alignment.center,
+                            child: Icon(FLucideIcons.monitorSmartphone, color: Colors.white, size: 16),
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Column(
@@ -243,6 +253,7 @@ class _SyncPageState extends ConsumerState<SyncPage> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

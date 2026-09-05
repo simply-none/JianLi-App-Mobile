@@ -14,6 +14,9 @@ import 'package:forui/forui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/squircle_box.dart';
+import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/password_entry.dart';
 import '../providers/password_vault_providers.dart';
@@ -75,18 +78,25 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
                       title: '密码库为空',
                       subtitle: '点击右上角 + 添加第一条',
                     )
-                  : ListView(
-                      padding: const EdgeInsets.only(top: 4, bottom: 24),
-                      children: [
-                        for (final e in entries)
-                          _EntryTile(
-                            entry: e,
-                            onEdit: () => _editEntry(e),
-                            onDelete: () => ref
-                                .read(passwordVaultEntriesProvider.notifier)
-                                .deleteEntry(passphrase: _passphrase ?? '', key: e.key),
+                  : ColoredBox(
+                      color: AppTokens.pageTint(context),
+                      child: ListView(
+                        padding: const EdgeInsets.only(top: 4, bottom: 24),
+                        children: [
+                          StaggerList(
+                            children: [
+                              for (final e in entries)
+                                _EntryTile(
+                                  entry: e,
+                                  onEdit: () => _editEntry(e),
+                                  onDelete: () => ref
+                                      .read(passwordVaultEntriesProvider.notifier)
+                                      .deleteEntry(passphrase: _passphrase ?? '', key: e.key),
+                                ),
+                            ],
                           ),
-                      ],
+                        ],
+                      ),
                     ),
             ),
     );
@@ -248,16 +258,16 @@ class _EntryTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: [
-          // 首字母徽标（secondary 底 + secondaryForeground 字）
-          Container(
-            width: 40,
-            height: 40,
+          // 首字母徽标（专属蓝强调色渐变底盘）
+          SquircleBox(
+            size: 40,
+            radius: 12,
+            gradient: AppTokens.accentGradient(AppTokens.accent(1)),
             alignment: Alignment.center,
-            decoration: BoxDecoration(color: t.colors.secondary, shape: BoxShape.circle),
             child: Text(
               entry.title.isEmpty ? '?' : entry.title.characters.first.toUpperCase(),
               style: t.typography.body.md.copyWith(
-                color: t.colors.secondaryForeground,
+                color: Colors.white,
                 fontWeight: FontWeight.w600,
               ),
             ),

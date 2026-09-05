@@ -8,6 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/segmented.dart';
+import '../../../app/ui/squircle_box.dart';
+import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/todo.dart';
 import '../providers/todo_providers.dart';
@@ -31,10 +35,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
 
     // 过滤项（与原 SegmentedButton 一一对应）
     const filters = [
-      (TodoFilter.active, '进行中'),
-      (TodoFilter.completed, '已完成'),
-      (TodoFilter.all, '全部'),
+      TodoFilter.active,
+      TodoFilter.completed,
+      TodoFilter.all,
     ];
+    const filterLabels = ['进行中', '已完成', '全部'];
 
     return FScaffold(
       header: FHeader.nested(
@@ -51,24 +56,13 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       ),
       child: Column(
         children: [
-          // 过滤切换（选中 secondary / 未选 ghost）
+          // 过滤切换（滑块分段，选中态下方渐变指示块）
           Padding(
             padding: const EdgeInsets.only(top: 8, bottom: 4),
-            child: Row(
-              spacing: 8,
-              children: [
-                for (final (value, label) in filters)
-                  Expanded(
-                    child: FButton(
-                      variant: _filter == value
-                          ? FButtonVariant.secondary
-                          : FButtonVariant.ghost,
-                      size: FButtonSizeVariant.sm,
-                      onPress: () => setState(() => _filter = value),
-                      child: Text(label),
-                    ),
-                  ),
-              ],
+            child: JianliSegmented(
+              items: [for (final l in filterLabels) (null, l)],
+              selected: filters.indexOf(_filter),
+              onSelect: (i) => setState(() => _filter = filters[i]),
             ),
           ),
           Expanded(
@@ -89,19 +83,28 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                     title: '这里空空如也',
                   );
                 }
-                return ListView(
-                  padding: const EdgeInsets.only(top: 4, bottom: 24),
-                  children: [
-                    for (final todo in items)
-                      _TodoTile(
-                        todo: todo,
-                        tagCount: tagsAsync.value?.length ?? 0,
-                        onToggle: () => ref
-                            .read(todoRepositoryProvider)
-                            .toggleComplete(todo.key, !todo.completed),
-                        onDelete: () => ref.read(todoRepositoryProvider).deleteTodo(todo.key),
+                return ColoredBox(
+                  color: AppTokens.pageTint(context),
+                  child: ListView(
+                    padding: const EdgeInsets.only(top: 4, bottom: 24),
+                    children: [
+                      StaggerList(
+                        children: [
+                          for (var i = 0; i < items.length; i++)
+                            _TodoTile(
+                              todo: items[i],
+                              accentIndex: i,
+                              tagCount: tagsAsync.value?.length ?? 0,
+                              onToggle: () => ref
+                                  .read(todoRepositoryProvider)
+                                  .toggleComplete(items[i].key, !items[i].completed),
+                              onDelete: () =>
+                                  ref.read(todoRepositoryProvider).deleteTodo(items[i].key),
+                            ),
+                        ],
                       ),
-                  ],
+                    ],
+                  ),
                 );
               },
             ),
@@ -159,12 +162,14 @@ class _TodoPageState extends ConsumerState<TodoPage> {
 class _TodoTile extends StatelessWidget {
   const _TodoTile({
     required this.todo,
+    required this.accentIndex,
     required this.tagCount,
     required this.onToggle,
     required this.onDelete,
   });
 
   final TodoItem todo;
+  final int accentIndex;
   final int tagCount;
   final Future<void> Function() onToggle;
   final Future<void> Function() onDelete;
@@ -172,6 +177,7 @@ class _TodoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    final accent = AppTokens.accent(accentIndex);
     // 滑动删除保留 Dismissible（forui 无等价物，material_ui 版已被主题着色）
     return Dismissible(
       key: ValueKey(todo.key),
@@ -188,6 +194,14 @@ class _TodoTile extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 5),
         child: Row(
           children: [
+            SquircleBox(
+              size: 40,
+              radius: 12,
+              gradient: AppTokens.accentGradient(accent),
+              alignment: Alignment.center,
+              child: Icon(FLucideIcons.listTodo, color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 12),
             FCheckbox(
               value: todo.completed,
               onChange: (_) => onToggle(),

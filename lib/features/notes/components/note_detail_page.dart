@@ -10,6 +10,8 @@ import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/squircle_box.dart';
 import '../models/note_item.dart';
 import '../providers/note_providers.dart';
 
@@ -49,23 +51,38 @@ class NoteDetailPage extends ConsumerWidget {
           if (note == null) {
             return Center(child: Text('未找到笔记：$noteKey'));
           }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
-                child: Text(note.title, style: t.typography.body.xl),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                child: Text(
-                  '${note.category ?? '未分类'} · 更新于 ${note.updateTime}',
-                  style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+          return ColoredBox(
+            color: AppTokens.pageTint(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                  child: Row(
+                    children: [
+                      SquircleBox(
+                        size: 40,
+                        radius: 12,
+                        gradient: AppTokens.accentGradient(AppTokens.accent(3)),
+                        alignment: Alignment.center,
+                        child: Icon(FLucideIcons.notebookPen, color: Colors.white, size: 18),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(note.title, style: t.typography.body.xl)),
+                    ],
+                  ),
                 ),
-              ),
-              const FDivider(),
-              Expanded(child: NoteHtmlView(html: note.html)),
-            ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    '${note.category ?? '未分类'} · 更新于 ${note.updateTime}',
+                    style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                  ),
+                ),
+                const FDivider(),
+                Expanded(child: NoteHtmlView(html: note.html)),
+              ],
+            ),
           );
         },
       ),

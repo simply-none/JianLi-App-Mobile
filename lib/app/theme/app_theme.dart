@@ -6,46 +6,100 @@
 //    与 flutter/material 是两套平行类，勿混用——否则 Theme 继承链断裂、类型不兼容）。
 // 3. MaterialApp 的 theme/darkTheme 用 toApproximateMaterialTheme() 生成，
 //    让残留 Material 组件（日期选择、文本选择菜单等）与 forui 观感一致。
-// 4. 桌面端 25 套主题 token 的映射入口收敛在 _build：每套主题 = 一份主色
-//    （+ 可选中性色覆盖），后续扩展多主题时在此加方案表，勿在页面里写死。
+// 4. 多套主题样式（AppTheme.styles，5 套流行配色）在此集中定义；运行时由
+//    themeStyleProvider 驱动切换，themeModeProvider 驱动 浅/暗/跟随系统。
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
+
+/// 主题样式（5 套流行配色）——主色 + 暗色提亮主色
+class ThemeStyle {
+  const ThemeStyle({
+    required this.id,
+    required this.name,
+    required this.lightPrimary,
+    required this.darkPrimary,
+  });
+
+  final String id;
+  final String name;
+  final Color lightPrimary;
+  final Color darkPrimary;
+}
 
 /// 应用主题构建器（forui）
 class AppTheme {
   AppTheme._();
 
-  /// 桌面端默认主题主色（与 jianli-app 的种子色一致）
-  static const Color seedColor = Color(0xFF6C5CE7);
+  /// 5 套流行主题样式（主色 / 暗色提亮主色）
+  static const List<ThemeStyle> styles = [
+    ThemeStyle(
+      id: 'zi',
+      name: '渐离紫',
+      lightPrimary: Color(0xFF6C5CE7),
+      darkPrimary: Color(0xFF8B7CF7),
+    ),
+    ThemeStyle(
+      id: 'blue',
+      name: '远峰蓝',
+      lightPrimary: Color(0xFF3B82F6),
+      darkPrimary: Color(0xFF60A5FA),
+    ),
+    ThemeStyle(
+      id: 'green',
+      name: '森野绿',
+      lightPrimary: Color(0xFF10B981),
+      darkPrimary: Color(0xFF34D399),
+    ),
+    ThemeStyle(
+      id: 'orange',
+      name: '落日橙',
+      lightPrimary: Color(0xFFF59E0B),
+      darkPrimary: Color(0xFFFBBF24),
+    ),
+    ThemeStyle(
+      id: 'pink',
+      name: '樱粉',
+      lightPrimary: Color(0xFFEC4899),
+      darkPrimary: Color(0xFFF472B6),
+    ),
+  ];
 
-  /// 暗色下的主色（提亮一档保证对比度）
-  static const Color seedColorDark = Color(0xFF8B7CF7);
+  /// 按 id 取样式（缺省回落首套「渐离紫」）
+  static ThemeStyle styleById(String id) =>
+      styles.firstWhere((s) => s.id == id, orElse: () => styles.first);
 
-  /// 亮色主题（forui）
-  static FThemeData light() => _build(Brightness.light);
+  /// 亮色主题（指定样式）
+  static FThemeData light([ThemeStyle? style]) =>
+      build(style: style ?? styles.first, brightness: Brightness.light);
 
-  /// 暗色主题（forui）
-  static FThemeData dark() => _build(Brightness.dark);
+  /// 暗色主题（指定样式）
+  static FThemeData dark([ThemeStyle? style]) =>
+      build(style: style ?? styles.first, brightness: Brightness.dark);
 
-  /// MaterialApp 用：把 forui 主题近似映射为 Material 主题（互操作）
-  static ThemeData materialLight() => light().toApproximateMaterialTheme();
+  /// MaterialApp 用：亮色 Material 主题（指定样式）
+  static ThemeData materialLight([ThemeStyle? style]) =>
+      light(style).toApproximateMaterialTheme();
 
-  /// MaterialApp 用：暗色 Material 主题
-  static ThemeData materialDark() => dark().toApproximateMaterialTheme();
+  /// MaterialApp 用：暗色 Material 主题（指定样式）
+  static ThemeData materialDark([ThemeStyle? style]) =>
+      dark(style).toApproximateMaterialTheme();
 
-  /// 构建一套 forui 主题：中性底色（shadcn 观感）+ 渐离主色
+  /// 构建一套 forui 主题：中性底色（shadcn 观感）+ 指定样式主色
   ///
   /// 官方模式（同 FTheme.neutral 源码）：FThemeData(touch, colors) 只传这两个，
   /// typography/style/icons 自动从 colors + touch 推导继承。
-  static FThemeData _build(Brightness brightness) {
+  static FThemeData build({
+    required ThemeStyle style,
+    required Brightness brightness,
+  }) {
     final isLight = brightness == Brightness.light;
     // touch 变体 = 移动端触控尺寸（desktop 变体控件更紧凑，移动端勿用错）
     final base = isLight ? FTheme.neutral.light.touch : FTheme.neutral.dark.touch;
     return FThemeData(
       touch: true,
-      debugLabel: isLight ? 'Jianli Light Touch' : 'Jianli Dark Touch',
+      debugLabel: 'Jianli ${style.id} ${isLight ? 'L' : 'D'}',
       colors: base.colors.copyWith(
-        primary: isLight ? seedColor : seedColorDark,
+        primary: isLight ? style.lightPrimary : style.darkPrimary,
         primaryForeground: Colors.white,
       ),
     );

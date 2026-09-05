@@ -17,7 +17,11 @@ import 'package:material_ui/material_ui.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/squircle_box.dart';
+import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
+import '../../../core/db/app_database.dart';
 import '../repositories/qr_history_repository.dart';
 import '../services/qr_payload_builder.dart';
 
@@ -248,37 +252,84 @@ class _QrPageState extends ConsumerState<QrPage> {
         if (rows.isEmpty) {
           return const EmptyState(icon: FLucideIcons.history, title: '暂无历史');
         }
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            FTileGroup(
-              children: [
-                for (final row in rows)
-                  FTile(
-                    prefix: const Icon(FLucideIcons.qrCode, size: 18),
-                    title: Text(
-                      row.content ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+        return ColoredBox(
+          color: AppTokens.pageTint(context),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            children: [
+              StaggerList(
+                children: [
+                  for (final row in rows)
+                    _QrHistoryTile(
+                      row: row,
+                      onCopy: () {
+                        Clipboard.setData(ClipboardData(text: row.content ?? ''));
+                        showFToast(context: context, title: const Text('内容已复制'));
+                      },
+                      onDelete: () => ref.read(qrHistoryRepositoryProvider).delete(row.key),
                     ),
-                    subtitle: Text('${QrPayloadType.label(row.type ?? 'text')} · ${row.createdAt ?? ''}'),
-                    // 点击整行 → 复制内容
-                    onPress: () {
-                      Clipboard.setData(ClipboardData(text: row.content ?? ''));
-                      showFToast(context: context, title: const Text('内容已复制'));
-                    },
-                    // 删除该条历史（破坏性操作：图标用 destructive 色）
-                    suffix: FButton.icon(
-                      variant: FButtonVariant.ghost,
-                      onPress: () => ref.read(qrHistoryRepositoryProvider).delete(row.key),
-                      child: Icon(FLucideIcons.trash2, size: 18, color: t.colors.destructive),
-                    ),
-                  ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         );
       },
+    );
+  }
+}
+
+/// 二维码历史条目卡（专属琥珀色图标盘 + 内容 + 删除），替换原 FTile
+class _QrHistoryTile extends StatelessWidget {
+  const _QrHistoryTile({required this.row, required this.onCopy, required this.onDelete});
+
+  final QrHistoryData row;
+  final VoidCallback onCopy;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return AppCard(
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      onTap: onCopy,
+      child: Row(
+        children: [
+          SquircleBox(
+            size: 40,
+            radius: 12,
+            gradient: AppTokens.accentGradient(AppTokens.accent(3)),
+            alignment: Alignment.center,
+            child: Icon(FLucideIcons.qrCode, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  row.content ?? '',
+                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${QrPayloadType.label(row.type ?? 'text')} · ${row.createdAt ?? ''}',
+                  style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          FButton.icon(
+            variant: FButtonVariant.ghost,
+            onPress: onDelete,
+            child: Icon(FLucideIcons.trash2, size: 18, color: t.colors.destructive),
+          ),
+        ],
+      ),
     );
   }
 }

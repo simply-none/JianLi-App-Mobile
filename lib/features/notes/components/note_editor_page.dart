@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../providers/note_providers.dart';
 
 /// 笔记编辑页（noteKey 为空 = 新建）
@@ -103,8 +104,10 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
       ),
       child: widget.noteKey != null && !_loaded
           ? const Center(child: FCircularProgress())
-          : ListView(
-              padding: const EdgeInsets.only(top: 12, bottom: 24),
+          : ColoredBox(
+              color: AppTokens.pageTint(context),
+              child: ListView(
+                padding: const EdgeInsets.only(top: 12, bottom: 24),
               children: [
                 // 标题
                 FTextField(
@@ -125,6 +128,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
                   hint: '正文…（纯文本，按行分段）',
                 ),
               ],
+              ),
             ),
     );
   }

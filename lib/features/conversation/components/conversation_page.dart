@@ -7,6 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/squircle_box.dart';
+import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
 import '../repositories/conversation_repository.dart';
@@ -29,59 +32,36 @@ class ConversationPage extends ConsumerWidget {
           ),
         ],
       ),
-      child: themesAsync.when(
-        loading: () => const Center(child: FCircularProgress()),
-        error: (e, _) => Center(child: Text('加载失败：$e')),
-        data: (themes) {
-          if (themes.isEmpty) {
-            return const EmptyState(
-              icon: FLucideIcons.messageSquareText,
-              title: '暂无主题',
-              subtitle: '点右上角新建，或等桌面端同步',
+      child: ColoredBox(
+        color: AppTokens.pageTint(context),
+        child: themesAsync.when(
+          loading: () => const Center(child: FCircularProgress()),
+          error: (e, _) => Center(child: Text('加载失败：$e')),
+          data: (themes) {
+            if (themes.isEmpty) {
+              return const EmptyState(
+                icon: FLucideIcons.messageSquareText,
+                title: '暂无主题',
+                subtitle: '点右上角新建，或等桌面端同步',
+              );
+            }
+            return ListView(
+              padding: const EdgeInsets.only(top: 8, bottom: 24),
+              children: [
+                StaggerList(
+                  children: [
+                    for (final theme in themes)
+                      _ThemeCard(
+                        theme: theme,
+                        onTap: () => context.push('/conversation/${theme.id}'),
+                      ),
+                  ],
+                ),
+              ],
             );
-          }
-          return ListView(
-            padding: const EdgeInsets.only(top: 8, bottom: 24),
-            children: [
-              FTileGroup(
-                divider: FItemDivider.full,
-                children: [
-                  for (final theme in themes) _buildThemeTile(context, theme),
-                ],
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  /// 构建单个主题条目（头像首字 + 标题 + 更新时间）
-  /// 注意：FTileGroup.children 要求 FTile 本体（FTileMixin），不能包一层 StatelessWidget
-  FTile _buildThemeTile(BuildContext context, ConversationThemeData theme) {
-    final t = context.theme;
-    return FTile(
-      prefix: Container(
-        width: 38,
-        height: 38,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: t.colors.primary.withValues(alpha: 0.12),
-          shape: BoxShape.circle,
-        ),
-        child: Text(
-          (theme.title ?? '主').characters.first,
-          style: t.typography.body.md.copyWith(color: t.colors.primary),
+          },
         ),
       ),
-      title: Text(theme.title ?? '未命名主题'),
-      subtitle: Text(
-        '更新于 ${theme.updateTime ?? '-'}${(theme.remark?.isNotEmpty ?? false) ? ' · ${theme.remark}' : ''}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      suffix: Icon(FLucideIcons.chevronRight, size: 18, color: t.colors.mutedForeground),
-      onPress: () => context.push('/conversation/${theme.id}'),
     );
   }
 
@@ -125,6 +105,62 @@ class ConversationPage extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 单个主题卡（专属色圆头像 + 标题 + 更新时间 + 箭头），替换原 FTile
+class _ThemeCard extends StatelessWidget {
+  const _ThemeCard({required this.theme, required this.onTap});
+
+  final ConversationThemeData theme;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    final remark = (theme.remark?.isNotEmpty ?? false) ? ' · ${theme.remark}' : '';
+    return AppCard(
+      onTap: onTap,
+      child: Row(
+        children: [
+          SquircleBox(
+            size: 44,
+            radius: 14,
+            gradient: AppTokens.accentGradient(AppTokens.accent(4)),
+            alignment: Alignment.center,
+            child: Text(
+              (theme.title ?? '主').characters.first,
+              style: t.typography.body.md.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  theme.title ?? '未命名主题',
+                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '更新于 ${theme.updateTime ?? '-'}$remark',
+                  style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Icon(FLucideIcons.chevronRight, size: 18, color: t.colors.mutedForeground),
+        ],
       ),
     );
   }
@@ -179,37 +215,54 @@ class _ConversationMessagesPageState extends ConsumerState<ConversationMessagesP
               title: '该主题暂无消息',
             );
           }
-          return Column(
-            children: [
-              Expanded(
+          return ColoredBox(
+            color: AppTokens.pageTint(context),
+            child: Column(
+              children: [
+                Expanded(
                 child: ListView(
                   padding: const EdgeInsets.only(top: 12, bottom: 12),
                   reverse: true, // 从底部最新消息开始展示
                   children: [
                     for (final msg in messages.reversed)
                       Align(
-                        // 桌面端消息为用户记录流，统一左对齐气泡（对话式）
                         alignment: Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                          constraints: BoxConstraints(
-                            maxWidth: MediaQuery.of(context).size.width * 0.82,
-                          ),
-                          decoration: BoxDecoration(
-                            color: t.colors.secondary,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Column(
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(msg.content ?? '', style: t.typography.body.md),
-                              const SizedBox(height: 4),
-                              Text(
-                                msg.createTime ?? '',
-                                style: t.typography.body.xs
-                                    .copyWith(color: t.colors.mutedForeground),
+                              SquircleBox(
+                                size: 30,
+                                radius: 10,
+                                gradient: AppTokens.accentGradient(AppTokens.accent(4)),
+                                alignment: Alignment.center,
+                                child: Icon(FLucideIcons.messageSquareText,
+                                    color: Colors.white, size: 14),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: t.colors.card,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(msg.content ?? '',
+                                          style: t.typography.body.md),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        msg.createTime ?? '',
+                                        style: t.typography.body.xs
+                                            .copyWith(color: t.colors.mutedForeground),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -244,6 +297,7 @@ class _ConversationMessagesPageState extends ConsumerState<ConversationMessagesP
                 ),
               ),
             ],
+            ),
           );
         },
       ),

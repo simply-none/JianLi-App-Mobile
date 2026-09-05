@@ -21,6 +21,7 @@ import 'package:forui/forui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/two_factor_account.dart';
 import '../providers/two_factor_providers.dart';
@@ -323,21 +324,24 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
     }
     return RefreshIndicator(
       onRefresh: () async => setState(() => _tick++),
-      child: ListView.builder(
-        padding: const EdgeInsets.only(top: 4, bottom: 24),
-        itemCount: _accounts.length,
-        itemBuilder: (context, index) {
-          final account = _accounts[index];
-          final meta = generateTotpWithMeta(
-            account.secret,
-            options: TotpOptions(
-              algorithm: account.algorithm,
-              digits: account.digits,
-              period: account.period,
-            ),
-          );
-          return AccountCodeTile(account: account, meta: meta);
-        },
+      child: ColoredBox(
+        color: AppTokens.pageTint(context),
+        child: ListView.builder(
+          padding: const EdgeInsets.only(top: 4, bottom: 24),
+          itemCount: _accounts.length,
+          itemBuilder: (context, index) {
+            final account = _accounts[index];
+            final meta = generateTotpWithMeta(
+              account.secret,
+              options: TotpOptions(
+                algorithm: account.algorithm,
+                digits: account.digits,
+                period: account.period,
+              ),
+            );
+            return AccountCodeTile(account: account, meta: meta);
+          },
+        ),
       ),
     );
   }

@@ -7,7 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/squircle_box.dart';
+import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
+import '../models/note_item.dart';
 import '../providers/note_providers.dart';
 
 /// 笔记列表页
@@ -37,50 +41,47 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
           ),
         ],
       ),
-      child: Column(
-        children: [
-          // 分类筛选条
-          categoriesAsync.maybeWhen(
-            data: (categories) => _buildCategoryChips(categories),
-            orElse: () => const SizedBox.shrink(),
-          ),
-          Expanded(
-            child: notesAsync.when(
-              loading: () => const Center(child: FCircularProgress()),
-              error: (e, _) => Center(child: Text('加载失败：$e')),
-              data: (notes) {
-                if (notes.isEmpty) {
-                  return const EmptyState(
-                    icon: FLucideIcons.notebookPen,
-                    title: '暂无笔记',
-                    subtitle: '点右上角新建，或等桌面端同步',
-                  );
-                }
-                return ListView(
-                  padding: const EdgeInsets.only(top: 8, bottom: 24),
-                  children: [
-                    FTileGroup(
-                      divider: FItemDivider.full,
-                      children: [
-                        for (final note in notes)
-                          FTile(
-                            title: Text(note.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(
-                              note.excerpt,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onPress: () =>
-                                context.push('/notes/${Uri.encodeComponent(note.key)}'),
-                          ),
-                      ],
-                    ),
-                  ],
-                );
-              },
+      child: ColoredBox(
+        color: AppTokens.pageTint(context),
+        child: Column(
+          children: [
+            // 分类筛选条
+            categoriesAsync.maybeWhen(
+              data: (categories) => _buildCategoryChips(categories),
+              orElse: () => const SizedBox.shrink(),
             ),
-          ),
-        ],
+            Expanded(
+              child: notesAsync.when(
+                loading: () => const Center(child: FCircularProgress()),
+                error: (e, _) => Center(child: Text('加载失败：$e')),
+                data: (notes) {
+                  if (notes.isEmpty) {
+                    return const EmptyState(
+                      icon: FLucideIcons.notebookPen,
+                      title: '暂无笔记',
+                      subtitle: '点右上角新建，或等桌面端同步',
+                    );
+                  }
+                  return ListView(
+                    padding: const EdgeInsets.only(top: 8, bottom: 24),
+                    children: [
+                      StaggerList(
+                        children: [
+                          for (final note in notes)
+                            _NoteCard(
+                              note: note,
+                              onTap: () =>
+                                  context.push('/notes/${Uri.encodeComponent(note.key)}'),
+                            ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -113,7 +114,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 }
 
-/// 单个分类筛选 chip（FTappable + FBadge 组合）
+/// 分类筛选 chip（圆角 pill；选中态用笔记域专属琥珀强调色）
 class _CategoryChip extends StatelessWidget {
   const _CategoryChip({required this.label, required this.selected, required this.onTap});
 
@@ -124,16 +125,71 @@ class _CategoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    final accent = AppTokens.accent(3);
+    final bg = selected ? accent : t.colors.card;
+    final fg = selected ? Colors.white : t.colors.foreground;
     return FTappable(
       onPress: onTap,
-      child: FBadge(
-        variant: selected ? FBadgeVariant.primary : FBadgeVariant.outline,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          border: selected ? null : Border.all(color: t.colors.border),
+        ),
         child: Text(
           label,
-          style: t.typography.body.sm.copyWith(
-            color: selected ? t.colors.primaryForeground : t.colors.mutedForeground,
-          ),
+          style: t.typography.body.sm.copyWith(color: fg, fontWeight: FontWeight.w600),
         ),
+      ),
+    );
+  }
+}
+
+/// 单条笔记卡（专属色图标盘 + 标题 + 摘要 + 箭头），替换原 FTile
+class _NoteCard extends StatelessWidget {
+  const _NoteCard({required this.note, required this.onTap});
+
+  final NoteItem note;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return AppCard(
+      onTap: onTap,
+      child: Row(
+        children: [
+          SquircleBox(
+            size: 44,
+            radius: 14,
+            gradient: AppTokens.accentGradient(AppTokens.accent(3)),
+            alignment: Alignment.center,
+            child: Icon(FLucideIcons.notebookPen, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  note.title,
+                  style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  note.excerpt,
+                  style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Icon(FLucideIcons.chevronRight, size: 18, color: t.colors.mutedForeground),
+        ],
       ),
     );
   }

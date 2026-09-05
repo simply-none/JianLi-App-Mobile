@@ -9,6 +9,8 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/di/app_providers.dart';
+import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
 import '../repositories/pomodoro_records_repository.dart';
@@ -46,13 +48,14 @@ class _PomodoroRecordsPageState extends ConsumerState<PomodoroRecordsPage> {
           return Column(
             children: [
               if (stats != null)
-                // 统计横幅：primary 底色 + 前景色数字（对齐首页概览卡视觉）
+                // 统计横幅：primary 渐变 + 前景色数字（对齐首页概览卡视觉）
                 Container(
                   margin: const EdgeInsets.only(top: 8, bottom: 6),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   decoration: BoxDecoration(
-                    color: t.colors.primary,
-                    borderRadius: BorderRadius.circular(16),
+                    gradient: AppTokens.primaryGradient(context),
+                    borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+                    boxShadow: AppTokens.elevation(context, level: 3),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -87,16 +90,19 @@ class _PomodoroRecordsPageState extends ConsumerState<PomodoroRecordsPage> {
                         title: '暂无记录',
                       );
                     }
-                    return ListView.builder(
-                      padding: const EdgeInsets.only(top: 4, bottom: 24),
-                      itemCount: records.length,
-                      itemBuilder: (context, i) {
-                        final r = records[i];
-                        return _RecordTile(
-                          record: r,
-                          isWork: r.value == 'work',
-                        );
-                      },
+                    return ColoredBox(
+                      color: AppTokens.pageTint(context),
+                      child: ListView.builder(
+                        padding: const EdgeInsets.only(top: 4, bottom: 24),
+                        itemCount: records.length,
+                        itemBuilder: (context, i) {
+                          final r = records[i];
+                          return _RecordTile(
+                            record: r,
+                            isWork: r.value == 'work',
+                          );
+                        },
+                      ),
                     );
                   },
                 ),
@@ -124,10 +130,16 @@ class _RecordTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: Row(
         children: [
-          Icon(
-            isWork ? FLucideIcons.briefcase : FLucideIcons.coffee,
-            color: isWork ? t.colors.primary : t.colors.secondary,
-            size: 20,
+          SquircleBox(
+            size: 40,
+            radius: 12,
+            gradient: AppTokens.accentGradient(AppTokens.accent(isWork ? 6 : 2)),
+            alignment: Alignment.center,
+            child: Icon(
+              isWork ? FLucideIcons.briefcase : FLucideIcons.coffee,
+              color: Colors.white,
+              size: 18,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
 import '../repositories/ebook_repository.dart';
@@ -31,38 +32,41 @@ class BookshelfPage extends ConsumerWidget {
           ),
         ],
       ),
-      child: shelfAsync.when(
-        loading: () => const Center(child: FCircularProgress()),
-        error: (e, _) => Center(child: Text('加载失败：$e')),
-        data: (books) {
-          if (books.isEmpty) {
-            return const EmptyState(
-              icon: FLucideIcons.bookOpenText,
-              title: '书架空空',
-              subtitle: '支持 EPUB / TXT（PDF 列 P2）',
-            );
-          }
-          return GridView.builder(
-            padding: const EdgeInsets.only(top: 12, bottom: 24),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 0.62,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-            ),
-            itemCount: books.length,
-            itemBuilder: (context, i) {
-              final book = books[i];
-              return _BookCell(
-                book: book,
-                onOpen: () => context.push(
-                  '/ebook/reader?path=${Uri.encodeComponent(book.filePath)}',
-                ),
-                onRemove: () => ref.read(ebookRepositoryProvider).removeBook(book),
+      child: ColoredBox(
+        color: AppTokens.pageTint(context),
+        child: shelfAsync.when(
+          loading: () => const Center(child: FCircularProgress()),
+          error: (e, _) => Center(child: Text('加载失败：$e')),
+          data: (books) {
+            if (books.isEmpty) {
+              return const EmptyState(
+                icon: FLucideIcons.bookOpenText,
+                title: '书架空空',
+                subtitle: '支持 EPUB / TXT（PDF 列 P2）',
               );
-            },
-          );
-        },
+            }
+            return GridView.builder(
+              padding: const EdgeInsets.only(top: 12, bottom: 24),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                childAspectRatio: 0.62,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+              ),
+              itemCount: books.length,
+              itemBuilder: (context, i) {
+                final book = books[i];
+                return _BookCell(
+                  book: book,
+                  onOpen: () => context.push(
+                    '/ebook/reader?path=${Uri.encodeComponent(book.filePath)}',
+                  ),
+                  onRemove: () => ref.read(ebookRepositoryProvider).removeBook(book),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -96,6 +100,10 @@ class _BookCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    // 按标题取专属强调色（同一本书颜色稳定）
+    final idx = (book.title ?? book.name ?? '').hashCode.abs() % AppTokens.accents.length;
+    final accent = AppTokens.accent(idx);
+    final percent = (book.percent ?? 0).clamp(0.0, 1.0);
     return FTappable(
       onPress: onOpen,
       onLongPress: onRemove,
@@ -105,27 +113,33 @@ class _BookCell extends StatelessWidget {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: t.colors.muted,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                gradient: AppTokens.accentGradient(accent),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               ),
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(10),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  Icon(FLucideIcons.bookOpenText,
+                      color: Colors.white.withValues(alpha: 0.92), size: 26),
+                  const SizedBox(height: 10),
                   Text(
                     book.title ?? book.name ?? '未命名',
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: t.typography.body.sm.copyWith(
+                      color: Colors.white,
                       fontWeight: FontWeight.w600,
-                      height: 1.2,
+                      height: 1.25,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
-                    '已读 ${(book.percent ?? 0).toStringAsFixed(0)}%',
-                    style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
+                    '已读 ${percent.toStringAsFixed(0)}%',
+                    style: t.typography.body.xs.copyWith(
+                      color: Colors.white.withValues(alpha: 0.85),
+                    ),
                   ),
                 ],
               ),
@@ -134,8 +148,8 @@ class _BookCell extends StatelessWidget {
           Container(
             height: 4,
             decoration: BoxDecoration(
-              color: t.colors.primary.withValues(alpha: (book.percent ?? 0).clamp(0.05, 1.0)),
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10)),
+              color: accent.withValues(alpha: percent),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
             ),
           ),
         ],

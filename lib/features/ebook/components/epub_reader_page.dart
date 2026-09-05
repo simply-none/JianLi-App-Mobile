@@ -9,6 +9,7 @@ import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../repositories/ebook_repository.dart';
 import '../services/epub_service.dart';
 
@@ -105,9 +106,12 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
               : Column(
                   children: [
                     Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: HtmlWidget(book!.chapters[_chapter].html),
+                      child: ColoredBox(
+                        color: AppTokens.pageTint(context),
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(16),
+                          child: HtmlWidget(book!.chapters[_chapter].html),
+                        ),
                       ),
                     ),
                     const FDivider(),

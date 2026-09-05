@@ -11,7 +11,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/ring_progress.dart';
+import '../../../app/ui/segmented.dart';
+import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
 import '../repositories/countdown_repository.dart';
@@ -59,29 +62,14 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 模式切换（选中 secondary / 未选 ghost）
-              Row(
-                spacing: 8,
-                children: [
-                  Expanded(
-                    child: FButton(
-                      variant: modeValue == 'duration'
-                          ? FButtonVariant.secondary
-                          : FButtonVariant.ghost,
-                      onPress: () => mode.value = 'duration',
-                      child: const Text('倒计时长'),
-                    ),
-                  ),
-                  Expanded(
-                    child: FButton(
-                      variant: modeValue == 'datetime'
-                          ? FButtonVariant.secondary
-                          : FButtonVariant.ghost,
-                      onPress: () => mode.value = 'datetime',
-                      child: const Text('到某时刻'),
-                    ),
-                  ),
+              // 模式切换（滑块分段，选中态下方渐变指示块）
+              JianliSegmented(
+                items: const [
+                  (null, '倒计时长'),
+                  (null, '到某时刻'),
                 ],
+                selected: modeValue == 'duration' ? 0 : 1,
+                onSelect: (i) => mode.value = i == 0 ? 'duration' : 'datetime',
               ),
               const SizedBox(height: 12),
               FTextField(
@@ -152,18 +140,21 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
               title: '暂无倒计时',
               subtitle: '点击右上角新建一个',
             )
-          : ListView(
-              padding: const EdgeInsets.only(top: 4, bottom: 24),
-              children: [
-                if (active != null) _buildActiveTimer(active),
-                const SectionHeader(title: '全部'),
-                for (final row in rows)
-                  _CountdownCard(
-                    row: row,
-                    nowMs: _nowMs,
-                    isCurrent: row.key == active?.key,
-                  ),
-              ],
+          : ColoredBox(
+              color: AppTokens.pageTint(context),
+              child: ListView(
+                padding: const EdgeInsets.only(top: 4, bottom: 24),
+                children: [
+                  if (active != null) _buildActiveTimer(active),
+                  const SectionHeader(title: '全部'),
+                  for (final row in rows)
+                    _CountdownCard(
+                      row: row,
+                      nowMs: _nowMs,
+                      isCurrent: row.key == active?.key,
+                    ),
+                ],
+              ),
             ),
     );
   }
@@ -174,10 +165,20 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
     final total = active.duration ?? 1;
     final remaining = ((active.endTime ?? 0) - _nowMs).clamp(0, total);
     final progress = total <= 0 ? 0.0 : 1 - remaining / total;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20),
+    return AppCard(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 3,
+      padding: const EdgeInsets.symmetric(vertical: 24),
       child: Column(
         children: [
+          SquircleBox(
+            size: 56,
+            radius: 18,
+            gradient: AppTokens.accentGradient(AppTokens.accent(0)),
+            alignment: Alignment.center,
+            child: const Icon(FLucideIcons.hourglass, color: Colors.white, size: 26),
+          ),
+          const SizedBox(height: 14),
           Text(
             active.name ?? '倒计时',
             style: t.typography.body.md.copyWith(fontWeight: FontWeight.w600),
