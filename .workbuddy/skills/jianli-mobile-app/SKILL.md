@@ -376,6 +376,7 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 
 ## 维护说明
 - 本 skill 是移动端「项目知识基线」，随代码演进而更新；每完成一个功能域或踩出新雷区，同步「功能域清单」与「全局红线」。
+- 2026-09-06：新增双端「文件互传」需求（批量收发、双端对称）。移动端方案与任务清单已产出**待确认**：`references/file-transfer-plan.md`（`lib/features/file_transfer/` 新功能域 + SyncService 可插拔路由挂 /file/* 端点 + drift 首个 onUpgrade 迁移 + 主 AndroidManifest 补 INTERNET/cleartext，accent 粉(4)，入口 `/file-transfer`）。确认后按清单实施并回写功能域清单。
 - 2026-09-05：UI 全量换装 forui（shadcn 风格）+ material_ui，全 App 页面已改造（骨架/组件对照见「UI 体系」章节）。
 - 2026-09-05：**UI 现代化 + 操作动效总体规划**已落地为 `references/ui-modernization-plan.md`——诊断现状短板、定义设计 token（形状/阴影/渐变/语义软底/动效时长曲线）、新增原子组件（GlassCard/GradientButton/ShimmerSkeleton/AnimatedStat/AnimatedCheck/StaggerList/JianliSegmented/ConfettiOverlay/PageHero/SquircleBox）、自建页面转场（禁用 `animations` 包以避开 material_ui 冲突）、Haptics + 减弱动效降级，含 6 阶段实施路线（Phase 0 地基 → Phase 5 收口）。改造时严格守住 forui/material_ui 约束与 FTabs `expands` 雷区。
 - 2026-09-05：UI 现代化 **Phase 0 地基已完成**——`app_theme.dart` 加 `AppTokens`（形状/阴影/渐变/语义软底/动效节律）；新增 `lib/app/anim/{jianli_motion,jianli_haptics,jianli_transitions}.dart`（减弱动效开关 + 触感 + 自建 `fadeSlidePage`/`fadeSlide` 转场，刻意不引 `animations` 包）；`app_router.dart` 全屏 push 路由接 `fadeSlidePage`；`app.dart` 主题切换加 `AnimatedContainer` 背景过渡。`flutter analyze` 0 问题、`flutter test` 5/5 基线通过。
