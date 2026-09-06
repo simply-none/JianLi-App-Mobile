@@ -60,7 +60,7 @@ dependencies:
   forui: ^0.26.0
   material_ui: ^1.1.1  # Flutter Material 独立发行版，forui 建于其上；勿与 flutter/material 混用
   wakelock_plus: ^1.8.0  # 文件互传发送全程后台保活（#19）
-  permission_handler: ^13.0.2  # 文件互传接收目录改系统 Download：申请「所有文件访问」
+  permission_handler: ^13.0.2  # 文件互传接收目录改系统 Download：申请「所有文件访问」；13.x 的 android 插件需 compileSdk 37，已升级 AGP 至 9.1.1（官方支持 API 37.0）
 
 dev_dependencies:
   flutter_test:

@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "com.jianli.jianli_mobile_app"
-    compileSdk = flutter.compileSdkVersion
+    // permission_handler_android 14.x 要求 compileSdk >= 37；AGP 升级到 9.1.1 后官方支持 API 37.0
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
