@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 渐离App 启动图标背景（白，与 logo 白底一致） -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+</resources>

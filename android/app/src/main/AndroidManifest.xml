@@ -1,13 +1,22 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- 文件互传 / 局域网同步：release 包必需（debug/profile 模板已带，但 manifest 合并需显式声明） -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 文件互传后台保活：发送过程中保持屏幕/CPU 唤醒，避免息屏中断（#19） -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 文件互传接收目录 = 系统 Download/渐离App文件互传/：
+         API 30+ 需「所有文件访问」（MANAGE_EXTERNAL_STORAGE，运行时引导授权）；
+         API ≤12L 用 WRITE_EXTERNAL_STORAGE + application 的 requestLegacyExternalStorage -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <application
-        android:label="jianli_mobile_app"
+        android:label="渐离App"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:requestLegacyExternalStorage="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

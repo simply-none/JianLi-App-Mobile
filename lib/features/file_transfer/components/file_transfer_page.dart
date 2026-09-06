@@ -10,7 +10,7 @@
 //   #14 传输加密开关（AES-256-CTR，需双端开启）
 //   #15 接收询问弹窗（关自动接收时弹出，等待用户答复）
 //   #19 后台保活（发送全程 Wakelock，由 TransferClient 包裹）
-//   #20 历史分页（加载更多）
+//   #20 历史分页（DB 侧 list/trim 保留；UI 记录区只显示当次批次）
 import 'dart:async';
 import 'dart:io';
 
@@ -20,6 +20,7 @@ import 'package:forui/forui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -58,7 +59,11 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
   List<RecentPeer> _recentPeers = const []; // #11
   IncomingAsk? _ask; // #15 待答复
   StreamSubscription<IncomingAsk>? _askSub;
-  int _historyLimit = 30; // #20 分页
+  /// 传输记录只显示当次批次：发送进度 / 接收端 offer 登记时切换
+  String? _batchTid;
+  StreamSubscription<String>? _batchTidSub;
+  /// 传输记录标题下方的存储位置提示（随授权状态刷新）
+  String _receiveHint = '';
   final List<String> _logs = [];
 
   @override
@@ -68,6 +73,8 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
   }
 
   Future<void> _init() async {
+    // 接收目录在系统 Download（需「所有文件访问」/传统存储权限）：入页申请一次
+    unawaited(_ensurePublicDownloadsPermission());
     // 拉起接收端路由（幂等注册 /file/*）
     ref.read(transferServerProvider);
     // 启动数据面 + 可被发现（与同步页同款）
@@ -85,6 +92,37 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
       setState(() => _ask = ask);
       _showAskDialog(ask);
     });
+    // 传输记录只显示当次批次：接收端 offer 登记时切到新批次
+    _batchTidSub = ref.read(transferServerProvider).batchTidStream.listen((t) {
+      if (mounted) setState(() => _batchTid = t);
+    });
+    if (mounted) setState(() {});
+  }
+
+  /// 申请公共 Download 所需的存储权限（接收目录首选系统 Download/渐离App文件互传/）。
+  /// request()：API 30+ 自动跳「所有文件访问」设置页，≤12L 弹传统授权框；
+  /// 拒绝时 receiveDir() 自动回退沙盒 Documents。
+  /// 末尾按授权结果刷新「传输记录」标题下方的存储位置提示（_receiveHint）。
+  Future<void> _ensurePublicDownloadsPermission() async {
+    if (!Platform.isAndroid) {
+      _receiveHint = '接收到的文件存储在应用 Documents/$kTransferDirName/ 下';
+      if (mounted) setState(() {});
+      return;
+    }
+    final server = ref.read(transferServerProvider);
+    if (!await server.hasPublicDownloadsAccess()) {
+      await [
+        Permission.manageExternalStorage,
+        Permission.storage,
+      ].request();
+    }
+    final granted = await server.hasPublicDownloadsAccess();
+    if (!granted) {
+      _log('未授予存储权限，接收文件将保存到应用沙盒 Documents（文件管理器不可见）');
+    }
+    _receiveHint = granted
+        ? '接收到的文件存储在系统 Download/$kTransferDirName/ 下'
+        : '未开启存储权限，接收的文件暂存应用沙盒；请点击记录中的「分享」，通过其他应用保存';
     if (mounted) setState(() {});
   }
 
@@ -92,6 +130,7 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
   void dispose() {
     _manualIp.dispose();
     _askSub?.cancel();
+    _batchTidSub?.cancel();
     _discovery.stop();
     super.dispose();
   }
@@ -178,6 +217,14 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
       peer: peer,
       files: List.of(_selectedFiles),
       onProgress: (p) {
+        // 传输记录只显示当次批次：首个进度事件带出 tid，新批次即切换
+        if (mounted && _batchTid != p.tid) {
+          setState(() {
+            _batchTid = p.tid;
+            _progress[p.fid] = p;
+          });
+          return;
+        }
         if (mounted) setState(() => _progress[p.fid] = p);
       },
     );
@@ -266,7 +313,12 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
   Widget build(BuildContext context) {
     final t = context.theme;
     final historyAsync = ref.watch(transferHistoryProvider);
-    final history = historyAsync.value ?? const <FileTransferData>[];
+    // 传输记录只显示当次批次（其他历史记录暂不展示，DB 仍全量写入）
+    final allHistory = historyAsync.value ?? const <FileTransferData>[];
+    final history =
+        _batchTid == null
+            ? const <FileTransferData>[]
+            : allHistory.where((r) => r.tid == _batchTid).toList();
 
     return FScaffold(
       header: FHeader.nested(
@@ -288,7 +340,7 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
               accentIndex: 4,
               stats: [
                 ('${_peers.length}', '发现设备'),
-                ('${history.length}', '已传文件'),
+                ('${history.length}', '当次文件'),
               ],
             ),
             // 设备区
@@ -462,33 +514,31 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
                 ],
               ),
             ),
-            // 记录区（#20 分页）
+            // 记录区（标题下方提示接收文件存储位置，随授权状态刷新）
             const SectionHeader(title: '传输记录'),
+            if (_receiveHint.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                child: Text(
+                  _receiveHint,
+                  style: t.typography.body.xs.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
+                ),
+              ),
             AppCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (history.isEmpty)
                     Text(
-                      '暂无记录',
+                      '暂无当次传输记录',
                       style: t.typography.body.xs.copyWith(
                         color: t.colors.mutedForeground,
                       ),
                     )
-                  else ...[
-                    for (final row in history.take(_historyLimit))
-                      _HistoryTile(row: row),
-                    if (history.length > _historyLimit)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: FButton(
-                          variant: FButtonVariant.outline,
-                          size: FButtonSizeVariant.sm,
-                          onPress: () => setState(() => _historyLimit += 30),
-                          child: const Text('加载更多'),
-                        ),
-                      ),
-                  ],
+                  else
+                    for (final row in history) _HistoryTile(row: row),
                 ],
               ),
             ),

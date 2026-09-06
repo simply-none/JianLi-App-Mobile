@@ -1,8 +1,9 @@
 // 文件互传 · 接收端（服务端）—— 处理 /file/offer、/file/data、/file/end 三端点
 //
 // 复用 SyncService 的 47124 数据面（通过 registerRouteHandler 注入，不新开端口）。
-// 接收目录：沙盒 Documents/渐离App文件互传/；文件名安全化 + 重名去重 ` (n)`；
-// 接收成功写 file_transfer 历史（direction='receive'），页面 watch 流据此弹 Toast。
+// 接收目录：系统 Download/渐离App文件互传/（需存储权限；未授权回退沙盒 Documents）；
+// 文件名安全化 + 重名去重 ` (n)`；接收成功写 file_transfer 历史（direction='receive'），
+// 页面 watch 流据此弹 Toast。
 //
 // 已实现的增强（2026-09-06 之后）：
 //   #9  重名策略：rename=追加 (n)（默认） / overwrite=覆盖（读 TransferSettings）
@@ -21,6 +22,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
@@ -98,9 +100,15 @@ class TransferServer {
   final Map<String, Completer<bool>> _pendingAsk = {};
   final StreamController<IncomingAsk> _askController =
       StreamController<IncomingAsk>.broadcast();
+  /// 当次展示批次流：offer 登记时推入新 tid（页面订阅后把「传输记录」切到当次批次）
+  final StreamController<String> _batchTidController =
+      StreamController<String>.broadcast();
 
   /// 询问模式事件流（页面订阅后弹窗）
   Stream<IncomingAsk> get askStream => _askController.stream;
+
+  /// 当次展示批次事件流（页面订阅）
+  Stream<String> get batchTidStream => _batchTidController.stream;
 
   /// UI 对用户答复（接收/拒绝），唤醒 _handleOffer 中 await 的 _askAccept
   void answerAsk(String tid, bool accept) {
@@ -109,14 +117,35 @@ class TransferServer {
 
   void dispose() {
     _askController.close();
+    _batchTidController.close();
   }
 
-  /// 接收目录（沙盒 Documents/渐离App文件互传/，不存在则创建）
+  /// 接收目录（不存在则创建）：
+  /// - Android：已授予存储权限（API 30+「所有文件访问」或 ≤12L 传统 WRITE）→
+  ///   系统 Download/渐离App文件互传/，系统文件管理器可直接浏览打开；
+  ///   未授权或创建失败（权限被收回等）→ 回退沙盒 Documents/渐离App文件互传/
+  /// - iOS：无共享 Download 概念，恒走沙盒 Documents 回退
   Future<String> receiveDir() async {
+    if (Platform.isAndroid && await hasPublicDownloadsAccess()) {
+      try {
+        final d = Directory('/storage/emulated/0/Download/$kTransferDirName');
+        if (!d.existsSync()) d.createSync(recursive: true);
+        return d.path;
+      } catch (_) {
+        // 公共目录创建失败（运行中权限被收回/ROM 限制）→ 沙盒回退
+      }
+    }
     final dir = await getApplicationDocumentsDirectory();
     final d = Directory(p.join(dir.path, kTransferDirName));
     if (!d.existsSync()) d.createSync(recursive: true);
     return d.path;
+  }
+
+  /// 公共 Download 可写判定：「所有文件访问」（API 30+）或传统存储权限（≤API 12L）。
+  /// 文件互传页入页会发起申请（ensurePublicDownloadsPermission）。
+  Future<bool> hasPublicDownloadsAccess() async {
+    if (await Permission.manageExternalStorage.isGranted) return true;
+    return Permission.storage.isGranted;
   }
 
   /// 注册 /file/* 三端点到同步数据面（幂等，全局只注册一次）
@@ -222,6 +251,8 @@ class TransferServer {
         peerIp: req.connectionInfo?.remoteAddress.address ?? '',
         files: {for (final f in files) f.fid: f},
       );
+      // 传输记录只显示当次批次：新批次登记即切换页面展示的 tid
+      _batchTidController.add(tid);
       _json(req, {
         'ok': true,
         'accepted': accepted,

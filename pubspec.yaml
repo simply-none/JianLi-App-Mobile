@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 26.9.6+1
 
 environment:
   sdk: ^3.13.2
@@ -60,19 +60,22 @@ dependencies:
   forui: ^0.26.0
   material_ui: ^1.1.1  # Flutter Material 独立发行版，forui 建于其上；勿与 flutter/material 混用
   wakelock_plus: ^1.8.0  # 文件互传发送全程后台保活（#19）
+  permission_handler: ^13.0.2  # 文件互传接收目录改系统 Download：申请「所有文件访问」
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to
-  # encourage good coding practices. The lint set provided by the package is
-  # activated in the `analysis_options.yaml` file located at the root of your
+  # encourage good coding practices. The lint set provided by the
+  # `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   drift_dev: ^2.34.6
   build_runner: ^2.16.1
+  # 图标/启动屏不用 flutter_launcher_icons、flutter_native_splash：
+  # 两者依赖 image ^4，与 epubx（image ^3）版本冲突；资源由 tool/make_icons.py 直接生成
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

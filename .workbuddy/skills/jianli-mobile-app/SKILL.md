@@ -135,7 +135,7 @@ test/
 - 发现：UDP 广播端口 **47123**，请求包 `JIANLI_SYNC_DISCOVER_V1`，应答 `JIANLI_SYNC_INFO_V1|{json:{name,id,platform}}`（`core/sync/sync_discovery.dart`；PC 端 `syncModule.ts` 同协议应答）。
 - **⚠️ 热点场景发现雷区（2026-09-05 修复）**：扫描**不能只发 255.255.255.255**——手机开热点给 PC 时，热点接口不是手机的默认路由，受限广播从默认网络口出去、到不了热点网段（PC 收不到请求 → 不应答），表现为「PC 能搜到手机、手机搜不到 PC」的不对称。修复：`scan()` 走 `broadcastCandidates()` **逐 IPv4 网卡发 `/24` 定向广播（x.y.z.255）+ 全网广播兜底**，OS 按直连路由选对网卡，应答按 ip 去重。若修复后仍搜不到 PC，优先查 Windows 防火墙对 Electron 入站 UDP 47123 的放行（手动 IP 兜底仍可用）。
 - 数据面：HTTP 端口 **47124** —— `GET /ping` 设备信息、`POST /sync`（body `{table, rows}`）、`GET /export?table=`（对端拉取）。
-- **文件互传（类 LocalSend 扩展，协议 v1，双端对称）**：复用同一 47124 数据面，新增 `POST /file/offer` / `POST /file/data?tid=&fid=&from=`(原始字节流，`from=` 为续传偏移) / `POST /file/end?tid=&fid=` 三端点（注册进 SyncService 可插拔路由 `registerRouteHandler`）；批量=一次 offer + 逐文件串行 data/end；收端写 `<fid>.part` → 改名去重 → 写 `file_transfer` 历史（`key` TEXT 主键，设备本地、不入同步白名单）；v1 默认自动接收（页面可关，关后进入**询问模式**弹窗等 UI 答复，不再直接拒）；校验 size 比对 + sha256 双保险（发送端随 `/file/end` 带 `{hash}`，接收端比对）；接收目录 `Documents/渐离App文件互传/`。**增强（2026-09-06 二批，均向后兼容）**：#9 重名覆盖策略（rename/overwrite，读 `TransferSettings`）/ #11 最近设备持久化（shared_preferences，`RecentPeers`，离线可见）/ #13 断点续传（offer 回 `resumeFrom` + data `from=` 追加写 + hash 播种）/ #14 会话加密（AES-256-CTR，默认关，offer 协商 `enc` 字段、data 密文流）/ #15 接收询问（`askStream` + `showFDialog`）/ #17 并发守卫（429 busy）/ #19 后台保活（`wakelock_plus`）/ #20 历史分页 + 超 1000 自动清理。与桌面端同协议、同历史表结构。
+- **文件互传（类 LocalSend 扩展，协议 v1，双端对称）**：复用同一 47124 数据面，新增 `POST /file/offer` / `POST /file/data?tid=&fid=&from=`(原始字节流，`from=` 为续传偏移) / `POST /file/end?tid=&fid=` 三端点（注册进 SyncService 可插拔路由 `registerRouteHandler`）；批量=一次 offer + 逐文件串行 data/end；收端写 `<fid>.part` → 改名去重 → 写 `file_transfer` 历史（`key` TEXT 主键，设备本地、不入同步白名单）；v1 默认自动接收（页面可关，关后进入**询问模式**弹窗等 UI 答复，不再直接拒）；校验 size 比对 + sha256 双保险（发送端随 `/file/end` 带 `{hash}`，接收端比对）；接收目录 `Download/渐离App文件互传/`（Android 需存储权限「所有文件访问」，入页申请；未授权/创建失败回退沙盒 `Documents/渐离App文件互传/`，iOS 恒走沙盒回退）。**增强（2026-09-06 二批，均向后兼容）**：#9 重名覆盖策略（rename/overwrite，读 `TransferSettings`）/ #11 最近设备持久化（shared_preferences，`RecentPeers`，离线可见）/ #13 断点续传（offer 回 `resumeFrom` + data `from=` 追加写 + hash 播种）/ #14 会话加密（AES-256-CTR，默认关，offer 协商 `enc` 字段、data 密文流）/ #15 接收询问（`askStream` + `showFDialog`）/ #17 并发守卫（429 busy）/ #19 后台保活（`wakelock_plus`）/ #20 历史分页 + 超 1000 自动清理（DB 侧；**UI 记录区只显示当次批次**，页面按 `_batchTid` 过滤 `watchAll` 流，批次 tid 来自发送首条进度 / `TransferServer.batchTidStream`）。与桌面端同协议、同历史表结构。
 - 白名单 12 张表（2026-09-05 加入主题对话三表）：habit_def / habit_checkin / todo_list / todo_tags / note_book / basic_info / countdown / qr_history / qr_template（TEXT 主键 key）+ conversation_theme / conversation / conversation_tag（**INTEGER 自增 id 主键**，行内携带 id 值，`INSERT OR REPLACE` 按 id 幂等；桌面端 `tablePk()` 同步适配）。行全列 toString 后按主键幂等写；写入前按 `PRAGMA table_info` 过滤实际存在的列，双端 schema 差异（桌面端旧 SQL 层遗留列）免疫。
 - **模拟器雷区**：NAT 广播不通扫不到宿主 → 同步页支持手动填 IP，Android 模拟器固定填 `10.0.2.2`；真机走正常广播。PC 端同步入口：系统与资源 → 局域网同步（扫描 / 手动 IP(ip:port) / 推送 / 拉取）。
 - vault 类数据跨设备：密钥为设备绑定/口令派生，**不能直传设备密钥**，需用户口令重新封装（会话加密 P3）。
@@ -170,31 +170,25 @@ test/
 **排障**：主题列表角标 0 条 → 计数口径必须与 PC `loadThemeCounts` 一致（`GROUP BY theme_id` **不过滤 is_deleted**，NULL 免疫）；消息列表软删过滤需 NULL 安全（`isNull() | equals('0')`）；输入框与筛选按钮等高 → **双端写死同值**（forui 控件内部高度随字号缩放漂移；`FTappable` 不上报固有高度，IntrinsicHeight 会把按钮压小）。
 
 ## 构建与验证
+### 环境前置（每个新 shell 必设，缺一必踩）
 ```bash
-# 任何 dart/flutter 命令前（中文用户名雷区 + 国内镜像，缺一必踩）
+# 中文用户名雷区（%TEMP% 含中文 → build_runner 自举编译报 Unable to read program.dill）+ 国内镜像
 export TMP=C:\src\tmp TEMP=C:\src\tmp
 export PUB_HOSTED_URL=https://pub.flutter-io.cn FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 export ANDROID_SDK_ROOT=C:\apps\Android\AndroidSDK
 export PATH="$PATH:/c/apps/Android/AndroidSDK/platform-tools:/c/apps/Android/AndroidSDK/emulator"
 cd /c/cod/jianli/jianli-mobile-app
-# 获取依赖
-flutter pub get
-# 生成代码
-dart run build_runner build -d        # ← 关键且必须在这步；跑完 .g.dart 时间戳会更新、里面出现 FileTransferData
-# 启动模拟器
-/c/apps/Android/AndroidSDK/emulator/emulator.exe -avd Pixel_8 &
-# 确认设备
-flutter devices
-# 运行 emulator-5554 为模拟器/真机 id
-flutter run -d emulator-5554
-dart run build_runner build -d   # drift 生成代码（改表后必跑）
-flutter analyze                  # 当前基线：0 问题
-flutter test                     # 当前基线：5/5（RFC 6238 向量 ×4 + 冒烟 ×1）
-flutter devices                  # 先确认在线设备/模拟器 id
-flutter run -d <deviceId>        # 编译并启动到指定设备（看效果最快）
-flutter build apk                # 真机 APK（默认三 ABI，已构建成功）
-flutter build apk --debug --target-platform android-x64   # 只出 x86_64 debug APK（给模拟器装，最快）
 ```
+
+### 日常开发循环（改码后按序执行）
+```bash
+flutter pub get                    # 改了 pubspec.yaml（依赖/版本）后必跑
+dart run build_runner build -d     # 改了 drift 表定义（lib/core/db/tables/*.dart）后必跑，重新生成 app_database.g.dart
+flutter analyze                    # 静态检查；基线 0 问题（2026-09-06 复核），出现新 error 必须修掉再交验
+flutter test                       # 单测；基线全绿（totp RFC 向量 / transfer_utils / widget 冒烟，数量变化后更新此行）
+flutter run -d emulator-5554       # 编译并启动到设备，看效果最快（r=热重载 / R=热重启 / q=退出）
+```
+布局排障开关见下文「代码级 paint 调试」。
 
 ### 跑起来看效果（UI 验证标准流程，**所有命令由用户在本地终端执行**）
 > ⛔ **分工铁律（2026-09-05 用户明确指示，最高优先级）**：**Agent 只负责写代码与改文档；一切 flutter/dart 命令（analyze / test / build / run / pub get / build_runner…）一律由用户在本地终端执行，Agent 不代跑**。此前「Agent 可跑 analyze/test」的口径作废。
@@ -235,6 +229,11 @@ adb shell am start -n <applicationId>/.MainActivity   # 等价的显式启动方
 | system image | `android-34`（Android 14） |
 | **AVD 名称** | **`Pixel_8`**（`C:\Users\风起\.android\avd\Pixel_8.avd` + `Pixel_8.ini`） |
 | 在线设备 id | `emulator-5554` |
+| applicationId（包名） | `com.jianli.jianli_mobile_app`（`android/app/build.gradle.kts`，namespace 同） |
+| minSdk / targetSdk | 24（`flutter.minSdkVersion`，Flutter 3.47 默认）/ 随 Flutter 插件默认 |
+| 版本号 | `pubspec.yaml` 的 `version: 1.0.0+1`（`+`前=versionName，`+`后=versionCode；发版先改这里） |
+| 签名现状（2026-09-06） | release 仍用 **debug key**（Flutter 模板 TODO，无 keystore）——自测可装可跑，**正式发布前必须按「生产打包」配正式签名** |
+| 应用名 / 图标 | 渐离App（AndroidManifest `android:label` + iOS Info.plist）；图标/启动屏由 `tool/make_icons.py` 生成，源图 `appLogo.png` |
 
 **代码级 paint 调试（布局排障利器，2026-09-05 新增）**：`lib/main.dart` 顶部有三个默认关闭的开关，排查布局时置 `true` 后热重载（r），用完关回：
 ```dart
@@ -274,6 +273,81 @@ flutter emulators --launch Pixel_8
 ```
 启动后 `flutter devices` 复查出现 `emulator-5554`，再 `flutter run -d emulator-5554`。**真机调试**：手机开 USB 调试连电脑 → `adb devices` 授权 → `flutter devices` 拿真机 id → `flutter run -d <真机id>`（arm64 的 libsqlite3.so 已在 jniLibs 就位，无需特殊处理）。
 
+### 生产打包（release APK / AAB，2026-09-06 全面拆解）
+
+#### ① 版本号
+- 唯一出处：`pubspec.yaml` 的 `version: 1.0.0+1`。`+` 前 = versionName（显示名），`+` 后 = versionCode（整数，**必须严格递增**才能覆盖安装）。发版第一步改这里。
+- split APK 会自动在 versionCode 上加 `1000 × ABI 序号`（arm32=1/arm64=2/x64=3）；要强制用 pubspec 原值加 `-P force-version-code-ignoring-abi=true`。
+
+#### ② 签名（当前 release 签 debug key，正式发布前必做，一次性配置）
+1. 生成正式 keystore（本机一次生成、永久保管，**丢了无法再以同签名发版**；文件与口令勿外传/勿提交）：
+   ```bash
+   keytool -genkey -v -keystore android/app/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 36500 -alias upload
+   # keytool 不在 PATH 时用 Android Studio 自带 JBR：
+   # "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" <同上参数>
+   ```
+2. 新建 `android/key.properties`（口令明文，勿提交）：
+   ```properties
+   storePassword=<keystore 口令>
+   keyPassword=<key 口令>
+   keyAlias=upload
+   storeFile=upload-keystore.jks
+   ```
+   `storeFile` 相对 **android/app/** 目录解析；keystore 放哪就写相对谁的路径，拿不准就写绝对路径。
+3. 改 `android/app/build.gradle.kts`：文件顶部加两行 import 与加载逻辑，release buildType 换正式签名：
+   ```kotlin
+   import java.util.Properties
+   import java.io.FileInputStream
+
+   val keystoreProperties = Properties()
+   val keystorePropertiesFile = rootProject.file("key.properties")
+   if (keystorePropertiesFile.exists()) {
+       keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+   }
+
+   android {
+       signingConfigs {
+           create("release") {
+               keyAlias = keystoreProperties["keyAlias"] as String
+               keyPassword = keystoreProperties["keyPassword"] as String
+               storeFile = keystoreProperties["storeFile"]?.let { file(it) }
+               storePassword = keystoreProperties["storePassword"] as String
+           }
+       }
+       buildTypes {
+           release {
+               signingConfig = signingConfigs.getByName("release")   // 替换原来的 getByName("debug")
+           }
+       }
+   }
+   ```
+
+#### ③ 打包命令矩阵（产物都在 `build/app/outputs/`）
+| 命令 | 产物 | 用途 |
+|---|---|---|
+| `flutter build apk --release` | `flutter-apk/app-release.apk`（三 ABI 合一 fat 包） | **直接发用户装**，最省事 |
+| `flutter build apk --release --split-per-abi` | `flutter-apk/app-{armeabi-v7a,arm64-v8a,x86_64}-release.apk` | 瘦包（体积约减半），真机一般发 arm64 |
+| `flutter build appbundle --release` | `bundle/release/app-release.aab` | Google Play 上架 |
+| `flutter build apk --debug --target-platform android-x64` | `flutter-apk/app-x64-debug.apk` | 模拟器快装调试，**非生产** |
+
+#### ④ 安装与发布前验证
+```bash
+adb install -r build/app/outputs/flutter-apk/app-release.apk    # -r 覆盖升级保留数据；降级 versionCode 会拒装
+adb shell am force-stop com.jianli.jianli_mobile_app            # 冷启动抓启动问题（am start 对热进程只是切前台）
+adb shell am start -n com.jianli.jianli_mobile_app/.MainActivity
+adb shell dumpsys package com.jianli.jianli_mobile_app | grep -E "versionName|versionCode"   # 核对版本
+# 签名校验（上架/分发前）：
+C:/apps/Android/AndroidSDK/build-tools/<版本号>/apksigner.bat verify --print-certs build/app/outputs/flutter-apk/app-release.apk
+```
+- 未配正式签名时 `--release` 也能出包（debug key 签名），可装可跑，但**不能上架**，且与将来正式签名包互相覆盖会因签名不一致拒装（见排障）。
+- release 专属问题复现：`flutter run --release -d <id>`。
+
+### 图标 / 启动屏再生成（换 logo 或改尺寸策略时）
+1. 覆盖根目录 `appLogo.png`（1024×1024 白底）。
+2. `py tool/make_icons.py`（依赖 Pillow：`py -m pip install pillow`）——自动重出 Android 五密度 `ic_launcher` / 自适应前景（62% 安全区）/ `drawable-nodpi/splash_logo` / iOS AppIcon 15 尺寸（去 alpha）/ LaunchImage 三倍图。
+3. 配套资源声明（一般不动）：`mipmap-anydpi-v26/ic_launcher.xml`、`values/colors.xml`、`values-v31` 与 `values-night-v31` 的 `styles.xml`（A12+ 系统启动屏白底；night 优先级高于 v31，故两处都要）。
+4. 应用名（渐离App）：Android `AndroidManifest.xml` 的 `android:label` + iOS `Info.plist` 的 `CFBundleDisplayName/CFBundleName`。
+
 ### 排障：常见报错
 - **`No supported devices found with name or id matching 'emulator-5554'`** → 模拟器进程根本没在跑（**不是 id 写错**）。先 `tasklist | grep -iE "qemu|emulator"` 确认无进程，再按上面「启动模拟器」拉起来，然后 `flutter devices` 复查。
 - **`adb: command not found`（exit 127）** → 本机 adb 不在 PATH。用全路径 `C:\apps\Android\AndroidSDK\platform-tools\adb.exe`，或按上面把 `platform-tools` 加进 PATH。
@@ -284,6 +358,9 @@ flutter emulators --launch Pixel_8
 - **已知无法修的警告**：KGP 弃用警告（mobile_scanner / workmanager_android 用旧 Kotlin Gradle Plugin）——两插件已是最新，需等上游支持 Flutter built-in Kotlin，仅警告不阻塞。
 - Android sqlite3：jniLibs 三 ABI（arm64-v8a / armeabi-v7a / x86_64）手动分发 `libsqlite3.so`（源文件取自 sqlite3.dart 3.5.2 release）。
 - iOS：需 Mac + Xcode，Windows 阶段保留 ios 目录不构建。
+- **`INSTALL_FAILED_UPDATE_INCOMPATIBLE`（覆盖安装报签名不一致）** → debug 包 ↔ 正式签名包之间切换必现：`adb uninstall com.jianli.jianli_mobile_app`（会清数据）后重装。
+- **`key.properties` / keystore 相关报错**（打包期 `FileNotFoundException` / `Password verification failed`）→ `storeFile` 相对 `android/app/` 解析；逐项核对文件存在、口令、alias。
+- **release 包闪退而 debug 正常** → 先 `flutter run --release -d <id>` 本机复现；再看 `adb logcat` 过滤 `FATAL`。Flutter 下 R8 混淆缺反射规则的场景罕见，优先怀疑插件初始化（通知/后台任务）与 release 剥离 assert 暴露的空安全问题。
 
 ## 功能域清单与状态
 | 功能域 | 路由 | 状态与要点 |
@@ -302,7 +379,7 @@ flutter emulators --launch Pixel_8
 | file_vault | `/file-vault` | 与 PC 完全兼容：wrappedKey 解包 + JLV1 parse + 导入/预览/删除；**视觉焕新**：**PageBanner 绿(2)**（文件数）+ 门禁表单 pageTint+绿渐变图标盘 + 文件行绿 `accent(2)` 渐变 SquircleBox |
 | qr | `/qr` | 生成（text/url/wifi/vCard/email）+ 识别（mobile_scanner）+ 历史；**视觉焕新**：顶部 **PageBanner 琥珀(3)**（FTabs 包进 Expanded，`expands:true` 雷区照旧）+ 历史页 `_QrHistoryTile`（琥珀图标盘）+ StaggerList |
 | sync | `/sync` | 扫描/手动 IP/推送/拉取，四种组合全通；**视觉焕新**：**PageBanner 青(5)**（发现设备/可同步表统计）+ 设备行图标青 `accent(5)` SquircleBox |
-| file_transfer | `/file-transfer` | 双端批量互传（PC⇆手机），与 sync 同协议同历史表 `file_transfer`（含 `error` 失败原因列）；接收目录 `Documents/渐离App文件互传/`；sha256 双端校验；历史成功记录可「打开」(`open_filex`)/「分享」(`share_plus`)；**增强（2026-09-06 二批）**：重名覆盖策略(rename/overwrite)、最近设备记忆(离线可见)、断点续传、会话加密(AES-256-CTR，默认关)、接收询问弹窗(关自动接收时)、并发守卫(429)、后台保活(wakelock)、历史分页+自动清理；**视觉焕新**：**PageBanner 粉(4)**（收发统计）+ FDeterminateProgress 逐文件进度 + 设备扫描/手动 IP（模拟器 `10.0.2.2`）|
+| file_transfer | `/file-transfer` | 双端批量互传（PC⇆手机），与 sync 同协议同历史表 `file_transfer`（含 `error` 失败原因列）；接收目录 `Download/渐离App文件互传/`（Android 需存储权限「所有文件访问」，入页申请；未授权/创建失败回退沙盒 `Documents/渐离App文件互传/`，iOS 恒走沙盒回退）；sha256 双端校验；历史成功记录可「打开」(`open_filex`)/「分享」(`share_plus`)；记录区只显示当次批次（`_batchTid` 过滤，其他历史暂不展示）；记录标题下方有存储位置提示行（授权→`Download/渐离App文件互传/`，未授权→提示点「分享」经其他应用保存，iOS→沙盒 Documents，`_receiveHint` 随入页授权流程刷新）；**增强（2026-09-06 二批）**：重名覆盖策略(rename/overwrite)、最近设备记忆(离线可见)、断点续传、会话加密(AES-256-CTR，默认关)、接收询问弹窗(关自动接收时)、并发守卫(429)、后台保活(wakelock)、历史分页+自动清理；**视觉焕新**：**PageBanner 粉(4)**（收发统计）+ FDeterminateProgress 逐文件进度 + 设备扫描/手动 IP（模拟器 `10.0.2.2`）|
 | screenshots | — | 未开工；移动端无法系统级监听截图，重设计为相册导入/分享收纳 |
 | 主题 | — | **5 套主题样式**（渐离紫 `zi` / 远峰蓝 `blue` / 森野绿 `green` / 落日橙 `orange` / 樱粉 `pink`，`AppTheme.styles`）+ 三态模式（跟随系统/浅色/深色）+ **阅览模式**（普通/大号正文字体，卡片 tag 切换），均 SharedPreferences 持久化；切换入口在首页与三个分组页右上角的**设置按钮 → 左侧设置面板**。桌面 25 套 token 映射 P2 |
 
@@ -380,9 +457,14 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 
 ## 维护说明
 - 本 skill 是移动端「项目知识基线」，随代码演进而更新；每完成一个功能域或踩出新雷区，同步「功能域清单」与「全局红线」。
-- 2026-09-06：**双端「文件互传」已实施完成**（批量收发、双端对称）。移动端 `lib/features/file_transfer/` 新功能域落地：M1 发送客户端（`TransferClient.sendBatch` 流式 + 字节回调 + 取消）、M2 接收服务端（三端点注册进 `SyncService` 可插拔路由 `registerRouteHandler`，接收目录 `Documents/渐离App文件互传/`）、M3 models/repositories/providers（顶层 `transferHistoryProvider`）、M4 页面（`FileTransferPage`，PageBanner 粉(4) + 设备扫描/手动 IP `10.0.2.2` + FDeterminateProgress 逐文件进度 + 收发记录）；M5 SyncService 加 `registerRouteHandler`、M6 drift 首个 onUpgrade 迁移（`schemaVersion 1→2` + `file_transfer` 表 .named() 列）、M7 路由 `/file-transfer` + 工具组入口（FLucideIcons.arrowLeftRight，accent 4）、M8 AndroidManifest 补 INTERNET/cleartext。桌面端同协议同历史表。决策记录：`references/file-transfer-plan.md`。改码后 `flutter pub get → dart run build_runner build -d → flutter analyze(0) → flutter test(5/5) → flutter run` 交用户在本地执行。
+- 2026-09-06：**双端「文件互传」已实施完成**（批量收发、双端对称）。移动端 `lib/features/file_transfer/` 新功能域落地：M1 发送客户端（`TransferClient.sendBatch` 流式 + 字节回调 + 取消）、M2 接收服务端（三端点注册进 `SyncService` 可插拔路由 `registerRouteHandler`，接收目录 `Download/渐离App文件互传/`（Android 需存储权限「所有文件访问」，入页申请；未授权/创建失败回退沙盒 `Documents/渐离App文件互传/`，iOS 恒走沙盒回退））、M3 models/repositories/providers（顶层 `transferHistoryProvider`）、M4 页面（`FileTransferPage`，PageBanner 粉(4) + 设备扫描/手动 IP `10.0.2.2` + FDeterminateProgress 逐文件进度 + 收发记录）；M5 SyncService 加 `registerRouteHandler`、M6 drift 首个 onUpgrade 迁移（`schemaVersion 1→2` + `file_transfer` 表 .named() 列）、M7 路由 `/file-transfer` + 工具组入口（FLucideIcons.arrowLeftRight，accent 4）、M8 AndroidManifest 补 INTERNET/cleartext。桌面端同协议同历史表。决策记录：`references/file-transfer-plan.md`。改码后 `flutter pub get → dart run build_runner build -d → flutter analyze(0) → flutter test(5/5) → flutter run` 交用户在本地执行。
 - 2026-09-06（文件互传后续分批，M11）：补齐 sha256 双端校验（发送端 `crypto.sha256.bind` 算 hash 随 `/file/end` 带出，接收端 `_receiveHashing` 边收边算比对，不符删坏文件记 `failed`/`hash mismatch`）、历史 `error` 列（`tables/file_transfer.dart` 加 `error` → 须重跑 `build_runner`）、发送端 `peer_name` 经 offer 响应 `me` 回填、offer 响应 `me` 回传本机设备信息、接收端收完回收 `_offers`、`file_transfer_page.dart` 历史成功记录加「打开」(`OpenFilex.open`) /「分享」(`SharePlus.instance.share`) 并显示 `error`。**新增依赖 `open_filex`(^5.8.0) + `share_plus`(^11.0.0)**（pubspec.yaml），改 `pubspec.yaml` 后须 `flutter pub get`。
+- 2026-09-06：**应用品牌化（图标/名称/启动屏）落地 + 「构建与验证」生产打包拆解**。① 名称：AndroidManifest `android:label` 与 iOS `CFBundleDisplayName/CFBundleName` → **渐离App**。② 图标/启动屏：用户提供 1024 白底源图（根目录 `appLogo.png`），`tool/make_icons.py`（Pillow；本机 py 3.8.5 + Pillow 10.4）全量生成——Android 五密度 ic_launcher、自适应前景（源图 logo 占 85%，**必须缩进 62% 安全区**否则圆遮罩裁边）、drawable-nodpi 启动屏、iOS AppIcon 15 尺寸（去 alpha）、LaunchImage 三倍图；配套新增 `mipmap-anydpi-v26/ic_launcher.xml`、`values/colors.xml`、`values-v31` 与 `values-night-v31` 的 `styles.xml`（A12+ 系统启动屏白底；**night 限定优先级高于 v31**，两处都要写）。③ **flutter_launcher_icons / flutter_native_splash 依赖 image ^4，与 epubx（锁 image ^3）版本死冲突 → 手工 Pillow 生成为定案**，勿再引入。④ 构建与验证章节全面重构：环境前置/日常循环/生产打包（版本号、keytool 签名三步、命令矩阵、安装验证）——**release 目前仍 debug 签名，正式发布前需配 keystore（步骤在「生产打包②」）**。
+- 2026-09-06：**文件互传两处关键修复**——① 移动端发送 hash 计算错误：`crypto.sha256.bind()` 返回 `Stream<Digest>` 非 Future，直接 `await` 拿到流对象、`toString()` 后当 hash 发出 → 手机→PC **恒报 hash mismatch**；修复为 `.first` 消费流（`transfer_client.dart`），Node 复刻实验双端 hash 对齐验证。② Dart SDK 3.13 已从 `dart:convert` 移除 `ChunkedConversionSinkBase` 公开导出：`transfer_server.dart` 的 `_DigestSink` 改为 `implements Sink<crypto.Digest>`。修复后 `flutter build apk --debug` 通过。
 - 2026-09-06（文件互传后续二批，M12 · 全部剩余增强已落地）：`models/transfer_models.dart`（TransferSettings 加 `renameStrategy`/`enc` + `load/persist`；`countingStream` 加 `initial`）、`models/transfer_utils.dart`（新建：sanitize/recvPartName/enc base64 编解码）、`models/recent_peers.dart`（新建：#11 最近设备 shared_preferences 持久化）、`services/transfer_server.dart`（#9 重名策略 / #13 续传 resumeFrom+追加写+hash 播种 / #14 加密 decryptStream / #15 询问 askStream+answerAsk+60s 超时 / #17 并发守卫 `_activeReceiveTid` / #20 trim(1000)）、`services/transfer_client.dart`（#13 续传 from= / #14 加密 encryptStream / #17 `_activeSendTid` / #19 WakelockPlus 后台保活）、`repositories/transfer_repository.dart`（加 `list/count/trim`）、`components/file_transfer_page.dart`（最近设备区 / 重名策略+加密+自动接收三开关 / 接收询问弹窗 / 历史分页「加载更多」）、`test/features/file_transfer/transfer_utils_test.dart`（#28 单测）。**新增依赖 `wakelock_plus: ^1.8.0`**（pubspec.yaml）+ `AndroidManifest.xml` 加 `WAKE_LOCK`。协议保持向后兼容（加密/续传/询问均默认关或协商，未开启退化为既有明文）。决策记录：`references/file-transfer-plan.md`（§二之一 / 四 M12 / 六）。
+- 2026-09-06（文件互传第三批）：**接收目录改为系统 `Download/渐离App文件互传/`**——公共 Download 在 Android 10+ 受分区存储保护，`receiveDir()` 改为「权限通过 → 公共 Download；未授权/创建失败 → 回退沙盒 `Documents/渐离App文件互传/`（iOS 恒走回退）」。**新增依赖 `permission_handler: ^13.0.2`**（pubspec.yaml 须 `flutter pub get`）+ `AndroidManifest.xml` 加 `MANAGE_EXTERNAL_STORAGE`、`WRITE_EXTERNAL_STORAGE(maxSdkVersion=32)`、`<application android:requestLegacyExternalStorage="true">`（API ≤10 传统写）；入页 `_ensurePublicDownloadsPermission()` 申请（API 30+ 自动跳「所有文件访问」设置页，拒绝仅记日志不阻塞），`hasPublicDownloadsAccess()` 供 `receiveDir()` 判定。续传追加写/改名去重/删除均为真实路径 dart:io 逻辑，零改动；`open_filex` FileProvider 含 `external-path .`，Download 下文件「打开/分享」正常。系统文件管理器现可直接浏览接收文件。
+- 2026-09-06（文件互传第五批小改）：**「传输记录」标题下方新增存储位置提示行**——`_receiveHint` 由 `_ensurePublicDownloadsPermission()` 末尾按授权结果刷新（Android 授权→`系统 Download/渐离App文件互传/`；未授权→「未开启存储权限，接收的文件暂存应用沙盒；请点击记录中的『分享』，通过其他应用保存」；iOS→`应用 Documents/渐离App文件互传/`），提示行插在 SectionHeader 与 AppCard 之间（mutedForeground xs）。文案用常量 `kTransferDirName` 拼接，不硬编码目录名。
+- 2026-09-06（文件互传第四批）：**双端「传输记录」只显示当次批次**——移动端 `TransferServer` 加 `batchTidStream`（offer 登记时推 tid，broadcast 流，dispose 关闭），页面 `_batchTid` 由发送首条进度事件 / 该流切换，记录区按 `r.tid == _batchTid` 过滤 `watchAll` 流，移除 `_historyLimit`/「加载更多」（#20 的 DB 分页/trim 照旧），PageBanner 统计改「当次文件」；PC 端 `useFileTransfer.loadHistory()` 只保留 created_at 最新记录所属 tid 的行、`onProgress` 新 tid 先清旧展示、`index.vue` 启动不再拉历史（事件驱动 + 「刷新」按钮）。DB 仍全量写入，仅 UI 不展示其他记录。
 - 2026-09-05：UI 全量换装 forui（shadcn 风格）+ material_ui，全 App 页面已改造（骨架/组件对照见「UI 体系」章节）。
 - 2026-09-05：**UI 现代化 + 操作动效总体规划**已落地为 `references/ui-modernization-plan.md`——诊断现状短板、定义设计 token（形状/阴影/渐变/语义软底/动效时长曲线）、新增原子组件（GlassCard/GradientButton/ShimmerSkeleton/AnimatedStat/AnimatedCheck/StaggerList/JianliSegmented/ConfettiOverlay/PageHero/SquircleBox）、自建页面转场（禁用 `animations` 包以避开 material_ui 冲突）、Haptics + 减弱动效降级，含 6 阶段实施路线（Phase 0 地基 → Phase 5 收口）。改造时严格守住 forui/material_ui 约束与 FTabs `expands` 雷区。
 - 2026-09-05：UI 现代化 **Phase 0 地基已完成**——`app_theme.dart` 加 `AppTokens`（形状/阴影/渐变/语义软底/动效节律）；新增 `lib/app/anim/{jianli_motion,jianli_haptics,jianli_transitions}.dart`（减弱动效开关 + 触感 + 自建 `fadeSlidePage`/`fadeSlide` 转场，刻意不引 `animations` 包）；`app_router.dart` 全屏 push 路由接 `fadeSlidePage`；`app.dart` 主题切换加 `AnimatedContainer` 背景过渡。`flutter analyze` 0 问题、`flutter test` 5/5 基线通过。
