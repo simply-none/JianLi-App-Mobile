@@ -1,5 +1,8 @@
 // 书架页 —— 导入 + 网格封面列表（对标主流阅读 App 书架），forui 化
-// 导入入口在顶栏 +；导入结果走 showFToast。
+//
+// 数据经顶层 bookshelfStreamProvider（⚠️ 禁止 build 内联 StreamProvider——
+// 每次重建都是新 provider，页面永远 loading，实踩见 ebook_providers.dart 头注释）。
+// 导入入口在顶栏 +；删除 = 长按书格 → showFDialog 二次确认（破坏性规范）。
 import 'package:file_picker/file_picker.dart';
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +13,9 @@ import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
+import '../providers/ebook_providers.dart';
 import '../repositories/ebook_repository.dart';
+import 'book_cell.dart';
 
 /// 书架页
 class BookshelfPage extends ConsumerWidget {
@@ -18,11 +23,7 @@ class BookshelfPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final shelfAsync = ref.watch(
-      StreamProvider<List<EbookBookshelfData>>(
-        (ref) => ref.watch(ebookRepositoryProvider).watchBookshelf(),
-      ),
-    );
+    final shelfAsync = ref.watch(bookshelfStreamProvider);
 
     return FScaffold(
       header: FHeader.nested(
@@ -77,13 +78,12 @@ class BookshelfPage extends ConsumerWidget {
                         ),
                     delegate: SliverChildBuilderDelegate((context, i) {
                       final book = books[i];
-                      return _BookCell(
+                      return BookCell(
                         book: book,
                         onOpen: () => context.push(
                           '/ebook/reader?path=${Uri.encodeComponent(book.filePath)}',
                         ),
-                        onRemove: () =>
-                            ref.read(ebookRepositoryProvider).removeBook(book),
+                        onRemove: () => _confirmRemove(context, ref, book),
                       );
                     }, childCount: books.length),
                   ),
@@ -96,8 +96,8 @@ class BookshelfPage extends ConsumerWidget {
     );
   }
 
+  /// 导入书籍（file_picker 12.x 静态方法，直接返回 List<PlatformFile>）
   Future<void> _import(BuildContext context, WidgetRef ref) async {
-    // file_picker 12.x：静态方法，直接返回 List<PlatformFile>
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['epub', 'txt'],
@@ -114,86 +114,49 @@ class BookshelfPage extends ConsumerWidget {
       );
     }
   }
-}
 
-/// 单本书（封面占位 + 阅读进度条）
-class _BookCell extends StatelessWidget {
-  const _BookCell({
-    required this.book,
-    required this.onOpen,
-    required this.onRemove,
-  });
-
-  final EbookBookshelfData book;
-  final VoidCallback onOpen;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.theme;
-    // 按标题取专属强调色（同一本书颜色稳定）
-    final idx =
-        (book.title ?? book.name ?? '').hashCode.abs() %
-        AppTokens.accents.length;
-    final accent = AppTokens.accent(idx);
-    final percent = (book.percent ?? 0).clamp(0.0, 1.0);
-    return FTappable(
-      onPress: onOpen,
-      onLongPress: onRemove,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: AppTokens.accentGradient(accent),
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(12),
+  /// 删除确认（破坏性操作规范：showFDialog 二次确认；仅删书架引用不删内容）
+  Future<void> _confirmRemove(
+    BuildContext context,
+    WidgetRef ref,
+    EbookBookshelfData book,
+  ) async {
+    final confirmed = await showFDialog<bool>(
+      context: context,
+      builder: (c, style, _) => FDialog(
+        builder: (c, style) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '将《${book.title ?? book.name}》移出书架？',
+              style: style.titleTextStyle,
+            ),
+            const SizedBox(height: 8),
+            Text('将同时删除本地文件副本；阅读进度按内容哈希保留，重新导入可恢复', style: style.bodyTextStyle),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              spacing: 8,
+              children: [
+                FButton(
+                  variant: FButtonVariant.outline,
+                  onPress: () => Navigator.pop(c),
+                  child: const Text('取消'),
                 ),
-              ),
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    FLucideIcons.bookOpenText,
-                    color: Colors.white.withValues(alpha: 0.92),
-                    size: 26,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    book.title ?? book.name ?? '未命名',
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: t.typography.body.sm.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      height: 1.25,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '已读 ${percent.toStringAsFixed(0)}%',
-                    style: t.typography.body.xs.copyWith(
-                      color: Colors.white.withValues(alpha: 0.85),
-                    ),
-                  ),
-                ],
-              ),
+                FButton(
+                  variant: FButtonVariant.destructive,
+                  onPress: () => Navigator.pop(c, true),
+                  child: const Text('移出'),
+                ),
+              ],
             ),
-          ),
-          Container(
-            height: 4,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: percent),
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(12),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+    if (confirmed == true) {
+      await ref.read(ebookRepositoryProvider).removeBook(book);
+    }
   }
 }

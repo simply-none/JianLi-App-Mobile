@@ -462,6 +462,14 @@ class _ConversationMessagesPageState
   /// 发送草稿：待附加到下一条消息的标签 id（输入框上方工具条呈现）
   final Set<String> _pendingTagIds = {};
 
+  /// 发送草稿：待引用的消息 id（同主题写 ref_ids、跨主题写 cross_refs，发送时按归属分类）
+  final Set<int> _pendingRefIds = {};
+
+  /// 引用选择抽屉内的草稿与搜索词
+  final Set<int> _draftRefSel = {};
+  final TextEditingController _refSearchController = TextEditingController();
+  String _refKeyword = '';
+
   /// 标签选择抽屉内的草稿（点「完成」才应用）
   final Set<String> _draftMsgTags = {};
 
@@ -477,6 +485,7 @@ class _ConversationMessagesPageState
   void dispose() {
     _highlightTimer?.cancel();
     _input.dispose();
+    _refSearchController.dispose();
     super.dispose();
   }
 
@@ -561,16 +570,151 @@ class _ConversationMessagesPageState
   void _send() {
     final text = _input.text.trim();
     if (text.isEmpty) return;
+    // 引用草稿按归属分类：同主题 → ref_ids；跨主题 → cross_refs（对齐桌面端语义）
+    final all =
+        ref.read(allConversationsProvider).value ?? const <ConversationData>[];
+    final byId = {for (final c in all) c.id: c};
+    final sameRefs = <String>[];
+    final crossRefs = <({int themeId, int convId})>[];
+    for (final id in _pendingRefIds) {
+      final m = byId[id];
+      if (m == null) continue;
+      if (m.themeId == widget.themeId) {
+        sameRefs.add('$id');
+      } else {
+        crossRefs.add((
+          themeId: int.tryParse(m.themeId ?? '') ?? 0,
+          convId: id,
+        ));
+      }
+    }
     ref
         .read(conversationRepositoryProvider)
         .addMessage(
           themeId: widget.themeId,
           content: text,
           tagIds: _pendingTagIds.toList(),
+          refIds: sameRefs,
+          crossRefs: crossRefs,
         );
     _input.clear();
-    setState(() => _pendingTagIds.clear());
+    setState(() {
+      _pendingTagIds.clear();
+      _pendingRefIds.clear();
+    });
     // TODO(P2): LLM 回复（后端未定稿）；当前为纯记录型对话，与桌面端「情绪记录」语义一致
+  }
+
+  /// 打开「引用对话」选择抽屉（多主题、模糊搜索、多选；页面规范：获取数据走底部抽屉）
+  Future<void> _openRefPicker() async {
+    _draftRefSel
+      ..clear()
+      ..addAll(_pendingRefIds);
+    _refKeyword = '';
+    _refSearchController.clear();
+    final result = await showFilterSheet<Set<int>>(
+      context: context,
+      title: '引用对话',
+      confirmLabel: '完成',
+      resetLabel: '清空',
+      body: (context, refresh) => _buildRefPickerBody(refresh),
+      onReset: (refresh) {
+        _draftRefSel.clear();
+        _refKeyword = '';
+        _refSearchController.clear();
+        refresh();
+      },
+      onConfirm: () => Set<int>.of(_draftRefSel),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _pendingRefIds
+        ..clear()
+        ..addAll(result);
+    });
+  }
+
+  /// 引用选择抽屉选项区：搜索框（模糊匹配内容/主题标题）+ 结果列表（多选）
+  Widget _buildRefPickerBody(VoidCallback refresh) {
+    final themes =
+        ref.read(conversationThemesProvider).value ??
+        const <ConversationThemeData>[];
+    final themeTitles = {for (final th in themes) th.id: th.title};
+    final all =
+        (ref.read(allConversationsProvider).value ?? const <ConversationData>[])
+            .where((c) => c.isDeleted != '1')
+            .toList()
+          ..sort((a, b) => (b.createTime ?? '').compareTo(a.createTime ?? ''));
+
+    final kw = _refKeyword.trim().toLowerCase();
+    final filtered = kw.isEmpty
+        ? all
+        : all.where((c) {
+            final inContent = (c.content ?? '').toLowerCase().contains(kw);
+            final inTheme = (themeTitles[int.tryParse(c.themeId ?? '')] ?? '')
+                .toLowerCase()
+                .contains(kw);
+            return inContent || inTheme;
+          }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        FTextField(
+          // ⚠️ onChange 必须写在 FTextFieldControl.managed 上（FTextField 本体无此
+          // 参数，雷区 #6——本文件第二次实踩，搜索框忘挪）
+          control: FTextFieldControl.managed(
+            controller: _refSearchController,
+            onChange: (_) =>
+                setState(() => _refKeyword = _refSearchController.text),
+          ),
+          hint: '模糊搜索内容或主题…',
+          size: FTextFieldSizeVariant.sm,
+          prefixBuilder: (_, _, _) => const Padding(
+            padding: EdgeInsets.only(left: 12),
+            child: Icon(FLucideIcons.search, size: 15),
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (filtered.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            child: Center(
+              child: Text(
+                '无匹配结果',
+                style: context.theme.typography.body.sm.copyWith(
+                  color: context.theme.colors.mutedForeground,
+                ),
+              ),
+            ),
+          )
+        else ...[
+          for (final c in filtered.take(80))
+            _RefPickItem(
+              msg: c,
+              themeTitle: themeTitles[int.tryParse(c.themeId ?? '')],
+              selected: _draftRefSel.contains(c.id),
+              isCurrentTheme: c.themeId == widget.themeId,
+              onTap: () {
+                _draftRefSel.contains(c.id)
+                    ? _draftRefSel.remove(c.id)
+                    : _draftRefSel.add(c.id);
+                refresh();
+              },
+            ),
+          if (filtered.length > 80)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '仅展示最近 80 条，请用搜索缩小范围',
+                style: context.theme.typography.body.xs.copyWith(
+                  color: context.theme.colors.mutedForeground,
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
   }
 
   /// 打开消息标签选择抽屉（页面规范：获取数据走底部抽屉；草稿 + 完成/清空）
@@ -787,6 +931,24 @@ class _ConversationMessagesPageState
             FTileGroup(
               divider: FItemDivider.none,
               children: [
+                // 引用此对话：挂入发送草稿，发送时写入 ref_ids/cross_refs（对齐 PC「引用此对话」）
+                FTile(
+                  prefix: const Icon(FLucideIcons.link, size: 16),
+                  title: const Text('引用此对话'),
+                  subtitle: Text(
+                    _pendingRefIds.contains(msg.id)
+                        ? '已在发送引用草稿中'
+                        : '发送下一条记录时一并引用',
+                  ),
+                  onPress: () {
+                    Navigator.pop(context);
+                    setState(() => _pendingRefIds.add(msg.id));
+                    showFToast(
+                      context: context,
+                      title: const Text('已加入引用，发送时生效'),
+                    );
+                  },
+                ),
                 // 正向链接：本条引用的消息（对齐 PC「正向链接」）
                 FTile(
                   prefix: const Icon(FLucideIcons.arrowUpRight, size: 16),
@@ -1068,6 +1230,7 @@ class _ConversationMessagesPageState
 
     // 引用关系计数（一次扫描全表）：被引用（同主题 ref_ids）/ 被跨主题引用（cross_refs）
     final all = allAsync.value ?? const <ConversationData>[];
+    final allById = {for (final c in all) c.id: c};
     final sameBack = <int, int>{};
     final crossBack = <int, int>{};
     for (final m in all) {
@@ -1343,7 +1506,7 @@ class _ConversationMessagesPageState
                           ],
                         ),
                 ),
-                // 输入框上方固定工具条（对齐 PC 输入工具条）：标签入口 + 已选标签 chips
+                // 输入框上方固定工具条（对齐 PC 输入工具条）：标签 / 引用入口 + 草稿 chips
                 SafeArea(
                   top: false,
                   child: Padding(
@@ -1384,30 +1547,97 @@ class _ConversationMessagesPageState
                             ),
                           ),
                         ),
-                        if (_pendingTagIds.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
-                                  for (final id in _pendingTagIds)
-                                    if (msgTagById[id] != null) ...[
-                                      GestureDetector(
-                                        onTap: () => setState(
-                                          () => _pendingTagIds.remove(id),
-                                        ),
-                                        child: _ConvTagBadge(
-                                          tag: msgTagById[id]!,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                    ],
-                                ],
+                        const SizedBox(width: 6),
+                        // 引用入口：多主题消息模糊搜索 + 多选（对齐 PC 引用/跨主题引用发起）
+                        GestureDetector(
+                          onTap: _openRefPicker,
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _pendingRefIds.isNotEmpty
+                                  ? AppTokens.accentSoft(
+                                      context,
+                                      AppTokens.accent(4),
+                                    )
+                                  : t.colors.card,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: _pendingRefIds.isNotEmpty
+                                    ? AppTokens.accent(4)
+                                    : t.colors.border,
                               ),
                             ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  FLucideIcons.link,
+                                  size: 14,
+                                  color: _pendingRefIds.isNotEmpty
+                                      ? AppTokens.accent(4)
+                                      : t.colors.foreground,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _pendingRefIds.isEmpty
+                                      ? '引用'
+                                      : '引用 ${_pendingRefIds.length}',
+                                  style: t.typography.body.xs.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: _pendingRefIds.isNotEmpty
+                                        ? AppTokens.accent(4)
+                                        : t.colors.foreground,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child:
+                              _pendingTagIds.isEmpty && _pendingRefIds.isEmpty
+                              ? const SizedBox.shrink()
+                              : SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      for (final id in _pendingTagIds)
+                                        if (msgTagById[id] != null) ...[
+                                          GestureDetector(
+                                            onTap: () => setState(
+                                              () => _pendingTagIds.remove(id),
+                                            ),
+                                            child: _ConvTagBadge(
+                                              tag: msgTagById[id]!,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                        ],
+                                      // 引用草稿 chip：摘要 + 可点掉
+                                      for (final id in _pendingRefIds)
+                                        if (allById[id] != null) ...[
+                                          _RefDraftChip(
+                                            label: _short(
+                                              _snippetOf(allById[id]!).isEmpty
+                                                  ? '（无文本）'
+                                                  : _snippetOf(allById[id]!),
+                                              12,
+                                            ),
+                                            onDelete: () => setState(
+                                              () => _pendingRefIds.remove(id),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                        ],
+                                    ],
+                                  ),
+                                ),
+                        ),
                       ],
                     ),
                   ),
@@ -1544,6 +1774,163 @@ class _ConvTagOption extends StatelessWidget {
               const SizedBox(width: 4),
               Icon(FLucideIcons.check, size: 14, color: color),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 文本截断（超出补省略号）
+String _short(String s, int n) => s.length <= n ? s : '${s.substring(0, n)}…';
+
+/// 引用草稿 chip（摘要 + 可点掉）
+class _RefDraftChip extends StatelessWidget {
+  const _RefDraftChip({required this.label, required this.onDelete});
+
+  final String label;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return GestureDetector(
+      onTap: onDelete,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppTokens.accentSoft(context, AppTokens.accent(4)),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppTokens.accent(4).withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(FLucideIcons.link, size: 11, color: AppTokens.accent(4)),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: t.typography.body.xs.copyWith(color: AppTokens.accent(4)),
+            ),
+            const SizedBox(width: 3),
+            Icon(FLucideIcons.x, size: 11, color: AppTokens.accent(4)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 引用选择抽屉的结果项：勾选圆点 + 主题名/时间 + 摘要（多主题、模糊搜索列表）
+class _RefPickItem extends StatelessWidget {
+  const _RefPickItem({
+    required this.msg,
+    required this.themeTitle,
+    required this.selected,
+    required this.isCurrentTheme,
+    required this.onTap,
+  });
+
+  final ConversationData msg;
+  final String? themeTitle;
+  final bool selected;
+  final bool isCurrentTheme;
+  final VoidCallback onTap;
+
+  String get _snippet {
+    final raw = msg.content ?? '';
+    final text = msg.isRich == '1'
+        ? raw.replaceAll(RegExp(r'<[^>]*>'), ' ')
+        : raw;
+    return text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return FTappable(
+      onPress: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTokens.accentSoft(context, AppTokens.accent(4))
+              : t.colors.card,
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          border: Border.all(
+            color: selected
+                ? AppTokens.accent(4).withValues(alpha: 0.4)
+                : t.colors.border,
+          ),
+        ),
+        child: Row(
+          children: [
+            // 勾选圆点
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: selected ? AppTokens.accent(4) : t.colors.background,
+                border: Border.all(
+                  color: selected
+                      ? AppTokens.accent(4)
+                      : t.colors.mutedForeground,
+                ),
+              ),
+              child: selected
+                  ? const Icon(
+                      FLucideIcons.check,
+                      size: 13,
+                      color: Colors.white,
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (!isCurrentTheme) ...[
+                        Icon(
+                          FLucideIcons.layers,
+                          size: 11,
+                          color: AppTokens.accent(4),
+                        ),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            themeTitle ?? '未知主题',
+                            style: t.typography.body.xs.copyWith(
+                              color: AppTokens.accent(4),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                      ],
+                      Text(
+                        msg.createTime ?? '',
+                        style: t.typography.body.xs.copyWith(
+                          color: t.colors.mutedForeground,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _snippet.isEmpty ? '（无文本内容）' : _snippet,
+                    style: t.typography.body.sm,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

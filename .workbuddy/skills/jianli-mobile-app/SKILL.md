@@ -99,6 +99,7 @@ test/
 6. **`FTextField` 没有 `onChange` 命名参数**（2026-09-05 实踩，编译期报错）：监听输入变化必须写在 `FTextFieldControl.managed(controller:, onChange:)` 里，回调收 `TextEditingValue`（取文本用 `controller.text` 或 `_.text`）。直接写在 FTextField 上报「No named parameter with the name 'onChange'」。先例：`qr_page.dart`、`note_list_page.dart`。
 7. **FThemeData 构造期定制样式：先实例 copyWith 再传实例**（2026-09-05 实踩，两连报）：构造器的 `scaffoldStyle:`（等 style 参数）收 **`FScaffoldStyle` 实例**，传 `(s) => ...` 回调报 Function→FScaffoldStyle 类型错；正确姿势 = `base.scaffoldStyle.copyWith(...)` 先造出新实例再传入。而**样式实例自身 copyWith 的 delta 参数**（如 `childPadding: EdgeInsetsGeometryDelta?`）是 **Delta 类**（官方工厂 `EdgeInsetsGeometryDelta.add/.scale/.value`，`scale(k)` 即全边等比缩放），**不是 lambda**——传函数同样类型错。变量名先定义再用（`isDark ? 0.06 : 0.04` 写在只有 `isLight` 的作用域直接 Undefined name）。
 8. **forui typography 是两级结构**（2026-09-05 实踩）：`typography.body.{xs,sm,md,lg,xl}` / `typography.display.*`，**不存在 `typography.xs` 这类直取**——写错报「The getter 'xs' isn't defined for the type 'FTypography'」。
+9. **provider 必须顶层声明，严禁 build 内联**（2026-09-05 实踩，电子书页空白转圈）：在 build 里 `ref.watch(StreamProvider(...))` 内联构造，每次重建都是**全新 provider**（初始态 loading）→「订阅→重建→再新建」死循环，页面永远加载。修复：抽到 `features/<module>/providers/` 顶层变量。
 
 ## 页面操作规范（共有交互，2026-09-05 起：新功能必须遵循，旧功能逐步对齐）
 > 目的：让同类操作在全 App 有同一心智。每新增一种共有交互先在此登记模式与组件，再实现；改先例时同步本节。
@@ -162,7 +163,8 @@ test/
 - `conversation_tag`：name / color('#RRGGBB') / scope(theme|conversation) / create_time
 
 **移动端已对齐**（`conversation_repository.dart` + `conversation_page.dart`）：主题列表（update_time 倒序 + 消息数角标 + 主题标签彩色徽标）；新建/编辑主题（标题+备注，底部抽屉 + 底部固定保存条——页面保存规范）；删除主题（子主题禁止 + 级联删消息，showFDialog 确认）；消息流（置顶 pinned 排前 + 图标、is_rich='1' 走 HtmlWidget 渲染 PC vue-quill 富文本、发送追加纯文本消息并刷新主题 update_time）；**引用关系**（2026-09-05）——① 气泡上显示四类关系 tag：`引用 N`（ref_ids）/`跨主题 N`（cross_refs）/`被引用 N`（同主题 ref_ids 反扫）/`被跨主题引用 N`（cross_refs 反扫，对齐 PC 气泡 footer），点击 tag 打开对应关系抽屉；② 长按气泡出操作菜单（对齐 PC 右键菜单子集：正向链接/反向链接/跨主题引用查看/置顶切换/删除）；③ 关系抽屉为**右侧抽屉**（`side: FLayout.rtl` + SheetSurface 左圆角），**点击条目跳转定位**：同主题 `Scrollable.ensureVisible` + 气泡高亮 1.8s（GlobalKey per message + AnimatedContainer），跨主题 `push('/conversation/<themeId>?highlight=<convId>')`（路由透传 highlight，进页后定位一次）。引用解析 `loadRefLinks`（全表 Dart 扫描，ref_ids/cross_refs JSON 解析）；气泡计数经 `allConversationsProvider` 全量流一次扫描建 `sameBack/crossBack` 两张 Map。
-**移动端裁剪未做**（桌面端有）：发起引用（把消息挂入输入框草稿）/ 发起跨主题引用、标注 annotate_time、多选、跨主题搜索、导出 Markdown、标签改名/改色/删除（新建已完成）、富文本编辑、子主题发起——需要时按桌面端 `useThemeConversation.ts` 语义补齐。
+**移动端裁剪未做**（桌面端有）：标注 annotate_time、多选、导出 Markdown、标签改名/改色/删除（新建已完成）、富文本编辑、子主题发起——需要时按桌面端 `useThemeConversation.ts` 语义补齐。
+**引用发起（2026-09-05）**：工具条「引用」按钮 + 长按菜单「引用此对话」→ 引用草稿（`_pendingRefIds`，工具条 chip 可点掉）→ 发送时按消息归属分类写入 ref_ids（同主题）/ cross_refs（跨主题，`addMessage(refIds:, crossRefs:)`）。引用选择抽屉 `showFilterSheet(title: 引用对话)`：模糊搜索（内容/主题标题 contains，小写化）+ 全主题消息列表（排除软删、按时间倒序、take 80 上限提示）、多选圆点勾选，完成回填草稿。
 **消息标签（2026-09-05）**：输入框上方固定工具条（「标签」入口 + 发送草稿 chips 可点掉，对齐 PC 输入工具条）；标签选择走查询抽屉（`showFilterSheet` title=选择标签/完成/清空，草稿模式），抽屉内「＋新建标签」再叠一层输入抽屉（scope='conversation'，配色对齐桌面 TAG_COLORS 按序取色，创建后自动选中）；发送时 tags 写 JSON（`addMessage(tagIds:)`）；长按菜单「编辑标签」改已发消息（`updateMessageTags`）；气泡显示消息标签彩色徽标。
 **排障**：主题列表角标 0 条 → 计数口径必须与 PC `loadThemeCounts` 一致（`GROUP BY theme_id` **不过滤 is_deleted**，NULL 免疫）；消息列表软删过滤需 NULL 安全（`isNull() | equals('0')`）；输入框与筛选按钮等高 → **双端写死同值**（forui 控件内部高度随字号缩放漂移；`FTappable` 不上报固有高度，IntrinsicHeight 会把按钮压小）。
 
@@ -171,7 +173,17 @@ test/
 # 任何 dart/flutter 命令前（中文用户名雷区 + 国内镜像，缺一必踩）
 export TMP=C:\src\tmp TEMP=C:\src\tmp
 export PUB_HOSTED_URL=https://pub.flutter-io.cn FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
-
+export ANDROID_SDK_ROOT=C:\apps\Android\AndroidSDK
+export PATH="$PATH:/c/apps/Android/AndroidSDK/platform-tools:/c/apps/Android/AndroidSDK/emulator"
+cd /c/cod/jianli/jianli-mobile-app
+# 获取依赖
+flutter pub get
+# 启动模拟器
+/c/apps/Android/AndroidSDK/emulator/emulator.exe -avd Pixel_8 &
+# 确认设备
+flutter devices
+# 运行 emulator-5554 为模拟器/真机 id
+flutter run -d emulator-5554
 dart run build_runner build -d   # drift 生成代码（改表后必跑）
 flutter analyze                  # 当前基线：0 问题
 flutter test                     # 当前基线：5/5（RFC 6238 向量 ×4 + 冒烟 ×1）
@@ -281,7 +293,7 @@ flutter emulators --launch Pixel_8
 | countdown | `/countdown` | 独立表（end_time 毫秒基准 + paused_remaining，与桌面同构抗休眠）+ 暂停/恢复/重置；**视觉焕新**：大计时器整卡 **PageBanner 同款紫(0) 渐变**（白色 RingProgress + `trackColor` 半透明白 + 装饰圆） |
 | notes | `/notes` | 列表（**关键词页内实时搜索 + 「查询抽屉」筛选**：分类单选/标签多选，已生效条件可点掉）/ 详情（flutter_widget_from_html 渲染 + 彩色标签徽标）/ 编辑（轻量文本 + 分类/标签 chips + **底部固定保存条**，html 段落化落库，桌面 vue-quill 可渲染；flutter_quill 富文本 P2）；**标签能力已全量对齐 PC**（内容+标签双搜索、多选筛选、新建/软删，见「笔记标签双端契约」小节）；**视觉焕新**：PageBanner 琥珀(3)（结果数/标签数统计）+ 卡片彩色标签徽标 + StaggerList |
 | conversation | `/conversation` | **已对齐 PC（2026-09-05，同步已打通——见「主题对话」专节）**：主题列表（update_time 倒序 + 消息数角标 + 主题标签彩色徽标）/ 新建·编辑主题（底部抽屉+固定保存条）/ 删除主题（子主题禁止+级联删消息）/ 消息流（置顶排前 + is_rich 走 HtmlWidget 渲染 PC 富文本 + 长按软删）/ 发送追加记录；LLM 后端未定；**视觉焕新**：PageBanner 粉(4) + StaggerList + 粉软底气泡 |
-| ebook | `/ebook` | file_picker 导入 → sha256 content_hash 身份键 → epubx（PascalCase 字段）/ TXT 正则分章 → 章节渲染 + 按章进度；PDF、CFI 精确进度未做；**视觉焕新**：**PageBanner 青(5)**（藏书数）+ **CustomScrollView+SliverGrid** 封面网格（按标题 hashCode 渐变 + 进度条）；阅读器正文 pageTint 护眼底 |
+| ebook | `/ebook` | **打开空白/一直转圈已修（2026-09-05）**——根因：书架页 build 内联 StreamProvider（雷区 #9），改顶层 `bookshelfStreamProvider`；TXT 编码对齐 PC（BOM/UTF-8 严格/GBK 回退，`fast_gbk` 纯 Dart 包）；移出书架走 showFDialog 确认；组件化拆分 `book_cell.dart`。file_picker 导入 → sha256 content_hash 身份键 → epubx / TXT 正则分章 → 章节渲染 + 按章进度；**裁剪未做**（PC 有）：标注划线 / 书签 / 分类 / PDF 渲染 / 章节搜索 / 扫描文件夹；**视觉焕新**：PageBanner 青(5) + CustomScrollView+SliverGrid 封面网格；阅读器正文 pageTint 护眼底 |
 | twofactor | `/twofactor` | TOTP 全算法 + vault 口令解锁 + 动态码卡片（复制/倒计时/锁定清内存）+ 添加；**视觉焕新**：**PageBanner 紫(0)**（账户数）+ 解锁表单 pageTint+紫渐变图标盘 + `AccountCodeTile` 紫图标盘 |
 | password_vault | `/password-vault` | 移动端口令库（同信封格式 .jlv）；**视觉焕新**：**PageBanner 蓝(1)**（条目数）+ 门禁表单 pageTint+蓝渐变图标盘 + 条目首字母蓝 `accent(1)` 渐变 SquircleBox + StaggerList |
 | file_vault | `/file-vault` | 与 PC 完全兼容：wrappedKey 解包 + JLV1 parse + 导入/预览/删除；**视觉焕新**：**PageBanner 绿(2)**（文件数）+ 门禁表单 pageTint+绿渐变图标盘 + 文件行绿 `accent(2)` 渐变 SquircleBox |
@@ -378,5 +390,6 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 - 2026-09-05：**阅览模式二次修订（基准字号体系）**——用户反馈 v1「切换无效 + 普通字体太大」（根因：页内 1.15 倍缩放视觉无感且只挂两个阅读页）。v2 改为**基准字号体系**：`AppTokens.baseFontSizeNormal=12 / baseFontSizeLarge=18`，`app.dart` 读阅览模式 → 传 `baseFontSize` 进 `AppTheme.build`（构造期 `typography.scale(sizeScalar: 基准/forui默认md)`）+ `materialLight/materialDark`，全 App（含组件内部样式）随档位等比缩放；笔记详情/阅读器移除页内缩放、正文字号直取 `md.fontSize`；设置面板卡片副标题显示「基准 Npx」。同步修正技能「主题体系/全局配置」小节。analyze/run 交用户。
 - 2026-09-05：**三处视觉修正（真机反馈，二次）**——修复编译错误 2 个（`isDark` 未定义；`scaffoldStyle` 参数收 FScaffoldStyle 实例而非回调，delta 用官方 `EdgeInsetsGeometryDelta.scale(k)` 类工厂——雷区 #7）；随后按截图升级为**全局渐变背板架构**：app.dart 根容器画「顶部强冷调→background」渐变 + `_BackdropPainter` 图案（大圆×2/圆环×1），scaffold 透明、header 默认透明、`pageTint` 返回透明色，三处色差/白边一次性消灭；新增规则「页面禁止自绘不透明整页底色」。虚拟机启动完整命令序列已固化到「构建与验证」。`dart format` 全库通过，analyze/run 交用户。
 - 2026-09-05：**页面操作规范落地（需求变更，先例=可归类笔记）**——① 新章节「页面操作规范（共有交互）」：查询/筛选统一走**通用查询抽屉**（新组件 `lib/app/ui/filter_sheet.dart`：顶部「查询」+关闭图标、中部选项滚动、底部固定「重置/查询」；草稿模式——打开时从已生效条件初始化，重置只清草稿，查询才应用并经 pop 值返回）；保存/提交按钮**统一固定底部**（`Column[Expanded(内容), SafeArea+GradientButton]`，头部不放重复保存入口）。② 可归类笔记先例改造：列表页分类/标签行内 chips 移入查询抽屉，搜索框右侧加筛选按钮（激活时琥珀软底+条件数角标），已生效条件以可点掉摘要 chip 呈现；编辑页保存条固定底部、头部对勾入口移除。后续新功能按该章节模式实现。
+- 2026-09-05：**电子书空白转圈修复 + PC 对齐（需求变更）**——① 根因：书架页 build 内联 `StreamProvider`（Riverpod 每次重建都是新 provider → 永远 loading），新建 `providers/ebook_providers.dart` 顶层 `bookshelfStreamProvider` 修复，雷区 #9 固化「provider 严禁 build 内联」；② TXT 编码对齐 PC：`epub_service` 增 BOM 识别（UTF-8/UTF-16LE/BE）+ UTF-8 严格解码失败回退 GBK（新依赖 `fast_gbk` 纯 Dart，**需先 flutter pub get**），修复中文 GBK TXT 乱码；③ 组件化：`BookCell` 拆为 `components/book_cell.dart`；移出书架改 showFDialog 确认（破坏性规范）；④ 裁剪项（PC 有）：标注划线/书签/分类/PDF/章节搜索/扫描文件夹。`dart format` 通过，pub get + analyze + run 交用户。
 - 2026-09-05：**主题对话对齐 PC（需求变更）**——① 根因：桌面端主题对话三表（conversation_theme/conversation/conversation_tag）为 INTEGER 自增 id 主键，不满足旧 TEXT 主键同步规则而未入白名单 → 移动端无数据；② 双端白名单加三表并做 pk 按表适配（桌面端 `tablePk()` + `ON CONFLICT(id)`；PC `useSync.ts` 表清单同步；改桌面端需重启 Electron）；③ 移动端功能对齐：主题消息数角标/主题标签彩色徽标/编辑主题（抽屉+固定保存条）/删除主题（子主题禁止+级联）/消息置顶排序/is_rich 富文本 HtmlWidget 渲染/长按软删消息/发送后刷新主题 update_time；裁剪项（引用/标注/多选/搜索/导出 md/标签管理）记入「主题对话」专节待办。全局红线 7 与落地清单第 5 条的「TEXT 主键」规则已改为「按表 pk 适配」。桌面端改动见 jianli-app 技能 sync.md。
 - 剩余规划（截至 2026-09-05）：真机全量验证、桌面 25 套主题映射到 forui、flutter_quill 富文本编辑、PDF / CFI 精确进度、interval 通知精细化、QR 样式、同步会话加密、conversation LLM 后端、UI 现代化落地（按 `references/ui-modernization-plan.md` 分阶段）。

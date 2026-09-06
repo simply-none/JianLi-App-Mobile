@@ -146,11 +146,14 @@ class ConversationRepository {
     )..where((t) => t.id.equals(id))).go();
   }
 
-  /// 追加一条消息（记录型对话；themeId 与桌面端一致为字符串化 id；tagIds 写入 tags JSON）
+  /// 追加一条消息（记录型对话；themeId 与桌面端一致为字符串化 id；tagIds 写入 tags JSON；
+  /// refIds = 同主题引用的消息 id；crossRefs = 跨主题引用 [{themeId, convId}]，均与桌面端同构）
   Future<void> addMessage({
     required String themeId,
     required String content,
     List<String> tagIds = const [],
+    List<String> refIds = const [],
+    List<({int themeId, int convId})> crossRefs = const [],
   }) async {
     final now = _now();
     await _db
@@ -163,7 +166,13 @@ class ConversationRepository {
             createTime: Value(now),
             pinned: const Value('0'),
             isDeleted: const Value('0'),
-            refIds: const Value('[]'),
+            refIds: Value(jsonEncode(refIds)),
+            crossRefs: Value(
+              jsonEncode([
+                for (final x in crossRefs)
+                  {'themeId': x.themeId, 'convId': x.convId},
+              ]),
+            ),
             isRich: const Value('0'),
           ),
         );

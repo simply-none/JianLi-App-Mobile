@@ -1,11 +1,14 @@
-// 电子书解析服务 —— epubx 解析 EPUB；TXT 分章
+// 电子书解析服务 —— epubx 解析 EPUB；TXT 分章 + 编码检测
 //
 // epubx 4.x 字段为 PascalCase（EpubBook.Title / Chapters / ContentHtml 等）；
 // 章节走 book.Chapters 树（Title + HtmlContent），比 spine/manifest 直取更稳。
+// TXT 编码对齐桌面端 chardet + iconv-lite（BOM + UTF-8 严格 + GBK 回退）。
 // PDF 需原生渲染管线，TODO(P2)。
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:epubx/epubx.dart' as epub;
+import 'package:fast_gbk/fast_gbk.dart' show gbk;
 
 import '../repositories/ebook_repository.dart';
 
@@ -53,11 +56,55 @@ Future<ParsedBook> parseBook(String path) async {
   if (path.toLowerCase().endsWith('.epub')) {
     return parseEpub(file);
   }
-  final content = await file.readAsString();
+  final content = await _decodeTxt(file);
   return ParsedBook(
     title: _fileName(path),
     chapters: splitTxtChapters(content),
   );
+}
+
+/// TXT 解码 —— 对齐桌面端 chardet + iconv-lite 方案（references/modules/ebook-reader.md）：
+/// BOM 识别（UTF-8 / UTF-16LE / UTF-16BE）→ UTF-8 严格解码 → 失败回退 GBK（中文 GB2312/GBK/GB18030）。
+/// 移动端此前只按 UTF-8 读，中文 GBK TXT 全文乱码（实踩对齐点）。
+Future<String> _decodeTxt(File file) async {
+  final bytes = await file.readAsBytes();
+  // UTF-8 BOM
+  if (bytes.length >= 3 &&
+      bytes[0] == 0xEF &&
+      bytes[1] == 0xBB &&
+      bytes[2] == 0xBF) {
+    return utf8.decode(bytes.sublist(3));
+  }
+  // UTF-16 LE / BE BOM（BMP 字符直接按码元重组）
+  if (bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
+    return _utf16Decode(bytes.sublist(2), littleEndian: true);
+  }
+  if (bytes.length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) {
+    return _utf16Decode(bytes.sublist(2), littleEndian: false);
+  }
+  // 无 BOM：先按 UTF-8 严格解码（含非法序列即失败），失败回退 GBK；
+  // GBK 再失败兜底 utf8 宽松解码（fast_gbk 不声称支持 GB18030，防生僻字崩溃）
+  try {
+    return utf8.decode(bytes);
+  } on FormatException {
+    try {
+      return gbk.decode(bytes);
+    } catch (_) {
+      return utf8.decode(bytes, allowMalformed: true);
+    }
+  }
+}
+
+String _utf16Decode(List<int> bytes, {required bool littleEndian}) {
+  final units = <int>[];
+  for (var i = 0; i + 1 < bytes.length; i += 2) {
+    units.add(
+      littleEndian
+          ? bytes[i] | (bytes[i + 1] << 8)
+          : (bytes[i] << 8) | bytes[i + 1],
+    );
+  }
+  return String.fromCharCodes(units);
 }
 
 String _fileName(String path) {
