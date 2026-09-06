@@ -57,6 +57,7 @@ dependencies:
   flutter_widget_from_html: ^0.17.3
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0
+  webview_flutter: ^4.10.0 # 隔空互传：WebView 加载本地 QRFerry 站，摄像头扫码接收（替代 flutter_inappwebview，规避模拟器渲染/loadStop 异常）
   forui: ^0.26.0
   material_ui: ^1.1.1  # Flutter Material 独立发行版，forui 建于其上；勿与 flutter/material 混用
   wakelock_plus: ^1.8.0  # 文件互传发送全程后台保活（#19）
@@ -100,10 +101,12 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  # 隔空互传（QRFerry）内置静态站：打包进 assets，运行时由本地 HttpServer 托管
+  # 注意：目录声明 `assets/qyferry/` 在本项目实测不会递归打包其子目录 webassets/，
+  # 因此必须显式再声明一次，否则 /webassets/*.js|*.css 进不了 bundle → 页面白屏。
+  assets:
+    - assets/qyferry/
+    - assets/qyferry/webassets/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

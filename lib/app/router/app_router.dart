@@ -27,6 +27,7 @@ import '../../features/ebook/components/epub_reader_page.dart';
 import '../../features/conversation/components/conversation_page.dart';
 import '../../features/sync/components/sync_page.dart';
 import '../../features/file_transfer/components/file_transfer_page.dart';
+import '../../features/ferry/ferry_page.dart';
 import '../anim/jianli_transitions.dart';
 import '../shell/main_shell.dart';
 
@@ -186,6 +187,11 @@ final GoRouter appRouter = GoRouter(
       path: '/file-transfer',
       pageBuilder: (context, state) =>
           fadeSlidePage(const FileTransferPage(), state),
+    ),
+    GoRoute(
+      path: '/ferry',
+      // WebView 平台视图在 FadeTransition 中容易空白，用纯横向滑入转场
+      pageBuilder: (context, state) => slidePage(const FerryPage(), state),
     ),
   ],
 );

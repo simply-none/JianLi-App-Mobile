@@ -16,6 +16,8 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>渐离App</string>
+	<key>NSCameraUsageDescription</key>
+	<string>隔空互传需要使用摄像头扫描对方屏幕上的二维码来接收文件</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

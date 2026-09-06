@@ -2,6 +2,8 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- 文件互传 / 局域网同步：release 包必需（debug/profile 模板已带，但 manifest 合并需显式声明） -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 隔空互传：WebView 内 getUserMedia 调用摄像头扫描对方屏幕二维码 -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <!-- 文件互传后台保活：发送过程中保持屏幕/CPU 唤醒，避免息屏中断（#19） -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- 文件互传接收目录 = 系统 Download/渐离App文件互传/：

@@ -33,6 +33,26 @@ CustomTransitionPage<dynamic> fadeSlidePage(Widget child, GoRouterState state) {
   );
 }
 
+/// WebView / 平台视图页转场：纯横向滑入，不带淡入。
+///
+/// Android/iOS 的 PlatformView（WebView、相机等）在 [FadeTransition] 动画期间
+/// 容易出现空白/黑屏，因此给 /ferry 这类页面单独用纯位移转场。
+CustomTransitionPage<dynamic> slidePage(Widget child, GoRouterState state) {
+  return CustomTransitionPage<dynamic>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: AppTokens.base,
+    reverseTransitionDuration: AppTokens.base,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final slide = Tween<Offset>(
+        begin: const Offset(0.06, 0),
+        end: Offset.zero,
+      ).chain(CurveTween(curve: AppTokens.standard)).animate(animation);
+      return SlideTransition(position: slide, child: child);
+    },
+  );
+}
+
 /// Tab 分支切换转场：纯淡入（轻量，不重建子树）。
 ///
 /// StatefulShellRoute 分支间切换用，避免导航壳抖动。

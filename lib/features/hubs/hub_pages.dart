@@ -71,6 +71,7 @@ class ToolsHubPage extends StatelessWidget {
     (FLucideIcons.qrCode, '二维码', '生成 / 识别 / 历史', '/qr', 3),
     (FLucideIcons.refreshCw, '局域网同步', '类 LocalSend 双端同步', '/sync', 5),
     (FLucideIcons.arrowLeftRight, '文件互传', '双端批量收发文件', '/file-transfer', 4),
+    (FLucideIcons.scanQrCode, '隔空互传', '屏幕二维码 → 摄像头直传', '/ferry', 6),
   ];
 
   @override
