@@ -67,7 +67,9 @@ class _Offer {
 }
 
 /// 捕获 sha256 分块转换产出的 Digest
-class _DigestSink extends ChunkedConversionSinkBase<crypto.Digest> {
+/// （dart:convert 的 ChunkedConversionSinkBase 自 Dart 3.9 起不再公开导出，
+/// startChunkedConversion 只要求 `Sink<Digest>`，直接实现即可）
+class _DigestSink implements Sink<crypto.Digest> {
   crypto.Digest? result;
   @override
   void add(crypto.Digest d) => result = d;

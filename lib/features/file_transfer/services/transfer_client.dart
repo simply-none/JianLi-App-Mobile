@@ -206,8 +206,11 @@ class TransferClient {
         final dataRes = await dataReq.close();
         await utf8.decoder.bind(dataRes).join(); // 消费响应体
 
-        // 计算文件 sha256（流式，明文，不整文件入内存），随 /file/end 带给接收端校验
-        final hash = (await crypto.sha256.bind(file.openRead())).toString();
+        // 计算文件 sha256（流式，明文，不整文件入内存），随 /file/end 带给接收端校验。
+        // 注意 Hash.bind 返回的是 Stream<Digest> 而非 Future，必须 .first 消费流取结果，
+        // 直接 await 拿到的是流对象，toString 后作为 hash 发出会导致对端恒报 hash mismatch。
+        final hash =
+            (await crypto.sha256.bind(file.openRead()).first).toString();
 
         // end：收尾 + 写历史（携带 hash）
         final endReq = await client.postUrl(
