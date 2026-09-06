@@ -52,11 +52,14 @@ dependencies:
   path: ^1.9.1
   crypto: ^3.0.7
   uuid: ^4.6.0
+  open_filex: ^4.7.0 # 用系统关联程序打开已接收文件（历史「打开文件」）
+  share_plus: 13.3.0 # 分享已接收文件（历史「分享」）
   flutter_widget_from_html: ^0.17.3
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0
   forui: ^0.26.0
   material_ui: ^1.1.1  # Flutter Material 独立发行版，forui 建于其上；勿与 flutter/material 混用
+  wakelock_plus: ^1.8.0  # 文件互传发送全程后台保活（#19）
 
 dev_dependencies:
   flutter_test:

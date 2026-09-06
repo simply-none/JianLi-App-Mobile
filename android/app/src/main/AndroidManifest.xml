@@ -1,8 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 文件互传 / 局域网同步：release 包必需（debug/profile 模板已带，但 manifest 合并需显式声明） -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 文件互传后台保活：发送过程中保持屏幕/CPU 唤醒，避免息屏中断（#19） -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application
         android:label="jianli_mobile_app"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

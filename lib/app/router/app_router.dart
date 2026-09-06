@@ -26,6 +26,7 @@ import '../../features/ebook/components/bookshelf_page.dart';
 import '../../features/ebook/components/epub_reader_page.dart';
 import '../../features/conversation/components/conversation_page.dart';
 import '../../features/sync/components/sync_page.dart';
+import '../../features/file_transfer/components/file_transfer_page.dart';
 import '../anim/jianli_transitions.dart';
 import '../shell/main_shell.dart';
 
@@ -180,6 +181,11 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/sync',
       pageBuilder: (context, state) => fadeSlidePage(const SyncPage(), state),
+    ),
+    GoRoute(
+      path: '/file-transfer',
+      pageBuilder: (context, state) =>
+          fadeSlidePage(const FileTransferPage(), state),
     ),
   ],
 );

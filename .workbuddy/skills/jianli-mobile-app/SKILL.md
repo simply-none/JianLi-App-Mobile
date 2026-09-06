@@ -10,7 +10,7 @@ agent_created: true
 封装「渐离App 移动端」的架构约定、数据层对齐规则、加密复刻、双端同步协议、构建环境与逐功能域知识，让 AGENTS 在本工程里按既定模式开发、维护、扩展功能，并避开已知雷区。它不是运行时功能，而是「开发该工程的知识库」。
 
 与桌面端技能是**姊妹关系**：
-- 桌面端契约（db.sqlite 表结构、vault 加密 `crypto.ts`、同步对端 `syncModule.ts`）以桌面技能为准：`C:\cod\jianli\jianli-app\.zcode\skills\jianli-app\SKILL.md`
+- 桌面端契约（db.sqlite 表结构、vault 加密 `crypto.ts`、同步对端 `syncModule.ts`）以桌面技能为准：`C:\cod\jianli\jianli-app\.workbuddy\skills\jianli-app\SKILL.md`
 - 移植的历史计划与决策记录在桌面技能的 `references/flutter-port.md`（本技能是它的「移动端落地版」，日常开发以本技能为准）
 
 ## 何时使用
@@ -135,6 +135,7 @@ test/
 - 发现：UDP 广播端口 **47123**，请求包 `JIANLI_SYNC_DISCOVER_V1`，应答 `JIANLI_SYNC_INFO_V1|{json:{name,id,platform}}`（`core/sync/sync_discovery.dart`；PC 端 `syncModule.ts` 同协议应答）。
 - **⚠️ 热点场景发现雷区（2026-09-05 修复）**：扫描**不能只发 255.255.255.255**——手机开热点给 PC 时，热点接口不是手机的默认路由，受限广播从默认网络口出去、到不了热点网段（PC 收不到请求 → 不应答），表现为「PC 能搜到手机、手机搜不到 PC」的不对称。修复：`scan()` 走 `broadcastCandidates()` **逐 IPv4 网卡发 `/24` 定向广播（x.y.z.255）+ 全网广播兜底**，OS 按直连路由选对网卡，应答按 ip 去重。若修复后仍搜不到 PC，优先查 Windows 防火墙对 Electron 入站 UDP 47123 的放行（手动 IP 兜底仍可用）。
 - 数据面：HTTP 端口 **47124** —— `GET /ping` 设备信息、`POST /sync`（body `{table, rows}`）、`GET /export?table=`（对端拉取）。
+- **文件互传（类 LocalSend 扩展，协议 v1，双端对称）**：复用同一 47124 数据面，新增 `POST /file/offer` / `POST /file/data?tid=&fid=&from=`(原始字节流，`from=` 为续传偏移) / `POST /file/end?tid=&fid=` 三端点（注册进 SyncService 可插拔路由 `registerRouteHandler`）；批量=一次 offer + 逐文件串行 data/end；收端写 `<fid>.part` → 改名去重 → 写 `file_transfer` 历史（`key` TEXT 主键，设备本地、不入同步白名单）；v1 默认自动接收（页面可关，关后进入**询问模式**弹窗等 UI 答复，不再直接拒）；校验 size 比对 + sha256 双保险（发送端随 `/file/end` 带 `{hash}`，接收端比对）；接收目录 `Documents/渐离App文件互传/`。**增强（2026-09-06 二批，均向后兼容）**：#9 重名覆盖策略（rename/overwrite，读 `TransferSettings`）/ #11 最近设备持久化（shared_preferences，`RecentPeers`，离线可见）/ #13 断点续传（offer 回 `resumeFrom` + data `from=` 追加写 + hash 播种）/ #14 会话加密（AES-256-CTR，默认关，offer 协商 `enc` 字段、data 密文流）/ #15 接收询问（`askStream` + `showFDialog`）/ #17 并发守卫（429 busy）/ #19 后台保活（`wakelock_plus`）/ #20 历史分页 + 超 1000 自动清理。与桌面端同协议、同历史表结构。
 - 白名单 12 张表（2026-09-05 加入主题对话三表）：habit_def / habit_checkin / todo_list / todo_tags / note_book / basic_info / countdown / qr_history / qr_template（TEXT 主键 key）+ conversation_theme / conversation / conversation_tag（**INTEGER 自增 id 主键**，行内携带 id 值，`INSERT OR REPLACE` 按 id 幂等；桌面端 `tablePk()` 同步适配）。行全列 toString 后按主键幂等写；写入前按 `PRAGMA table_info` 过滤实际存在的列，双端 schema 差异（桌面端旧 SQL 层遗留列）免疫。
 - **模拟器雷区**：NAT 广播不通扫不到宿主 → 同步页支持手动填 IP，Android 模拟器固定填 `10.0.2.2`；真机走正常广播。PC 端同步入口：系统与资源 → 局域网同步（扫描 / 手动 IP(ip:port) / 推送 / 拉取）。
 - vault 类数据跨设备：密钥为设备绑定/口令派生，**不能直传设备密钥**，需用户口令重新封装（会话加密 P3）。
@@ -178,6 +179,8 @@ export PATH="$PATH:/c/apps/Android/AndroidSDK/platform-tools:/c/apps/Android/And
 cd /c/cod/jianli/jianli-mobile-app
 # 获取依赖
 flutter pub get
+# 生成代码
+dart run build_runner build -d        # ← 关键且必须在这步；跑完 .g.dart 时间戳会更新、里面出现 FileTransferData
 # 启动模拟器
 /c/apps/Android/AndroidSDK/emulator/emulator.exe -avd Pixel_8 &
 # 确认设备
@@ -299,6 +302,7 @@ flutter emulators --launch Pixel_8
 | file_vault | `/file-vault` | 与 PC 完全兼容：wrappedKey 解包 + JLV1 parse + 导入/预览/删除；**视觉焕新**：**PageBanner 绿(2)**（文件数）+ 门禁表单 pageTint+绿渐变图标盘 + 文件行绿 `accent(2)` 渐变 SquircleBox |
 | qr | `/qr` | 生成（text/url/wifi/vCard/email）+ 识别（mobile_scanner）+ 历史；**视觉焕新**：顶部 **PageBanner 琥珀(3)**（FTabs 包进 Expanded，`expands:true` 雷区照旧）+ 历史页 `_QrHistoryTile`（琥珀图标盘）+ StaggerList |
 | sync | `/sync` | 扫描/手动 IP/推送/拉取，四种组合全通；**视觉焕新**：**PageBanner 青(5)**（发现设备/可同步表统计）+ 设备行图标青 `accent(5)` SquircleBox |
+| file_transfer | `/file-transfer` | 双端批量互传（PC⇆手机），与 sync 同协议同历史表 `file_transfer`（含 `error` 失败原因列）；接收目录 `Documents/渐离App文件互传/`；sha256 双端校验；历史成功记录可「打开」(`open_filex`)/「分享」(`share_plus`)；**增强（2026-09-06 二批）**：重名覆盖策略(rename/overwrite)、最近设备记忆(离线可见)、断点续传、会话加密(AES-256-CTR，默认关)、接收询问弹窗(关自动接收时)、并发守卫(429)、后台保活(wakelock)、历史分页+自动清理；**视觉焕新**：**PageBanner 粉(4)**（收发统计）+ FDeterminateProgress 逐文件进度 + 设备扫描/手动 IP（模拟器 `10.0.2.2`）|
 | screenshots | — | 未开工；移动端无法系统级监听截图，重设计为相册导入/分享收纳 |
 | 主题 | — | **5 套主题样式**（渐离紫 `zi` / 远峰蓝 `blue` / 森野绿 `green` / 落日橙 `orange` / 樱粉 `pink`，`AppTheme.styles`）+ 三态模式（跟随系统/浅色/深色）+ **阅览模式**（普通/大号正文字体，卡片 tag 切换），均 SharedPreferences 持久化；切换入口在首页与三个分组页右上角的**设置按钮 → 左侧设置面板**。桌面 25 套 token 映射 P2 |
 
@@ -312,7 +316,7 @@ flutter emulators --launch Pixel_8
 
 ## 使用方式
 1. 接到任务先判断属于「数据 / 加密 / 同步 / UI / 构建」哪一类，读对应章节。
-2. 涉及桌面端契约（表结构、加密信封、同步对端协议）时，读桌面技能 `C:\cod\jianli\jianli-app\.zcode\skills\jianli-app\` 下对应文档（`references/flutter-port.md`、`references/modules/sync.md` 等）。
+2. 涉及桌面端契约（表结构、加密信封、同步对端协议）时，读桌面技能 `C:\cod\jianli\jianli-app\.workbuddy\skills\jianli-app\` 下对应文档（`references/flutter-port.md`、`references/modules/sync.md`、`references/modules/file-transfer.md` 等）。
 3. 新增能力优先复用既有模式：Riverpod provider 拆分、幂等 upsert、NotificationChannels、sync 白名单，不要另起炉灶。
 4. 所有文档用中文；发现与代码不符，直接更新对应文档，保持 skill 与代码同步。
 
@@ -376,7 +380,9 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 
 ## 维护说明
 - 本 skill 是移动端「项目知识基线」，随代码演进而更新；每完成一个功能域或踩出新雷区，同步「功能域清单」与「全局红线」。
-- 2026-09-06：新增双端「文件互传」需求（批量收发、双端对称）。移动端方案与任务清单已产出**待确认**：`references/file-transfer-plan.md`（`lib/features/file_transfer/` 新功能域 + SyncService 可插拔路由挂 /file/* 端点 + drift 首个 onUpgrade 迁移 + 主 AndroidManifest 补 INTERNET/cleartext，accent 粉(4)，入口 `/file-transfer`）。确认后按清单实施并回写功能域清单。
+- 2026-09-06：**双端「文件互传」已实施完成**（批量收发、双端对称）。移动端 `lib/features/file_transfer/` 新功能域落地：M1 发送客户端（`TransferClient.sendBatch` 流式 + 字节回调 + 取消）、M2 接收服务端（三端点注册进 `SyncService` 可插拔路由 `registerRouteHandler`，接收目录 `Documents/渐离App文件互传/`）、M3 models/repositories/providers（顶层 `transferHistoryProvider`）、M4 页面（`FileTransferPage`，PageBanner 粉(4) + 设备扫描/手动 IP `10.0.2.2` + FDeterminateProgress 逐文件进度 + 收发记录）；M5 SyncService 加 `registerRouteHandler`、M6 drift 首个 onUpgrade 迁移（`schemaVersion 1→2` + `file_transfer` 表 .named() 列）、M7 路由 `/file-transfer` + 工具组入口（FLucideIcons.arrowLeftRight，accent 4）、M8 AndroidManifest 补 INTERNET/cleartext。桌面端同协议同历史表。决策记录：`references/file-transfer-plan.md`。改码后 `flutter pub get → dart run build_runner build -d → flutter analyze(0) → flutter test(5/5) → flutter run` 交用户在本地执行。
+- 2026-09-06（文件互传后续分批，M11）：补齐 sha256 双端校验（发送端 `crypto.sha256.bind` 算 hash 随 `/file/end` 带出，接收端 `_receiveHashing` 边收边算比对，不符删坏文件记 `failed`/`hash mismatch`）、历史 `error` 列（`tables/file_transfer.dart` 加 `error` → 须重跑 `build_runner`）、发送端 `peer_name` 经 offer 响应 `me` 回填、offer 响应 `me` 回传本机设备信息、接收端收完回收 `_offers`、`file_transfer_page.dart` 历史成功记录加「打开」(`OpenFilex.open`) /「分享」(`SharePlus.instance.share`) 并显示 `error`。**新增依赖 `open_filex`(^5.8.0) + `share_plus`(^11.0.0)**（pubspec.yaml），改 `pubspec.yaml` 后须 `flutter pub get`。
+- 2026-09-06（文件互传后续二批，M12 · 全部剩余增强已落地）：`models/transfer_models.dart`（TransferSettings 加 `renameStrategy`/`enc` + `load/persist`；`countingStream` 加 `initial`）、`models/transfer_utils.dart`（新建：sanitize/recvPartName/enc base64 编解码）、`models/recent_peers.dart`（新建：#11 最近设备 shared_preferences 持久化）、`services/transfer_server.dart`（#9 重名策略 / #13 续传 resumeFrom+追加写+hash 播种 / #14 加密 decryptStream / #15 询问 askStream+answerAsk+60s 超时 / #17 并发守卫 `_activeReceiveTid` / #20 trim(1000)）、`services/transfer_client.dart`（#13 续传 from= / #14 加密 encryptStream / #17 `_activeSendTid` / #19 WakelockPlus 后台保活）、`repositories/transfer_repository.dart`（加 `list/count/trim`）、`components/file_transfer_page.dart`（最近设备区 / 重名策略+加密+自动接收三开关 / 接收询问弹窗 / 历史分页「加载更多」）、`test/features/file_transfer/transfer_utils_test.dart`（#28 单测）。**新增依赖 `wakelock_plus: ^1.8.0`**（pubspec.yaml）+ `AndroidManifest.xml` 加 `WAKE_LOCK`。协议保持向后兼容（加密/续传/询问均默认关或协商，未开启退化为既有明文）。决策记录：`references/file-transfer-plan.md`（§二之一 / 四 M12 / 六）。
 - 2026-09-05：UI 全量换装 forui（shadcn 风格）+ material_ui，全 App 页面已改造（骨架/组件对照见「UI 体系」章节）。
 - 2026-09-05：**UI 现代化 + 操作动效总体规划**已落地为 `references/ui-modernization-plan.md`——诊断现状短板、定义设计 token（形状/阴影/渐变/语义软底/动效时长曲线）、新增原子组件（GlassCard/GradientButton/ShimmerSkeleton/AnimatedStat/AnimatedCheck/StaggerList/JianliSegmented/ConfettiOverlay/PageHero/SquircleBox）、自建页面转场（禁用 `animations` 包以避开 material_ui 冲突）、Haptics + 减弱动效降级，含 6 阶段实施路线（Phase 0 地基 → Phase 5 收口）。改造时严格守住 forui/material_ui 约束与 FTabs `expands` 雷区。
 - 2026-09-05：UI 现代化 **Phase 0 地基已完成**——`app_theme.dart` 加 `AppTokens`（形状/阴影/渐变/语义软底/动效节律）；新增 `lib/app/anim/{jianli_motion,jianli_haptics,jianli_transitions}.dart`（减弱动效开关 + 触感 + 自建 `fadeSlidePage`/`fadeSlide` 转场，刻意不引 `animations` 包）；`app_router.dart` 全屏 push 路由接 `fadeSlidePage`；`app.dart` 主题切换加 `AnimatedContainer` 背景过渡。`flutter analyze` 0 问题、`flutter test` 5/5 基线通过。

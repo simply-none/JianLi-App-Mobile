@@ -70,6 +70,7 @@ class ToolsHubPage extends StatelessWidget {
     (FLucideIcons.shieldCheck, '私密文件保险箱', 'AES-256 加密存储', '/file-vault', 2),
     (FLucideIcons.qrCode, '二维码', '生成 / 识别 / 历史', '/qr', 3),
     (FLucideIcons.refreshCw, '局域网同步', '类 LocalSend 双端同步', '/sync', 5),
+    (FLucideIcons.arrowLeftRight, '文件互传', '双端批量收发文件', '/file-transfer', 4),
   ];
 
   @override

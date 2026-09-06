@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'tables/conversation_tables.dart';
 import 'tables/ebook_tables.dart';
+import 'tables/file_transfer.dart';
 import 'tables/file_vault_tables.dart';
 import 'tables/habit_tables.dart';
 import 'tables/note_tables.dart';
@@ -26,7 +27,8 @@ import 'tables/tool_tables.dart';
 part 'app_database.g.dart';
 
 /// 渐离移动端数据库
-/// 首批 22 张表 + 工具表 3 张（countdown / qr_history / qr_template），共 25 张。
+/// 首批 22 张表 + 工具表 3 张（countdown / qr_history / qr_template），共 25 张；
+/// v2 新增 file_transfer（文件互传历史）。
 @DriftDatabase(
   tables: [
     HabitDef,
@@ -54,6 +56,7 @@ part 'app_database.g.dart';
     Countdown,
     QrHistory,
     QrTemplate,
+    FileTransfer,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -63,11 +66,15 @@ class AppDatabase extends _$AppDatabase {
   // AppDatabase.forFile(File f) : super(LazyDatabase(() async => NativeDatabase(f, readOnly: true)));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
-  MigrationStrategy get migration =>
-      MigrationStrategy(onCreate: (m) => m.createAll());
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        // v1→v2：仅新增 file_transfer，drift 的 createAll 用 IF NOT EXISTS，
+        // 只会建缺失表，已有的 25 张不动。
+        onUpgrade: (m, from, to) async => await m.createAll(),
+      );
 }
 
 /// 打开沙盒内数据库连接（后台 isolate 执行，避免阻塞 UI）

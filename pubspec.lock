@@ -997,6 +997,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.1.0"
+  open_filex:
+    dependency: "direct main"
+    description:
+      name: open_filex
+      sha256: "9976da61b6a72302cf3b1efbce259200cd40232643a467aac7370addf94d6900"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "4.7.0"
   package_config:
     dependency: transitive
     description:
@@ -1269,6 +1277,22 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.28.0"
+  share_plus:
+    dependency: "direct main"
+    description:
+      name: share_plus
+      sha256: "34f00f9becd2743c1fb05363d624f9f70d37f7ccdcdda47450bc0b8c9d327b8c"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "13.3.0"
+  share_plus_platform_interface:
+    dependency: transitive
+    description:
+      name: share_plus_platform_interface
+      sha256: "365ef7379fc22507256adda3385152942ffce08935452bc972c2e52a0bebae41"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "7.2.0"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -1659,7 +1683,7 @@ packages:
     source: hosted
     version: "15.3.0"
   wakelock_plus:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: wakelock_plus
       sha256: "22b3e7e937721de70e63c85e7139f4ac781dc22863b9262431a53ac030eb074b"

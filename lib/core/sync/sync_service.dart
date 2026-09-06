@@ -31,6 +31,19 @@ const List<String> kSyncableTables = [
   'conversation_tag',
 ];
 
+/// 可插拔路由（文件互传等模块向同步数据面注入自定义端点，复用 47124 不新开端口）
+typedef _RouteMatcher = bool Function(HttpRequest request);
+typedef _RouteHandler = Future<void> Function(HttpRequest request);
+
+final List<(_RouteMatcher, _RouteHandler)> _extraRoutes = [];
+
+/// 注册一个自定义路由处理器。
+/// 每个请求先依次匹配 `_extraRoutes`，命中即交由 handler 处理（handler 自行关闭 response）。
+/// 内置 /ping /export /sync 分支保持不变；文件互传的 /file/* 由 transfer_server 注册。
+void registerRouteHandler(_RouteMatcher matcher, _RouteHandler handler) {
+  _extraRoutes.add((matcher, handler));
+}
+
 /// 同步服务
 class SyncService {
   SyncService(this._db);
@@ -49,6 +62,13 @@ class SyncService {
       SyncProtocol.dataPort,
     );
     _server!.listen((request) async {
+      // 先走可插拔路由（文件互传 /file/* 等）
+      for (final (matcher, handler) in _extraRoutes) {
+        if (matcher(request)) {
+          await handler(request);
+          return;
+        }
+      }
       if (request.uri.path == '/ping') {
         _json(request, {
           'name': resolvedName,
