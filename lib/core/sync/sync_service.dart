@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
+import 'device_nickname.dart';
 import 'sync_discovery.dart';
 
 /// 可同步表白名单（主题对话三表为 INTEGER 自增 id 主键，2026-09-05 加入——
@@ -55,7 +56,7 @@ class SyncService {
   Future<void> startServer({String name = '', String id = ''}) async {
     if (_server != null) return;
     // 回退逻辑收敛为局部变量（原 _serverName/_serverId 未声明，属既有编译错误）
-    final resolvedName = name.isEmpty ? localDeviceName : name;
+    final resolvedName = name.isEmpty ? localBroadcastName : name;
     final resolvedId = id.isEmpty ? localDeviceId : id;
     _server = await HttpServer.bind(
       InternetAddress.anyIPv4,

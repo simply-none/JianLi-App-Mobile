@@ -20,6 +20,7 @@ import 'package:mime/mime.dart' as mime_pkg;
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import '../../../core/sync/device_nickname.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
@@ -102,7 +103,7 @@ class TransferClient {
       offerReq.add(utf8.encode(jsonEncode({
         'tid': tid,
         'from': {
-          'name': localDeviceName,
+          'name': localBroadcastName,
           'id': localDeviceId,
           'platform': localPlatform,
         },

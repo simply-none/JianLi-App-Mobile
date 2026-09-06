@@ -44,6 +44,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- 文件互传「打开所在文件夹」/「用应用打开」：本应用自持 FileProvider，把文件/目录包装为 content:// -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -54,6 +64,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- 文件互传「打开」弹层：Android 11+ 包可见性，需声明 VIEW */* 才能 query 到文件管理器/打开应用 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="*/*"/>
         </intent>
     </queries>
 </manifest>

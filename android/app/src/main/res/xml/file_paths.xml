@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 文件互传「打开」：对外共享文件/目录（接收目录在系统 Download/渐离App文件互传/，发送文件可在任意外部存储路径） -->
+<paths>
+    <external-path name="external" path="." />
+</paths>

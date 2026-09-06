@@ -170,6 +170,11 @@ test/
 **排障**：主题列表角标 0 条 → 计数口径必须与 PC `loadThemeCounts` 一致（`GROUP BY theme_id` **不过滤 is_deleted**，NULL 免疫）；消息列表软删过滤需 NULL 安全（`isNull() | equals('0')`）；输入框与筛选按钮等高 → **双端写死同值**（forui 控件内部高度随字号缩放漂移；`FTappable` 不上报固有高度，IntrinsicHeight 会把按钮压小）。
 
 ## 构建与验证
+
+> 📘 **从零开始（clone → 配环境 → 运行 → 打包）的完整逐步操作见仓库 `README.md`**，
+> 本文档只写「已知就够用」的命令速查与雷区。README 有更新时，两边的环境值（镜像地址、SDK 路径、AGP/compileSdk 版本）
+> 需保持一致。
+
 ### 环境前置（每个新 shell 必设，缺一必踩）
 ```bash
 # 中文用户名雷区（%TEMP% 含中文 → build_runner 自举编译报 Unable to read program.dill）+ 国内镜像
@@ -231,7 +236,7 @@ adb shell am start -n <applicationId>/.MainActivity   # 等价的显式启动方
 | 在线设备 id | `emulator-5554` |
 | applicationId（包名） | `com.jianli.jianli_mobile_app`（`android/app/build.gradle.kts`，namespace 同） |
 | minSdk / targetSdk | 24（`flutter.minSdkVersion`，Flutter 3.47 默认）/ 随 Flutter 插件默认 |
-| 版本号 | `pubspec.yaml` 的 `version: 1.0.0+1`（`+`前=versionName，`+`后=versionCode；发版先改这里） |
+| 版本号 | `pubspec.yaml` 的 `version: 26.9.6+1`（`+`前=versionName，`+`后=versionCode；发版先改这里） |
 | 签名现状（2026-09-06） | release 仍用 **debug key**（Flutter 模板 TODO，无 keystore）——自测可装可跑，**正式发布前必须按「生产打包」配正式签名** |
 | 应用名 / 图标 | 渐离App（AndroidManifest `android:label` + iOS Info.plist）；图标/启动屏由 `tool/make_icons.py` 生成，源图 `appLogo.png` |
 
@@ -276,15 +281,16 @@ flutter emulators --launch Pixel_8
 ### 生产打包（release APK / AAB，2026-09-06 全面拆解）
 
 #### ① 版本号
-- 唯一出处：`pubspec.yaml` 的 `version: 1.0.0+1`。`+` 前 = versionName（显示名），`+` 后 = versionCode（整数，**必须严格递增**才能覆盖安装）。发版第一步改这里。
+- 唯一出处：`pubspec.yaml` 的 `version: 26.9.6+1`。`+` 前 = versionName（显示名），`+` 后 = versionCode（整数，**必须严格递增**才能覆盖安装）。发版第一步改这里。
 - split APK 会自动在 versionCode 上加 `1000 × ABI 序号`（arm32=1/arm64=2/x64=3）；要强制用 pubspec 原值加 `-P force-version-code-ignoring-abi=true`。
 
 #### ② 签名（当前 release 签 debug key，正式发布前必做，一次性配置）
 1. 生成正式 keystore（本机一次生成、永久保管，**丢了无法再以同签名发版**；文件与口令勿外传/勿提交）：
    ```bash
    keytool -genkey -v -keystore android/app/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 36500 -alias upload
-   # keytool 不在 PATH 时用 Android Studio 自带 JBR：
-   # "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" <同上参数>
+   # keytool 不在 PATH 时用 Android Studio 自带 JBR（本机 Android Studio 装在 C:\apps\Android，注意不是默认位置）：
+   # "C:\apps\Android\Android Studio\jbr\bin\keytool.exe" <同上参数>
+   # 该 JBR 实测为 JDK 25.0.2，同时也是 Gradle 构建实际使用的 JDK（PATH 上的 java 可能仍是 1.8，以 Gradle 用的为准）
    ```
 2. 新建 `android/key.properties`（口令明文，勿提交）：
    ```properties
@@ -378,8 +384,8 @@ C:/apps/Android/AndroidSDK/build-tools/<版本号>/apksigner.bat verify --print-
 | password_vault | `/password-vault` | 移动端口令库（同信封格式 .jlv）；**视觉焕新**：**PageBanner 蓝(1)**（条目数）+ 门禁表单 pageTint+蓝渐变图标盘 + 条目首字母蓝 `accent(1)` 渐变 SquircleBox + StaggerList |
 | file_vault | `/file-vault` | 与 PC 完全兼容：wrappedKey 解包 + JLV1 parse + 导入/预览/删除；**视觉焕新**：**PageBanner 绿(2)**（文件数）+ 门禁表单 pageTint+绿渐变图标盘 + 文件行绿 `accent(2)` 渐变 SquircleBox |
 | qr | `/qr` | 生成（text/url/wifi/vCard/email）+ 识别（mobile_scanner）+ 历史；**视觉焕新**：顶部 **PageBanner 琥珀(3)**（FTabs 包进 Expanded，`expands:true` 雷区照旧）+ 历史页 `_QrHistoryTile`（琥珀图标盘）+ StaggerList |
-| sync | `/sync` | 扫描/手动 IP/推送/拉取，四种组合全通；**视觉焕新**：**PageBanner 青(5)**（发现设备/可同步表统计）+ 设备行图标青 `accent(5)` SquircleBox |
-| file_transfer | `/file-transfer` | 双端批量互传（PC⇆手机），与 sync 同协议同历史表 `file_transfer`（含 `error` 失败原因列）；接收目录 `Download/渐离App文件互传/`（Android 需存储权限「所有文件访问」，入页申请；未授权/创建失败回退沙盒 `Documents/渐离App文件互传/`，iOS 恒走沙盒回退）；sha256 双端校验；历史成功记录可「打开」(`open_filex`)/「分享」(`share_plus`)；记录区只显示当次批次（`_batchTid` 过滤，其他历史暂不展示）；记录标题下方有存储位置提示行（授权→`Download/渐离App文件互传/`，未授权→提示点「分享」经其他应用保存，iOS→沙盒 Documents，`_receiveHint` 随入页授权流程刷新）；**增强（2026-09-06 二批）**：重名覆盖策略(rename/overwrite)、最近设备记忆(离线可见)、断点续传、会话加密(AES-256-CTR，默认关)、接收询问弹窗(关自动接收时)、并发守卫(429)、后台保活(wakelock)、历史分页+自动清理；**视觉焕新**：**PageBanner 粉(4)**（收发统计）+ FDeterminateProgress 逐文件进度 + 设备扫描/手动 IP（模拟器 `10.0.2.2`）|
+| sync | `/sync` | 扫描/手动 IP/推送/拉取，四种组合全通；**视觉焕新**：**PageBanner 青(5)**（发现设备/可同步表统计）+ 设备行图标青 `accent(5)` SquircleBox；**#昵称**：发现设备区上方「我的设备」卡片展示本机随机昵称（`localNickname`，同 file_transfer 行机制）|
+| file_transfer | `/file-transfer` | 双端批量互传（PC⇆手机），与 sync 同协议同历史表 `file_transfer`（含 `error` 失败原因列）；接收目录 `Download/渐离App文件互传/`（Android 需存储权限「所有文件访问」，入页申请；未授权/创建失败回退沙盒 `Documents/渐离App文件互传/`，iOS 恒走沙盒回退）；sha256 双端校验；历史成功记录可「打开」（**底部弹层 `showFSheet`+`SheetSurface`**：打开所在文件夹 / 用应用打开，原生化 —— `MethodChannel('jianli/file_actions')`（`MainActivity.kt` 实现 `queryOpenableApps` 系统解析可打开应用+图标base64 / `openFolder` 打开所在文件夹 / `openWithApp` 用指定应用打开）+ 自持 `FileProvider` `${applicationId}.fileprovider`（`res/xml/file_paths.xml` 覆盖整外部存储）+ manifest `<queries>` 声明 `VIEW */*` 包可见性；Dart 封装 `services/file_actions.dart` 的 `FileActions`；**按钮文字仍是「打开」、图标 `folderOpen` 不变**）/「分享」(`share_plus`)；记录区只显示当次批次（`_batchTid` 过滤，其他历史暂不展示）；记录标题下方有存储位置提示行（授权→`Download/渐离App文件互传/`，未授权→提示点「分享」经其他应用保存，iOS→沙盒 Documents，`_receiveHint` 随入页授权流程刷新）；**增强（2026-09-06 二批）**：重名覆盖策略(rename/overwrite)、最近设备记忆(离线可见)、断点续传、会话加密(AES-256-CTR，默认关)、接收询问弹窗(关自动接收时，已改底部抽屉 `showFSheet`+`SheetSurface`+`GradientButton`「接收」主按钮，非破坏性按 UI 规范不用 `showFDialog`；`_AskReceiveSheet` 组件)、并发守卫(429)、后台保活(wakelock)、历史分页+自动清理；**视觉焕新**：**PageBanner 粉(4)**（收发统计）+ FDeterminateProgress 逐文件进度 + 设备扫描/手动 IP（模拟器 `10.0.2.2`）；**#昵称（随机设备名，2026-09-06 新增，三次细化）**：本机随机昵称便于识别收发双方。**基座格式** `【形容词1】【形容词2】的【名词】`（如「软萌俏皮的樱桃」）；词库三组（`lib/core/sync/device_nickname.dart` 的 `_nickAdj1/_nickAdj2/_nickNoun`，与 PC `transferModule.ts` 同源 `随即词库.md`）+ `ensureNickname()` 持久化（shared_preferences 键 `device_nickname`/`device_nickname_ts`，**默认留存 3 天**过期重随机；**迁移**：旧格式（带 `的渐离App`/`的App`/`的PC`/` (App)`/` (PC)` 任一后缀）一律立即重生为新基座格式）。`main()` 启动 `await ensureNickname()` 预载。**平台后缀规则**：本机展示（首页顶部「渐离」、同步页/文件互传页「我的设备」卡片）只用 `localNickname`（基座、**不带任何后缀**）；广播给对端的场景（`startServer`/`startResponder`/offer `me`/发送 `from` 应答，即 `sync_service`/`sync_discovery`/`transfer_server`/`transfer_client`）改取 `localBroadcastName` = `${localNickname}的App`，因此发现设备/历史设备列表里的对端名带 `的App` 后缀以便区分平台。|
 | screenshots | — | 未开工；移动端无法系统级监听截图，重设计为相册导入/分享收纳 |
 | 主题 | — | **5 套主题样式**（渐离紫 `zi` / 远峰蓝 `blue` / 森野绿 `green` / 落日橙 `orange` / 樱粉 `pink`，`AppTheme.styles`）+ 三态模式（跟随系统/浅色/深色）+ **阅览模式**（普通/大号正文字体，卡片 tag 切换），均 SharedPreferences 持久化；切换入口在首页与三个分组页右上角的**设置按钮 → 左侧设置面板**。桌面 25 套 token 映射 P2 |
 

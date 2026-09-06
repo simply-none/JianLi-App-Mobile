@@ -17,6 +17,7 @@ import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../providers/dashboard_providers.dart';
+import '../../../core/sync/device_nickname.dart';
 
 /// 首页
 class DashboardPage extends ConsumerWidget {
@@ -141,7 +142,7 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '渐离',
+                localNickname,
                 style: t.typography.body.lg.copyWith(
                   fontSize: 30,
                   fontWeight: FontWeight.w800,

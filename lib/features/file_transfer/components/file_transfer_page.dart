@@ -19,15 +19,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
+import '../../../app/ui/gradient_button.dart';
 import '../../../core/sync/sync_discovery.dart';
+import '../../../core/sync/device_nickname.dart';
 import '../../../core/sync/sync_service.dart';
 import '../../../core/db/app_database.dart';
 import '../models/recent_peers.dart';
@@ -36,6 +38,7 @@ import '../providers/file_transfer_providers.dart';
 import '../repositories/transfer_repository.dart';
 import '../services/transfer_client.dart';
 import '../services/transfer_server.dart';
+import '../services/file_actions.dart';
 
 /// 文件互传页
 class FileTransferPage extends ConsumerStatefulWidget {
@@ -78,9 +81,10 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
     // 拉起接收端路由（幂等注册 /file/*）
     ref.read(transferServerProvider);
     // 启动数据面 + 可被发现（与同步页同款）
+    await ensureNickname(); // #昵称：确保本机昵称已加载（main 已预载，此处幂等兜底）
     final service = ref.read(syncServiceProvider);
-    await service.startServer(name: localDeviceName, id: localDeviceId);
-    await _discovery.startResponder(name: localDeviceName, id: localDeviceId);
+    await service.startServer(name: localBroadcastName, id: localDeviceId);
+    await _discovery.startResponder(name: localBroadcastName, id: localDeviceId);
     final settings = ref.read(transferSettingsProvider);
     _autoAccept = settings.autoAccept;
     _renameOverwrite = settings.renameStrategy == 'overwrite';
@@ -90,7 +94,7 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
     _askSub = ref.read(transferServerProvider).askStream.listen((ask) {
       if (!mounted) return;
       setState(() => _ask = ask);
-      _showAskDialog(ask);
+      _showAskSheet(ask);
     });
     // 传输记录只显示当次批次：接收端 offer 登记时切到新批次
     _batchTidSub = ref.read(transferServerProvider).batchTidStream.listen((t) {
@@ -257,50 +261,20 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
     _log('已请求取消本批次');
   }
 
-  // #15 接收询问弹窗：等待用户选择接收/拒绝
-  void _showAskDialog(IncomingAsk ask) {
+  // #15 接收询问：关自动接收时弹出底部抽屉，等待用户选择接收/拒绝
+  void _showAskSheet(IncomingAsk ask) {
     unawaited(
-      showFDialog<void>(
+      showFSheet<void>(
         context: context,
-        barrierDismissible: false,
-        builder: (c, style, _) => FDialog(
-          builder: (c, style) => Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${ask.name} 发起文件传输', style: style.titleTextStyle),
-              const SizedBox(height: 8),
-              Text(
-                '共 ${ask.count} 个文件 / ${_formatSize(ask.total)}，是否接收？',
-                style: style.bodyTextStyle,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                spacing: 8,
-                children: [
-                  FButton(
-                    variant: FButtonVariant.outline,
-                    onPress: () {
-                      ref
-                          .read(transferServerProvider)
-                          .answerAsk(ask.tid, false);
-                      Navigator.of(c).pop();
-                    },
-                    child: const Text('拒绝'),
-                  ),
-                  FButton(
-                    onPress: () {
-                      ref
-                          .read(transferServerProvider)
-                          .answerAsk(ask.tid, true);
-                      Navigator.of(c).pop();
-                    },
-                    child: const Text('接收'),
-                  ),
-                ],
-              ),
-            ],
+        side: FLayout.btt,
+        builder: (ctx) => SheetSurface(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+          child: _AskReceiveSheet(
+            ask: ask,
+            onAnswer: (accept) {
+              ref.read(transferServerProvider).answerAsk(ask.tid, accept);
+              Navigator.of(ctx).pop();
+            },
           ),
         ),
       ).then((_) {
@@ -344,6 +318,34 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
               ],
             ),
             // 设备区
+            // 我的设备（本机随机昵称，#昵称）
+            AppCard(
+              child: Row(
+                children: [
+                  const Icon(FLucideIcons.smartphone, size: 22),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '我的设备',
+                          style: t.typography.body.xs
+                              .copyWith(color: t.colors.mutedForeground),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          localNickname,
+                          style: t.typography.body.sm
+                              .copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
             const SectionHeader(title: '发现设备'),
             AppCard(
               child: Column(
@@ -852,20 +854,207 @@ class _HistoryTile extends StatelessWidget {
   }
 
   Future<void> _open(BuildContext context, String path) async {
-    final res = await OpenFilex.open(path);
-    if (res.type != ResultType.done && context.mounted) {
-      showFToast(
-        context: context,
-        variant: FToastVariant.destructive,
-        title: const Text('无法打开'),
-        description: Text(res.message),
-      );
-    }
+    // 「打开」改为底部弹层：打开所在文件夹 + 用应用打开（原生化，#open-folder）
+    await showFSheet<void>(
+      context: context,
+      side: FLayout.btt,
+      builder: (ctx) => SheetSurface(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+        child: _OpenActionsSheet(path: path, pageContext: context),
+      ),
+    );
   }
 
   Future<void> _share(String path) async {
     await SharePlus.instance.share(
       ShareParams(files: [XFile(path)], text: '来自渐离文件互传'),
+    );
+  }
+}
+
+/// 「接收确认」底部抽屉：选择接收 / 拒绝。
+/// 非破坏性操作，按 UI 规范用底部抽屉 + GradientButton（主按钮）；破坏性确认才用 showFDialog。
+class _AskReceiveSheet extends StatelessWidget {
+  final IncomingAsk ask;
+  final void Function(bool accept) onAnswer;
+
+  const _AskReceiveSheet({required this.ask, required this.onAnswer});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          '${ask.name} 发起文件传输',
+          style: t.typography.body.lg.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '共 ${ask.count} 个文件 / ${_formatSize(ask.total)}，是否接收？',
+          style: t.typography.body.sm.copyWith(color: t.colors.mutedForeground),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          spacing: 10,
+          children: [
+            Expanded(
+              child: FButton(
+                variant: FButtonVariant.outline,
+                onPress: () => onAnswer(false),
+                child: const Text('拒绝'),
+              ),
+            ),
+            Expanded(
+              child: GradientButton(
+                label: '接收',
+                onPress: () => onAnswer(true),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 「打开」底部弹层：可选「打开所在文件夹」或用某个应用打开（图标 + 名称）
+class _OpenActionsSheet extends StatefulWidget {
+  final String path;
+  final BuildContext pageContext;
+
+  const _OpenActionsSheet({required this.path, required this.pageContext});
+
+  @override
+  State<_OpenActionsSheet> createState() => _OpenActionsSheetState();
+}
+
+class _OpenActionsSheetState extends State<_OpenActionsSheet> {
+  late final Future<List<OpenableApp>> _appsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _appsFuture = FileActions.queryOpenableApps(widget.path);
+  }
+
+  Future<void> _openFolder() async {
+    final ok = await FileActions.openContainingFolder(widget.path);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    if (!ok) {
+      showFToast(
+        context: widget.pageContext,
+        variant: FToastVariant.destructive,
+        title: const Text('无法打开所在文件夹'),
+      );
+    }
+  }
+
+  Future<void> _openApp(OpenableApp app) async {
+    final ok = await FileActions.openWithApp(
+      widget.path,
+      app.packageName,
+      app.activityName,
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    if (!ok) {
+      showFToast(
+        context: widget.pageContext,
+        variant: FToastVariant.destructive,
+        title: const Text('无法打开该文件'),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    final name = widget.path.split(RegExp(r'[/\\]')).last;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          name,
+          style: t.typography.body.lg.copyWith(fontWeight: FontWeight.w700),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '选择打开方式',
+          style: t.typography.body.xs.copyWith(color: t.colors.mutedForeground),
+        ),
+        const SizedBox(height: 12),
+        // 打开所在文件夹（仅目录型文件管理器可响应）
+        FTappable(
+          onPress: _openFolder,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                const Icon(FLucideIcons.folderOpen, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('打开所在文件夹', style: t.typography.body.sm),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const Divider(),
+        FutureBuilder<List<OpenableApp>>(
+          future: _appsFuture,
+          builder: (ctx, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: FCircularProgress(size: FCircularProgressSizeVariant.sm),
+                ),
+              );
+            }
+            final apps = snap.data ?? [];
+            if (apps.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  '没有可打开该文件的应用',
+                  style: t.typography.body.xs
+                      .copyWith(color: t.colors.mutedForeground),
+                ),
+              );
+            }
+            return Column(
+              children: [
+                for (final app in apps)
+                  FTappable(
+                    onPress: () => _openApp(app),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        children: [
+                          if (app.icon.isNotEmpty)
+                            Image.memory(app.icon, width: 22, height: 22)
+                          else
+                            const Icon(FLucideIcons.appWindow, size: 22),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(app.label, style: t.typography.body.sm),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }

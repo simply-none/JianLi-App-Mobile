@@ -21,6 +21,7 @@ import 'package:cryptography/cryptography.dart' as crypt;
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import '../../../core/sync/device_nickname.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -257,7 +258,7 @@ class TransferServer {
         'ok': true,
         'accepted': accepted,
         'me': {
-          'name': localDeviceName,
+          'name': localBroadcastName,
           'id': localDeviceId,
           'platform': localPlatform,
         },

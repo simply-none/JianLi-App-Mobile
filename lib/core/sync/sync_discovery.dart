@@ -8,6 +8,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'device_nickname.dart';
+
 /// 同步协议常量
 class SyncProtocol {
   SyncProtocol._();
@@ -117,7 +119,7 @@ class SyncDiscovery {
       final msg = utf8.decode(dg.data, allowMalformed: true);
       if (msg == SyncProtocol.discoverPacket) {
         final info = utf8.encode(
-          '${SyncProtocol.infoPrefix}${jsonEncode({'name': name.isEmpty ? localDeviceName : name, 'id': id.isEmpty ? localDeviceId : id, 'platform': platform.isEmpty ? localPlatform : platform})}',
+          '${SyncProtocol.infoPrefix}${jsonEncode({'name': name.isEmpty ? localBroadcastName : name, 'id': id.isEmpty ? localDeviceId : id, 'platform': platform.isEmpty ? localPlatform : platform})}',
         );
         _socket!.send(info, dg.address, dg.port);
       }

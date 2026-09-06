@@ -16,6 +16,7 @@ import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/sync/sync_discovery.dart';
+import '../../../core/sync/device_nickname.dart';
 import '../../../core/sync/sync_service.dart';
 
 /// 同步页
@@ -43,10 +44,11 @@ class _SyncPageState extends ConsumerState<SyncPage> {
   }
 
   Future<void> _init() async {
-    // 启动接收端 + 可被发现（带上本机名，对端设备列表才能显示可读名字）
+    // 启动接收端 + 可被发现（带上本机昵称，对端设备列表才能显示可读名字）
+    await ensureNickname(); // #昵称：确保本机昵称已加载（main 已预载，此处幂等兜底）
     final service = ref.read(syncServiceProvider);
-    await service.startServer(name: localDeviceName, id: localDeviceId);
-    await _discovery.startResponder(name: localDeviceName, id: localDeviceId);
+    await service.startServer(name: localBroadcastName, id: localDeviceId);
+    await _discovery.startResponder(name: localBroadcastName, id: localDeviceId);
   }
 
   @override
@@ -129,6 +131,34 @@ class _SyncPageState extends ConsumerState<SyncPage> {
               ],
             ),
             // 设备区
+            // 我的设备（本机随机昵称，#昵称）
+            AppCard(
+              child: Row(
+                children: [
+                  const Icon(FLucideIcons.smartphone, size: 22),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '我的设备',
+                          style: t.typography.body.xs
+                              .copyWith(color: t.colors.mutedForeground),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          localNickname,
+                          style: t.typography.body.sm
+                              .copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
             const SectionHeader(title: '发现设备'),
             AppCard(
               child: Column(
