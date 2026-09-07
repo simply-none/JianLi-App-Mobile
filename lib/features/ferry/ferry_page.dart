@@ -24,8 +24,16 @@ import 'ferry_server.dart';
 ///   - setOnPlatformPermissionRequest 授权摄像头（getUserMedia）
 ///   - setNavigationDelegate 的 onPageStarted/onPageFinished/onProgress/
 ///     onWebResourceError 全部打到 dev.log（[FerryPage] 前缀）
-/// 页面保持「只一个占满内容区的 WebView」，诊断全走 logcat。确认新插件能正常渲染后，
+/// 页面保持「只一个占满内容的 WebView」，诊断全走 logcat。确认新插件能正常渲染后，
 /// 再恢复完整版 UI（PageBanner / 资产面板 / 自检卡片 / 加载进度）。
+///
+/// WebView 内「下载」适配（webview_flutter 4.x 未暴露 DownloadListener）：
+///   - onPageFinished 注入 JS：捕获阶段拦截 a[download] 的 blob: 链接点击，
+///     preventDefault 后 fetch blob → POST /ferry-save?name=<文件名>
+///   - 兜底：Android 下载事件会以「导航」形式到达 onNavigationRequest，
+///     见 blob: URL 即 prevent，并用 JS 按 href 反查 a[download] 取文件名保存
+///   - 落盘：FerryServer 原生写系统 Download/渐离App隔空互传/（无权限回退沙盒），
+///     成功后经 onSaved 流回页面显示提示条
 class FerryPage extends ConsumerStatefulWidget {
   const FerryPage({super.key});
 
@@ -46,6 +54,10 @@ class _FerryPageState extends ConsumerState<FerryPage> {
   List<String> _qyferryAssets = [];
   final List<String> _debug = [];
 
+  // WebView 内「下载」适配：订阅落盘成功事件，在 WebView 底部显示提示条。
+  StreamSubscription<String>? _savedSub;
+  String? _lastSaved;
+
   @override
   void initState() {
     super.initState();
@@ -65,6 +77,23 @@ class _FerryPageState extends ConsumerState<FerryPage> {
     } catch (e, st) {
       dev.log('[FerryPage] camera permission error', error: e, stackTrace: st);
     }
+    // WebView 内「下载」要落盘系统 Download：入页申请一次存储权限
+    // （对齐文件互传页；拒绝时 FerryServer 自动回退沙盒 Documents）。
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        if (!await Permission.manageExternalStorage.isGranted &&
+            !await Permission.storage.isGranted) {
+          await [Permission.manageExternalStorage, Permission.storage].request();
+        }
+      } catch (e, st) {
+        dev.log('[FerryPage] storage permission error', error: e, stackTrace: st);
+      }
+    }
+    // 下载落盘成功 → 底部提示条
+    _savedSub = _server.onSaved.listen((path) {
+      if (!mounted) return;
+      setState(() => _lastSaved = path);
+    });
     try {
       final url = await _server.start();
       dev.log('[FerryPage] server url=$url');
@@ -83,13 +112,28 @@ class _FerryPageState extends ConsumerState<FerryPage> {
         ..setNavigationDelegate(
           NavigationDelegate(
             onPageStarted: (url) => dev.log('[FerryPage] pageStarted: $url'),
-            onPageFinished: (url) => dev.log('[FerryPage] pageFinished: $url'),
+            onPageFinished: (url) {
+              dev.log('[FerryPage] pageFinished: $url');
+              // 注入「下载」桥：拦截 a[download] 的 blob: 点击 → POST /ferry-save
+              _injectDownloadBridge();
+            },
             onProgress: (progress) {
               dev.log('[FerryPage] progress: $progress');
               if (progress >= 100) {
                 // webview_flutter 的 progress 可靠，100 即加载完成。
                 dev.log('[FerryPage] load complete (progress=100)');
               }
+            },
+            onNavigationRequest: (request) {
+              // 兜底：Android 上 WebView 下载事件会以导航形式到达这里
+              // （webview_flutter_android 把 DownloadListener 硬编码转发为导航）。
+              // 点「下载」后 blob: URL 若未被注入 JS 拦到，在此 prevent 并补存。
+              if (request.url.startsWith('blob:')) {
+                dev.log('[FerryPage] download via navigation: ${request.url}');
+                _saveBlobByJs(request.url);
+                return NavigationDecision.prevent;
+              }
+              return NavigationDecision.navigate;
             },
             onWebResourceError: (error) => dev.log(
               '[FerryPage] webResourceError: ${error.description} url=${error.url} type=${error.errorType}',
@@ -174,6 +218,79 @@ class _FerryPageState extends ConsumerState<FerryPage> {
     }
   }
 
+  // ---- WebView 内「下载」适配 ----
+  // webview_flutter 4.x 未暴露 DownloadListener（android 端把下载事件硬编码
+  // 转发为导航且 blob: URL 原生无法下载），因此用「注入 JS + 本地服务落盘」桥接。
+
+  /// 下载桥 JS：定义 __jianliFerrySaveBlob(blobUrl, name)（fetch blob →
+  /// POST /ferry-save，文件名缺省按 MIME 推扩展名 + 时间戳）；并在捕获阶段
+  /// 拦截 a[download] 的 blob: 链接点击，preventDefault 后转交落盘。
+  /// window 哨兵防重复注入。
+  static const String _downloadBridgeJs = '''
+(function () {
+  if (window.__jianliFerryBridge) return;
+  window.__jianliFerryBridge = true;
+  window.__jianliFerrySaveBlob = function (blobUrl, suggestedName) {
+    fetch(blobUrl).then(function (r) { return r.blob(); }).then(function (b) {
+      var name = suggestedName;
+      if (!name) {
+        var ext = (b.type || '').split('/').pop().replace(/[^a-zA-Z0-9]/g, '');
+        name = '隔空互传_' + Date.now() + (ext && ext.length <= 5 ? '.' + ext : '');
+      }
+      return Promise.all([name, b.arrayBuffer()]);
+    }).then(function (pair) {
+      return fetch(location.origin + '/ferry-save?name=' + encodeURIComponent(pair[0]), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: pair[1]
+      }).then(function (r) { return r.json(); });
+    }).then(function (j) {
+      console.log('[FerrySave] ' + (j && j.ok ? 'saved ' + j.path : 'failed ' + (j && j.reason)));
+    }).catch(function (err) {
+      console.log('[FerrySave] error ' + err);
+    });
+  };
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    var a = t && t.closest ? t.closest('a[download]') : null;
+    if (!a) return;
+    var href = a.getAttribute('href') || '';
+    if (href.indexOf('blob:') !== 0) return;
+    e.preventDefault();
+    window.__jianliFerrySaveBlob(href, a.getAttribute('download') || '');
+  }, true);
+})();
+''';
+
+  Future<void> _injectDownloadBridge() async {
+    try {
+      await _controller?.runJavaScript(_downloadBridgeJs);
+    } catch (e) {
+      dev.log('[FerryPage] inject download bridge failed: $e');
+    }
+  }
+
+  /// blob: URL 兜底保存（onNavigationRequest 拦到但点击拦截未生效时）：
+  /// 按 href 反查页面上的 a[download] 取文件名，交给桥函数落盘。
+  Future<void> _saveBlobByJs(String blobUrl) async {
+    final escaped = blobUrl.replaceAll(r'\', r'\\').replaceAll("'", r"\'");
+    final js = '''
+(function () {
+  if (typeof window.__jianliFerrySaveBlob !== 'function') return 'no-bridge';
+  var url = '$escaped';
+  var a = document.querySelector('a[href="' + url + '"]');
+  window.__jianliFerrySaveBlob(url, a ? (a.getAttribute('download') || '') : '');
+  return 'ok';
+})();
+''';
+    try {
+      final r = await _controller?.runJavaScriptReturningResult(js);
+      dev.log('[FerryPage] blob fallback save: $r');
+    } catch (e) {
+      dev.log('[FerryPage] blob fallback save failed: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // 隔离测试版：去掉所有装饰，页面只剩一个占满内容区的 WebView。
@@ -208,14 +325,47 @@ class _FerryPageState extends ConsumerState<FerryPage> {
       return const Center(child: Text('WebView 初始化失败'));
     }
     // 只一个占满内容区的 WebView；所有生命周期回调打到 dev.log，看 logcat 判断。
-    return WebViewWidget(
-      key: _webViewKey,
-      controller: _controller!,
+    // WebView 内「下载」保存成功时在底部显示提示条（点击关闭）。
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: WebViewWidget(
+            key: _webViewKey,
+            controller: _controller!,
+          ),
+        ),
+        if (_lastSaved != null)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: GestureDetector(
+              onTap: () => setState(() => _lastSaved = null),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: context.theme.colors.card,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: context.theme.colors.border),
+                ),
+                child: Text(
+                  '已保存：$_lastSaved',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.theme.typography.body.sm
+                      .copyWith(color: context.theme.colors.mutedForeground),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
   @override
   void dispose() {
+    _savedSub?.cancel();
     // 本地服务为单例常驻，其他入口可复用，不在此关闭。
     super.dispose();
   }
