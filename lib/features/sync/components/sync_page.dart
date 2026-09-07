@@ -17,7 +17,9 @@ import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/sync/sync_discovery.dart';
 import '../../../core/sync/device_nickname.dart';
+import '../../../core/sync/sync_log.dart';
 import '../../../core/sync/sync_service.dart';
+import 'sync_log_list.dart';
 
 /// 同步页
 class SyncPage extends ConsumerStatefulWidget {
@@ -35,7 +37,6 @@ class _SyncPageState extends ConsumerState<SyncPage> {
   };
   bool _scanning = false;
   Map<String, PeerDevice> _peers = const {};
-  final List<String> _logs = [];
 
   @override
   void initState() {
@@ -65,18 +66,10 @@ class _SyncPageState extends ConsumerState<SyncPage> {
       setState(() {
         _peers = found;
         _scanning = false;
-        _log('扫描到 ${found.length} 台设备');
       });
+      // 日志统一进全局 provider（App 生命周期内保留，两端共享同一份事件流）
+      ref.read(syncLogProvider.notifier).log('扫描到 ${found.length} 台设备');
     }
-  }
-
-  void _log(String msg) {
-    setState(
-      () => _logs.insert(
-        0,
-        '${DateTime.now().toIso8601String().substring(11, 19)}  $msg',
-      ),
-    );
   }
 
   /// 向对端推送选中的表（手机 → PC 方向）
@@ -85,9 +78,9 @@ class _SyncPageState extends ConsumerState<SyncPage> {
     final tables = _selectedTable.entries
         .where((e) => e.value)
         .map((e) => e.key);
+    // 成功/失败日志由 SyncService 统一写入（中性格式，与对端字面相同），此处不再重复记
     for (final table in tables) {
-      final result = await service.sendTable(peer, table);
-      _log(result.message);
+      await service.sendTable(peer, table);
     }
   }
 
@@ -97,15 +90,17 @@ class _SyncPageState extends ConsumerState<SyncPage> {
     final tables = _selectedTable.entries
         .where((e) => e.value)
         .map((e) => e.key);
+    // 同 _send：日志由 SyncService 统一写入
     for (final table in tables) {
-      final result = await service.fetchTable(peer, table);
-      _log(result.message);
+      await service.fetchTable(peer, table);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    // 同步日志（全局内存态：主动/被动事件都在内，与对端看到相同条目）
+    final logs = ref.watch(syncLogProvider);
     return FScaffold(
       header: FHeader.nested(
         title: const Text('局域网同步'),
@@ -298,7 +293,9 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                               ),
                             };
                           });
-                          _log('已添加手动设备 $ip');
+                          ref
+                              .read(syncLogProvider.notifier)
+                              .log('已添加手动设备 $ip');
                         },
                         child: const Text('添加'),
                       ),
@@ -327,24 +324,7 @@ class _SyncPageState extends ConsumerState<SyncPage> {
             // 日志
             const SectionHeader(title: '同步日志'),
             AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_logs.isEmpty)
-                    Text(
-                      '暂无记录',
-                      style: t.typography.body.xs.copyWith(
-                        color: t.colors.mutedForeground,
-                      ),
-                    )
-                  else
-                    for (final l in _logs.take(10))
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Text(l, style: t.typography.body.xs),
-                      ),
-                ],
-              ),
+              child: SyncLogList(logs: logs),
             ),
           ],
         ),

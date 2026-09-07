@@ -165,6 +165,84 @@ dart analyze lib/core/db/app_database.dart
 - **模拟器雷区**：NAT 广播不通扫不到宿主 → 同步页支持手动填 IP，Android 模拟器固定填 `10.0.2.2`；真机走正常广播。PC 端同步入口：系统与资源 → 局域网同步（扫描 / 手动 IP(ip:port) / 推送 / 拉取）。
 - vault 类数据跨设备：密钥为设备绑定/口令派生，**不能直传设备密钥**，需用户口令重新封装（会话加密 P3）。
 
+### ⚠️ 同步写入必须手动通知 watch 流（2026-09-07 定位：「拉取成功但界面空白」）
+**现象**：同步日志显示「已拉取 conversation：5 行」等成功记录（说明数据确实拉到了、也写进库了），
+但移动端**所有**列表页（主题对话 / 待办 / 笔记 / 习惯…）**全都显示不出**刚同步来的数据。
+
+**根因（已对照 drift 2.34.4 源码核实，非迁移逻辑、非列不匹配）**：
+1. 写入本身是成功的——`_upsertRow` 用 `customStatement` 执行 `INSERT OR REPLACE`，SQLite 层面行已落库，
+   日志 `written` 计数也为真（此前还额外确认：`appDatabaseProvider` 是普通 `Provider` 单例，
+   sync 与 UI 共用同一 `AppDatabase`、同一库文件，不存在「写到别的库」）。
+2. 真正的坑：drift 的 **`customStatement` 不会自动通知（invalidate）`.watch()` 查询流**。
+   drift 源码 `lib/src/runtime/api/connection_user.dart` 第 429–432 行明确写着：
+   > "This method does **not** update stream queries on this drift database. To run custom statements
+   > that update data, please use customInsert or customUpdate instead. You can also call
+   > **markTablesUpdated** manually after awaiting customStatement."
+3. 后果：列表页的 `StreamProvider`（`watchThemes()` / `watchMessages()` / 笔记流…）在拉取后**不重跑查询**，
+   一直返回拉取前的旧快照（通常是空列表）→ 「记录说拉到了、界面啥也没有」。
+   **与下方「笔记标签」小节那条「勿用 customUpdate，后者不会使 query 流失效」是同一类坑**，
+   只是同步这条路径一直没人给 `customStatement` 补通知。
+
+**修复（已落地 `lib/core/sync/sync_service.dart`）**：
+1. `_upsertRow` 改为 `Future<bool>`（返回是否真的写入了至少一列）；`cols.isEmpty`（列名全部对不上）时不写——
+   让上层 `written` 反映**真实写入**而非尝试次数，日志不再虚报。
+2. **拉取（`fetchTable`）与推送（`POST /sync`）两个分支，各自在整表写入循环结束后**调用一次
+   `_db.notifyUpdates({TableUpdate(table)})` 手动触发刷新（放在循环**外**，避免逐行刷新）。
+   走 `notifyUpdates` 而非 `markTablesUpdated`，是因为 `TableUpdate(表名字符串)` 直接吃表名，
+   无需建「表名 → drift Table 对象」映射，类型更安全。
+3. 本文件补 `import 'package:drift/drift.dart';`——**`app_database.dart` 的 import 不会向下传递**，
+   不补则 `TableUpdate` 不可见（编译错误）。
+
+**铁律（改同步/新增写库逻辑时必须遵守）**：
+- 凡走 `customStatement` / `customUpdate` / `customInsert` 等**原始 SQL 写库，写后必须手动通知**
+  （`notifyUpdates({TableUpdate(表名)})` 或 `markTablesUpdated([Table对象])`），否则该表 `.watch()` 永不刷新。
+- 能用 drift **typed API**（`into().insertOnConflictUpdate(...)` / `update()` / `delete()`）就优先用——
+  它们会自动通知 watch 流（笔记标签回写即走 typed，见下节）。
+- 本工程原始 SQL 写库目前**只有 `_upsertRow` 一处**，改它时两个 `notifyUpdates` 别漏；新增同类逻辑照抄此模式。
+
+### ✅ 两端共享同步日志（2026-09-07 落地：被动端自记 + 中性统一格式）
+**现象**：只有**主动操作**的那端看得到同步日志——手机拉取/推送只有手机记，PC 推送/拉取只有 PC 记；被动端（被推 / 被拉）UI 完全静默。
+
+**根因**：两端日志都只记录「自己主动发起」的动作。
+- 手机：日志原先是 `_SyncPageState._logs`（**页面级内存**），只有 `_send`/`_fetch` 追加；服务层够不着，被动事件无处记录。
+- PC：日志是 Pinia `useSync.logs`，只有 `push`/`pull`/`scan` 追加；被动事件只在主进程 `console.log`（`/export`、`/sync` 分支），UI 拿不到。
+
+**设计（关键：让两端产出字面相同的条目）**：
+- 文案只写「**动作 + 表 + 行数**」，**不写「谁→谁」**——各端视角不同（我→对端 / 对端→我），
+  且被动端无从得知对端平台，写了必然不一致。
+- 动作判定两端都能**独立得出，无需任何协议字段**：
+  - **推送** = 我调用 `sendTable/pushTables`（主动推），**或** 我处理了 `POST /sync`（被动收）
+  - **拉取** = 我调用 `fetchTable/pullTables`（主动拉），**或** 我处理了 `GET /export`（被动供）
+- 行数统一取「本次传输行数」（接收端写入数 / 发送端导出数，正常相等）。
+- 于是同一次事件两端是同一行，例如 `16:30:12  推送 todo_list：5 行`。
+- 注：扫描 / 手动添加设备是**本机发现行为**，天然只有本机有，两端不会相同（可接受）。
+
+**改动**：
+- 新增 `lib/core/sync/sync_log.dart`：`SyncLogLevel` / `SyncLogEntry` / `SyncLogController` / `syncLogProvider`
+  （`NotifierProvider`，新→旧，上限 **50** 与 PC 对齐，**仅内存态**，重启清空）。
+  放 `core/sync/` 是为了让 `SyncService` 与页面都能用，**避免 core→feature 反向依赖**。
+- `SyncService` 构造加第二参 `SyncLogController`；`syncServiceProvider` 用
+  `ref.read(syncLogProvider.notifier)` 注入。四个分支各记一条：
+  `fetchTable`(拉) / `sendTable`(推) / `POST /sync` 处理(被推→记「推送」) / `GET /export` 处理(被拉→记「拉取」)；失败记 `error`。
+- `sync_page.dart`：删掉页面级 `_logs`/`_log`，改 `ref.watch(syncLogProvider)`；
+  **`_send`/`_fetch` 不再自己记日志**（否则与服务端重复）；扫描 / 手动添加仍走 provider。
+- PC `syncModule.ts`：`import { win } from "../mainWindow.ts"` + `win?.webContents.send("sync:log", {msg, level})`，
+  在 `/export`、`/sync` 两分支（含失败）上报——复用 `countdown.ts` / `browserDownload.ts` 的既有主→渲染推送模式。
+- PC `useSync.ts`：`window.ipcRenderer.on("sync:log", ...)` 并入 `logs`。
+  ⚠️ **勿用 `removeAllListeners`**（会误杀其它模块常驻监听，见 `useCountdown` 顶部注释）。
+
+### ✅ 移动端同步日志支持滚动（2026-09-07）
+**现象**：日志是页面 `ListView` 里的裸 `Column` 且硬编码 `.take(10)`，条目一多只能整页拖动、超出可视区难回溯。
+**修复**：新增组件 `lib/features/sync/components/sync_log_list.dart`——
+`ConstrainedBox(maxHeight: 260)` + 内层 `ListView.separated(shrinkWrap: true)`
+（等价 CSS `max-height + overflow:auto`，与 PC `SyncLog.vue` 的 260px 对齐）；
+条数上限交给 `SyncLogController`（50），**UI 层不再截断**。
+级别着色复用已确认 token：ok → `t.colors.primary`、error → `t.colors.destructive`、info → `t.colors.foreground`。
+
+⚠️ **顺带发现（未改，P3，需你确认后再动）**：PC `pullTables` 里 `upsert` 硬编码 `primaryKey: "key"`，
+而 `/sync` 分支用的是 `tablePk(table)`——**PC 主动拉取主题对话三表（INTEGER `id` 主键）会因找不到 `key` 列而报错**。
+属既有 bug，本次未动。
+
 ## 笔记标签双端契约（note_tags，2026-09-05 打通）
 **同步问题结论（需求变更记录）**：用户反馈「PC 同步数据到移动端后看不到笔记标签」。分析结论：**数据其实早已同步，是移动端从未读取/展示**——
 - 标签定义存 `basic_info` 表 `key='note_tags'` 行：桌面端 `src/utils/common.ts` 的 `getStore/setStore` → `electron/main/module/store.ts` 的 `get-store/set-store` IPC，**读写的就是 basic_info 表**，value 为 JSON 数组 `[{key: uuid, name, color:'#RRGGBB', createTime, updateTime, deleted?}]`；

@@ -8,12 +8,14 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
 import 'device_nickname.dart';
 import 'sync_discovery.dart';
+import 'sync_log.dart';
 
 /// 可同步表白名单（主题对话三表为 INTEGER 自增 id 主键，2026-09-05 加入——
 /// INSERT OR REPLACE 按 id 幂等，桌面端 tablePk 同步适配）
@@ -47,9 +49,12 @@ void registerRouteHandler(_RouteMatcher matcher, _RouteHandler handler) {
 
 /// 同步服务
 class SyncService {
-  SyncService(this._db);
+  SyncService(this._db, this._log);
 
   final AppDatabase _db;
+
+  /// 同步日志（被动端事件也写入，使两端看到相同日志；见 sync_log.dart 说明）
+  final SyncLogController _log;
   HttpServer? _server;
 
   /// 启动接收端（HTTP 数据面）；name/id 为空时回退本机信息
@@ -87,8 +92,11 @@ class SyncService {
         }
         try {
           final rows = await exportTable(table);
+          // 被动端：对端来拉，动作是「拉取」，与对端 fetchTable 里那条字面相同
+          _log.log('拉取 $table：${rows.length} 行', level: SyncLogLevel.ok);
           _json(request, {'ok': true, 'table': table, 'rows': rows});
         } catch (e) {
+          _log.log('拉取 $table 失败：$e', level: SyncLogLevel.error);
           _json(request, {'ok': false, 'error': '$e'}, 500);
         }
         return;
@@ -105,11 +113,16 @@ class SyncService {
           }
           var written = 0;
           for (final row in rows.whereType<Map<String, dynamic>>()) {
-            await _upsertRow(table, row);
-            written++;
+            if (await _upsertRow(table, row)) written++;
           }
+          // 原始 SQL 写入不会自动通知 drift 的 watch 流，整表写完后手动触发刷新，
+          // 否则列表页停留在写入前的旧快照（「拉取/推送成功但界面空白」的根因）。
+          _db.notifyUpdates({TableUpdate(table)});
+          // 被动端：对端来推，动作是「推送」，与对端 sendTable 里那条字面相同
+          _log.log('推送 $table：$written 行', level: SyncLogLevel.ok);
           _json(request, {'ok': true, 'written': written});
         } catch (e) {
+          _log.log('推送 $table 失败：$e', level: SyncLogLevel.error);
           _json(request, {'ok': false, 'error': '$e'}, 500);
         }
         return;
@@ -147,11 +160,18 @@ class SyncService {
   /// 幂等写入一行（INSERT OR REPLACE，按 map 的键拼列）
   /// 关键容错：桌面端表带旧 SQL 层遗留列（id/name/value/created_at 等），
   /// 移动端表未必有；写入前按本表实际列过滤，保证双端 schema 有差异时也能同步。
-  Future<void> _upsertRow(String table, Map<String, dynamic> row) async {
-    if (row.isEmpty) return;
+  /// 返回值：是否真正写入了至少一列（cols 为空则不写，便于上层准确计数）。
+  ///
+  /// ⚠️ 坑（2026-09-07 定位）：这里走原始 SQL `customStatement`，而 drift 的
+  /// `customStatement` **不会自动通知 watch 流**（drift 源码 connection_user.dart
+  /// 已明注）。若只写不通知，列表页的 `.watch()` 会一直停留在拉取前的空快照，
+  /// 表现为「拉取日志显示已写入 N 行，但界面列表空空」。**整表写完后调用方必须
+  /// `_db.notifyUpdates({TableUpdate(table)})` 手动触发刷新**（见 fetchTable / POST /sync）。
+  Future<bool> _upsertRow(String table, Map<String, dynamic> row) async {
+    if (row.isEmpty) return false;
     final valid = await _columnsOf(table);
     final cols = row.keys.where(valid.contains).toList();
-    if (cols.isEmpty) return;
+    if (cols.isEmpty) return false;
     final colSql = cols.map((c) => '"$c"').join(', ');
     final placeholders = List.filled(cols.length, '?').join(', ');
     final values = cols.map((c) {
@@ -161,6 +181,7 @@ class SyncService {
       'INSERT OR REPLACE INTO "$table" ($colSql) VALUES ($placeholders)',
       values,
     );
+    return true;
   }
 
   /// 导出某表全部行为同步载荷
@@ -188,13 +209,24 @@ class SyncService {
       final body = await utf8.decoder.bind(res).join();
       client.close();
       final json = jsonDecode(body) as Map<String, dynamic>;
+      final ok = res.statusCode == 200 && json['ok'] == true;
+      // 主动端推送：行数取「对端实际写入数」，与对端 POST /sync 分支那条字面相同
+      if (ok) {
+        _log.log('推送 $table：${json['written']} 行', level: SyncLogLevel.ok);
+      } else {
+        _log.log(
+          '推送 $table 失败：${json['error']}',
+          level: SyncLogLevel.error,
+        );
+      }
       return (
-        ok: res.statusCode == 200 && json['ok'] == true,
+        ok: ok,
         message: json['ok'] == true
             ? '已同步 $table：${json['written']} 行'
             : '${json['error']}',
       );
     } catch (e) {
+      _log.log('推送 $table 失败：$e', level: SyncLogLevel.error);
       return (ok: false, message: '发送失败：$e');
     }
   }
@@ -223,11 +255,15 @@ class SyncService {
           .whereType<Map<String, dynamic>>();
       var written = 0;
       for (final row in rows) {
-        await _upsertRow(table, row);
-        written++;
+        if (await _upsertRow(table, row)) written++;
       }
+      // 同 POST /sync 分支：原始 SQL 写后手动通知 watch 流刷新
+      _db.notifyUpdates({TableUpdate(table)});
+      // 主动端拉取：与对端 GET /export 分支那条字面相同
+      _log.log('拉取 $table：$written 行', level: SyncLogLevel.ok);
       return (ok: true, message: '已拉取 $table：$written 行');
     } catch (e) {
+      _log.log('拉取 $table 失败：$e', level: SyncLogLevel.error);
       return (ok: false, message: '拉取失败：$e');
     }
   }
@@ -235,5 +271,8 @@ class SyncService {
 
 /// 同步服务 provider
 final Provider<SyncService> syncServiceProvider = Provider<SyncService>(
-  (ref) => SyncService(ref.watch(appDatabaseProvider)),
+  (ref) => SyncService(
+    ref.watch(appDatabaseProvider),
+    ref.read(syncLogProvider.notifier),
+  ),
 );
