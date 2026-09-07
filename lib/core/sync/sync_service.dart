@@ -102,10 +102,13 @@ class SyncService {
         return;
       }
       if (request.uri.path == '/sync' && request.method == 'POST') {
+        // 提前在 try 外声明：Dart 的 catch 子句是独立作用域，
+        // 访问不到 try 块内的局部变量（日志要在 catch 里带上表名，故提到外层）
+        String? table;
         try {
           final body = await utf8.decoder.bind(request).join();
           final payload = jsonDecode(body) as Map<String, dynamic>;
-          final table = payload['table'] as String?;
+          table = payload['table'] as String?;
           final rows = (payload['rows'] as List?) ?? const [];
           if (table == null || !kSyncableTables.contains(table)) {
             _json(request, {'ok': false, 'error': 'table 不在白名单'}, 400);
@@ -122,7 +125,10 @@ class SyncService {
           _log.log('推送 $table：$written 行', level: SyncLogLevel.ok);
           _json(request, {'ok': true, 'written': written});
         } catch (e) {
-          _log.log('推送 $table 失败：$e', level: SyncLogLevel.error);
+          _log.log(
+            '推送 ${table ?? '未知表'} 失败：$e',
+            level: SyncLogLevel.error,
+          );
           _json(request, {'ok': false, 'error': '$e'}, 500);
         }
         return;

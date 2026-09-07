@@ -231,6 +231,11 @@ dart analyze lib/core/db/app_database.dart
 - PC `useSync.ts`：`window.ipcRenderer.on("sync:log", ...)` 并入 `logs`。
   ⚠️ **勿用 `removeAllListeners`**（会误杀其它模块常驻监听，见 `useCountdown` 顶部注释）。
 
+⚠️ **Dart 作用域雷区（本次实踩）**：`try {}` 块内声明的局部变量，在 `catch {}` 子句里**不可见**
+（两者是独立作用域）。`/sync` 分支要在 catch 里记带表名的日志，必须把 `String? table;` 提前声明到 `try` 外；
+（对比：`/export` 分支的 `table` 本来就声明在 `try` 之前，所以同样写法没报错。
+`fetchTable`/`sendTable` 的 `table` 是方法参数，天然可见，不受影响。）
+
 ### ✅ 移动端同步日志支持滚动（2026-09-07）
 **现象**：日志是页面 `ListView` 里的裸 `Column` 且硬编码 `.take(10)`，条目一多只能整页拖动、超出可视区难回溯。
 **修复**：新增组件 `lib/features/sync/components/sync_log_list.dart`——
