@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 31+ 的数据提取规则：同时启用「云备份」与「设备间传输」，覆盖库文件(file)、设置(sharedpref)、
+     沙盒文件(file)、外部文件(external)。db.sqlite 现位于 <filesDir>/databases/db.sqlite
+     （getApplicationSupportDirectory 的返回，即 file 备份域），属默认备份根，这里显式包含以确保
+     重装后用户数据可恢复、所有表都不被擦除。 -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="file" path="." />
+        <include domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="." />
+        <include domain="sharedpref" path="." />
+        <include domain="file" path="." />
+        <include domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>
