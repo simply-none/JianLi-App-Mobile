@@ -27,6 +27,7 @@ agent_created: true
 6. 【UI 约定·forui】全 App UI 组件用 **forui（shadcn 风格）**，详见下方「UI 体系（forui）」。三条铁律：① Material 导入统一用 `package:material_ui/material_ui.dart`（**严禁与 `flutter/material.dart` 混用**——两套平行 Material 类，混用会断 Theme 继承链、ThemeData 类型不兼容）；② 严禁硬编码颜色，取色一律 `context.theme.colors.*`，字体一律 `context.theme.typography.body.*`；③ feature-first 原子拆分，单文件职责单一，每个功能/组件带中文注释。
 7. 【同步白名单】新增可同步表**默认 TEXT 主键**（INTEGER 主键表需双端 pk 适配，先例见「主题对话」小节），且同时改两端白名单：移动端 `lib/core/sync/sync_service.dart` 的 `kSyncableTables` + 桌面端 `electron/main/module/sync/syncModule.ts` 的 `SYNCABLE_TABLES` 与 `tablePk()`（PC UI 另有 `src/store/useSync.ts` 的 `SYNC_TABLES`；改桌面端需重启 Electron）。幂等写只有 `INSERT OR REPLACE`（移动端）/ `ON CONFLICT(pk) DO UPDATE`（桌面端 newSql upsert），传输当前为明文 JSON（仅限受信局域网，会话加密是 P3 TODO）。
 8. 【文档同步】每次大改动后同步更新本 SKILL.md（功能域状态、新雷区、新约定）；发现文档与代码不符，直接修正文档。
+9. 【底部抽屉键盘兼容（2026-09-07 修过的坑，全局适用）】**任何含输入框的底部抽屉**（`showFSheet(side: FLayout.btt)`）都要防键盘压扁：forui `showFSheet` 默认 `mainAxisMaxRatio = 9/16`，键盘弹起时路由可用高度 =「屏幕高 − 键盘高」，抽屉最大高度被压成剩余高度的 56% → 内容被压成极矮一条、看不到。修复范式：统一走封装入口（如 `todo_sheets.dart` 的 `_showTodoSheet`），设 `mainAxisMaxRatio: null` + `resizeToAvoidBottomInset: true`，高度改由 sheet 承载组件（如 `_sheetScaffold`）的 `maxRatio(0.9)` 决定，键盘弹起时整张抽屉抬到键盘上方、内容在 `SingleChildScrollView` 内滚动。该承载组件的 `keyboard:` 参数**不可**再加 `viewInsets.bottom` 到外壳 padding（那会把内容高度再吃掉一截→重新压扁），表单类只需一点点固定底部呼吸距离即可。
 
 ## 技术栈与桌面端对应
 | 移动端 | 桌面端 | 说明 |
@@ -168,6 +169,43 @@ test/
 **引用发起（2026-09-05）**：工具条「引用」按钮 + 长按菜单「引用此对话」→ 引用草稿（`_pendingRefIds`，工具条 chip 可点掉）→ 发送时按消息归属分类写入 ref_ids（同主题）/ cross_refs（跨主题，`addMessage(refIds:, crossRefs:)`）。引用选择抽屉 `showFilterSheet(title: 引用对话)`：模糊搜索（内容/主题标题 contains，小写化）+ 全主题消息列表（排除软删、按时间倒序、take 80 上限提示）、多选圆点勾选，完成回填草稿。
 **消息标签（2026-09-05）**：输入框上方固定工具条（「标签」入口 + 发送草稿 chips 可点掉，对齐 PC 输入工具条）；标签选择走查询抽屉（`showFilterSheet` title=选择标签/完成/清空，草稿模式），抽屉内「＋新建标签」再叠一层输入抽屉（scope='conversation'，配色对齐桌面 TAG_COLORS 按序取色，创建后自动选中）；发送时 tags 写 JSON（`addMessage(tagIds:)`）；长按菜单「编辑标签」改已发消息（`updateMessageTags`）；气泡显示消息标签彩色徽标。
 **排障**：主题列表角标 0 条 → 计数口径必须与 PC `loadThemeCounts` 一致（`GROUP BY theme_id` **不过滤 is_deleted**，NULL 免疫）；消息列表软删过滤需 NULL 安全（`isNull() | equals('0')`）；输入框与筛选按钮等高 → **双端写死同值**（forui 控件内部高度随字号缩放漂移；`FTappable` 不上报固有高度，IntrinsicHeight 会把按钮压小）。
+
+## 待办（移动端对齐 PC，2026-09-07 打通）
+**用户需求**：移动端【待办事项】页面的**全部功能**与 PC 端对齐；PC 端待办在 `C:\cod\jianli\jianli-app\src\views\todoList`（index.vue / store/useTodo.ts / TodoDetailDialog.vue / RecordProgressDialog.vue / TodoBatchDeleteDialog.vue + TodoBatchDeletePanel.vue / TagSelectPopover.vue / TodoParentSelectDialog.vue / TodoSubtaskProgress.vue / types.ts / statusConfig.ts / api/todoApi.ts）。**新增/编辑/展示/筛选/选择等所有弹层一律底部抽屉 `showFSheet`**（用户明确指示「弹窗一律使用底部抽屉，详情看技能」）。
+
+**关键结论（无需迁移）**：drift `todo_tables.dart` 早已具备全量列（`priority`/`dueDate`/`completed`/`status`/`deadlineReminder`/`remindCount`/`remindInterval`/`remindIntervalUnit`/`createTime`/`updateTime`/`sortOrder`/`parentIds`/`recurrenceRule`/`recurrenceInterval`/`recurrenceWeekdays`/`recurrenceEnd`/`recurrenceId`/`isRecurrenceInstance`）——**表定义零改动、无需 build_runner、无 onUpgrade**；本次只改模型/仓储/UI 三层。
+
+**PC 待办功能集速查（移动端逐项对齐）**：
+- 视图三态：卡片 card / 列表 list / 日历 calendar（`JianliSegmented` 切换）。
+- 搜索（关键词页内实时）+ 筛选（优先级/状态/标签多选/显示已完成/显示模板/分组方式 none·status·due·parent）。
+- 统计横幅：**取全量计算**（总/进行中/已完成/已取消），不随过滤跳变（PageBanner 蓝(1)）。
+- 分组：无 / 按状态 / 按到期（overdue 逾期·today·tomorrow·thisweek·later·nodate）/ 按父任务（子任务挂父级下、显示进度 `done/total`）。
+- 字段全量：标题/描述/优先级(low/medium/high/urgent)/到期 dueDate/状态 6 态/截止提醒(deadlineReminder + 次数 remindCount + 间隔 remindInterval + 单位 remindIntervalUnit)/重复(rule daily|weekly + interval + weekdays + end)/父任务(parentIds 多选)/标签(tagKeys 多选)/完成时间。
+- 子任务：父子结构（parentIds/isChild/isTemplate）、子任务勾选进度、父任务 chip、级联删除。
+- 高级子功能（用户确认**全部实现**）：① 日历视图（按 dueDate 聚合的月历）；② 记录进展 → 写入「主题对话」（按标题 `findOrCreateThemeByTitle` 后 `addMessage`）；③ 截止提醒 → 本地通知（awesome_notifications `scheduleOnce`）；④ 重复实例自动生成（模板保存后由 `_ensureNextRecurrenceInstance` 生成下一实例）。
+
+**移动端已实现（文件清单）**：
+- `features/todo/models/todo.dart`（**全量重写**）：`TodoItem` 全字段 + `isChild/isTemplate` getter；`TodoTagView` 加 `name`；常量 `kTodoStatusOptions`(6 态)/`kTodoPriorityOptions`；helper `statusMeta`/`priorityColor`/`priorityLabel`/`effectiveStatus`/`isSubtask`/`childrenOf`/`subtaskProgress`/`parentItemsOf`/`formatRecurrence`/`TodoFilter`+`applyTodoFilter`（兼容旧调用）。状态色对齐 PC statusConfig：`not_started #6b7280`/`in_progress #3b82f6`/`blocked #ef4444`/`completed #22c55e`/`cancelled #9ca3af`/`restart #8b5cf6`。
+- `features/todo/models/todo_filter.dart`（**新增**）：`TodoFilterState`（search/priority/status/tagKeys/showCompleted/showTemplates/groupBy）+ `TodoGroupBy` 枚举；`applyTodoFilters`（搜索+优先级+状态+标签+显示开关）/ `dueGroupOf`（overdue/today/tomorrow/thisweek/later/nodate）/ `groupTodos`（按状态·到期·父任务分组）/ `kGroupLabels`/`kStatusLabelByKey` 等标签常量。
+- `features/todo/repositories/todo_repository.dart`（**全量重写**）：`kTodoTagPalette`(10 色对齐 PC)；`watchTodos`(updateTime 倒序)/`watchTags`；`addTodo`→`Future<String>`(返回新 key)；`toggleComplete`(只动 completed/completedTime/updateTime)；`upsertTodo`(**`InsertMode.replace`** 按 key 全字段写，tags/parentIds 走 JSON，parentId=首个父)；若 `isTemplate` 调 `_ensureNextRecurrenceInstance`，若 `deadlineReminder==1 && dueDate!=null` 调 `scheduleDeadlineReminder`；`addTag`(同名去重+随机取色)/`deleteTodo`(**级联** key===key | parentId===key | parentIds like %key%)；`_ensureNextRecurrenceInstance`/`_nextOccurrence`(daily/weekly，上限 366 次迭代)；`scheduleDeadlineReminder`/`cancelDeadlineReminder`→`NotificationService.scheduleOnce/cancel`。
+- `features/todo/components/todo_sheets.dart`（**新增，全部 `showFSheet`+`SheetSurface`**）：`showTodoEditSheet`(标题/描述/优先级/到期/状态/截止提醒(次+间隔+单位)/重复(日|周+间隔+星期+结束)/父任务多选/标签多选+新建/记录进展入口)、`showTodoFilterSheet`(优先级/状态/标签/显示已完成/显示模板/分组)、`showTodoTagSheet`(标签多选+新建)、`showTodoParentSheet`(父任务多选)、`showTodoDateTimeSheet`(**自绘月历+时分步进器**，dateOnly 用于重复结束日)、`showRecordProgressSheet`(写主题对话)、`showTodoActionSheet`(编辑/记录进展/删除)、`showTodoConfirmSheet`(危险确认，取消 false/确认 true)。
+- `features/todo/components/todo_tile.dart`（列表行）：AppCard + `FCheckbox` 勾选 + 状态 chip（色对齐）+ 父任务 chip + 子任务进度 `done/total` + 标签彩色徽标 + 到期相对文案 + 右侧「…」动作（非选择模式→动作抽屉；选择模式→点选）。
+- `features/todo/components/todo_card_view.dart`（卡片网格）：2 列 `GridView`，每卡勾选/状态/标签/到期/父任务/子任务进度，点击→编辑、非选择模式「…」→动作抽屉。
+- `features/todo/components/todo_calendar_view.dart`（月历）：按 `dueDate` 聚合的月视图，日期格显示当日待办数+点；点击日期 → 该日列表（下层 showFSheet）；今日高亮。
+- `features/todo/components/todo_page.dart`（**全量重写主页**）：`JianliSegmented` 切 list/card/calendar + 搜索框 + 筛选按钮(激活软底+条件数) + 已生效条件可点掉 chip 行 + PageBanner 蓝(1) 全量统计 + 分组(无/状态/到期/父任务) + 批量删除选择模式(右上「选择」→勾选→底部「删除选中」危险确认) + 新增/编辑入口（均走底部抽屉）。
+
+**跨模块依赖（本次新增，已并入对应模块）**：
+- `core/notifications/notification_service.dart`：`scheduleOnce({id, channelKey, title, body, at: DateTime})` —— `NotificationCalendar.fromDate(at, repeats: false)`（单次定点，对齐 PC `update-todo-reminders`）。`cancel(id)` 已存在。
+- `features/conversation/repositories/conversation_repository.dart`：`findOrCreateThemeByTitle(title)` → `int`（按标题查重，命中返回 id、否则 `createTheme` 建新主题并返回 id）；供「记录进展」写入主题对话（对齐 PC `RecordProgressDialog` 按标题建/查主题）。
+
+**约定与雷区（待办专项）**：
+1. **弹窗一律底部抽屉**：所有新增/编辑/筛选/标签/父任务/日期/记录进展/动作/确认均走 `showFSheet(side: FLayout.btt)`+`SheetSurface`；只有「删除/批量删除」这类破坏性二次确认可用 `showFDialog`（记录进展与编辑内部的副确认也走抽屉）。模板见「UI 体系」抽屉化约定。
+2. **日期/时间选择器自绘**：forui 0.26 的 `FDateField.calendar`/`FTimeField.picker` 工厂构造不透明且本仓库**无任何现成用法**（照抄易编译翻车）→ 改用 `showTodoDateTimeSheet` 内**自绘月历网格 + 时分步进器**（`dateOnly` 参数支持只选日），避免依赖不透明的 forui date API。后续若 forui 用法明确可替换。
+3. **重复实例生成边界**：`_nextOccurrence` 上限 366 次迭代防死循环；模板保存时只生成「下一个」实例（不预生成整年），对齐 PC `recurrence:sync` 按需生成语义。
+4. **截止提醒单位**：`remindIntervalUnit` 取值 `'minute'|'hour'|'day'`，提醒时间 = `dueDate` 前推 `remindCount × 间隔`；通知标题取待办标题、body 取「将于 <相对> 到期」。
+5. **级联删除语义**：`deleteTodo` 同时删自身 + 直接父引用(parentId===key) + parentIds 含 key 的子任务，对齐 PC 批量删除「含子任务」选项。
+6. **颜色/文案常量统一**：状态色、优先级色、分组标签、重复文案均从 `todo.dart`/`todo_filter.dart` 取，页面/抽屉**严禁硬编码**（UI 红线 #6）；状态色严格对齐 PC `statusConfig.ts`。
+7. 改动后静态检查：`flutter analyze lib/features/todo` **0 问题**（本次实测全绿；todo/notifications/conversation 三域干净，其余 30 条 lint 为 ferry/file_transfer/habit 既有无关项），`flutter test`/`flutter run` 交用户在本地执行（分工铁律）。
 
 ## 构建与验证
 
@@ -374,7 +412,7 @@ C:/apps/Android/AndroidSDK/build-tools/<版本号>/apksigner.bat verify --print-
 |---|---|---|
 | home | `/` | Dashboard 聚合：习惯/待办/专注/提醒统计 + 最近倒计时 + 快捷入口；**Phase 3 视觉重设计**（渐变英雄卡 + 专属色磁贴 + StaggerList）；右上角**设置按钮** |
 | habit | `/habit` | 今日打卡 + 幂等切换（key=`habitKey#date`）+ 近 7 天；**视觉焕新**：**PageBanner 绿(2)**（启用/今日完成统计）+ 条目专属色 `SquircleBox` 图标盘 + `AnimatedCheck` + StaggerList |
-| todo | `/todo` | 列表/筛选/新增/勾选/滑动删除，uuid 主键，字段与桌面一致；**视觉焕新**：**PageBanner 蓝(1)**（进行中/已完成，取全量不随过滤跳变）+ `JianliSegmented` 滑块分段 + 专属色图标盘 |
+| todo | `/todo` | **已对齐 PC（2026-09-07，全量重写，详见「待办」专节）**：三视图 list/card/calendar（`JianliSegmented`）；搜索 + 筛选抽屉（优先级/状态/标签/显示已完成·模板/分组 none·status·due·parent）；全量统计 PageBanner 蓝(1)；分组（状态/到期 overdue·today·tomorrow·thisweek·later·nodate/父任务带子任务进度）；全字段（优先级/到期/状态 6 态/截止提醒→本地通知/重复 daily·weekly 自动生成实例/父任务多选/标签多选/子任务级联）；记录进展→主题对话；动作/确认/编辑/筛选/日期/标签/父任务**全部底部抽屉**。表定义零改动、无需迁移 |
 | pomodoro | `/pomodoro`、`/pomodoro/records` | 状态机解析（reminders stateful）+ 只读倒计时 + 流水统计；**视觉焕新**：**PageBanner 红(6)**（当前阶段+剩余时间）+ 白卡进度环（红色弧）；记录页 **PageBanner 红(6)** 三统计 |
 | reminder | `/reminders` | 三模式 time/interval/stateful，启停联动本地通知；过滤 `source==='todo'`；**视觉焕新**：**PageBanner 琥珀(3)**（全部/启用中统计）+ 专属色图标盘 + StaggerList |
 | countdown | `/countdown` | 独立表（end_time 毫秒基准 + paused_remaining，与桌面同构抗休眠）+ 暂停/恢复/重置；**视觉焕新**：大计时器整卡 **PageBanner 同款紫(0) 渐变**（白色 RingProgress + `trackColor` 半透明白 + 装饰圆） |
@@ -491,3 +529,4 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 - 2026-09-05：**电子书空白转圈修复 + PC 对齐（需求变更）**——① 根因：书架页 build 内联 `StreamProvider`（Riverpod 每次重建都是新 provider → 永远 loading），新建 `providers/ebook_providers.dart` 顶层 `bookshelfStreamProvider` 修复，雷区 #9 固化「provider 严禁 build 内联」；② TXT 编码对齐 PC：`epub_service` 增 BOM 识别（UTF-8/UTF-16LE/BE）+ UTF-8 严格解码失败回退 GBK（新依赖 `fast_gbk` 纯 Dart，**需先 flutter pub get**），修复中文 GBK TXT 乱码；③ 组件化：`BookCell` 拆为 `components/book_cell.dart`；移出书架改 showFDialog 确认（破坏性规范）；④ 裁剪项（PC 有）：标注划线/书签/分类/PDF/章节搜索/扫描文件夹。`dart format` 通过，pub get + analyze + run 交用户。
 - 2026-09-05：**主题对话对齐 PC（需求变更）**——① 根因：桌面端主题对话三表（conversation_theme/conversation/conversation_tag）为 INTEGER 自增 id 主键，不满足旧 TEXT 主键同步规则而未入白名单 → 移动端无数据；② 双端白名单加三表并做 pk 按表适配（桌面端 `tablePk()` + `ON CONFLICT(id)`；PC `useSync.ts` 表清单同步；改桌面端需重启 Electron）；③ 移动端功能对齐：主题消息数角标/主题标签彩色徽标/编辑主题（抽屉+固定保存条）/删除主题（子主题禁止+级联）/消息置顶排序/is_rich 富文本 HtmlWidget 渲染/长按软删消息/发送后刷新主题 update_time；裁剪项（引用/标注/多选/搜索/导出 md/标签管理）记入「主题对话」专节待办。全局红线 7 与落地清单第 5 条的「TEXT 主键」规则已改为「按表 pk 适配」。桌面端改动见 jianli-app 技能 sync.md。
 - 剩余规划（截至 2026-09-05）：真机全量验证、桌面 25 套主题映射到 forui、flutter_quill 富文本编辑、PDF / CFI 精确进度、interval 通知精细化、QR 样式、同步会话加密、conversation LLM 后端、UI 现代化落地（按 `references/ui-modernization-plan.md` 分阶段）。
+- 2026-09-07：**待办功能全量对齐 PC（需求变更）**——移动端 `features/todo/` 整体重写，对齐 `jianli-app/src/views/todoList`：① 模型 `todo.dart` 补齐 PC 全字段 + 状态/优先级/子任务/重复/分组 helper（状态色严格对齐 PC statusConfig）；② 新增 `todo_filter.dart`（TodoFilterState + applyTodoFilters/dueGroupOf/groupTodos）；③ 仓储 `todo_repository.dart` 重写：`upsertTodo`(InsertMode.replace 全字段)、`addTag` 同名去重、级联 `deleteTodo`、`_ensureNextRecurrenceInstance`/`_nextOccurrence`(daily/weekly 上限 366 次)、`scheduleDeadlineReminder`/`cancelDeadlineReminder`；④ 新增 `todo_sheets.dart`（**全部底部抽屉**：编辑/筛选/标签/父任务/自绘日期时间/记录进展/动作/确认）；⑤ 三视图 `todo_tile.dart`(列表)/`todo_card_view.dart`(卡片网格)/`todo_calendar_view.dart`(月历按 dueDate 聚合)；⑥ 主页 `todo_page.dart` 重写（三视图切换+搜索+筛选抽屉+已生效 chip+全量统计+分组+批量删除选择模式+新增编辑入口）。**跨模块新增**：`notification_service.scheduleOnce`(单次定点 NotificationCalendar.fromDate repeats:false，供截止提醒)、`conversation_repository.findOrCreateThemeByTitle`(供记录进展写主题对话)。**关键：drift `todo_tables.dart` 已含全量列，表定义零改动、无需 build_runner、无 onUpgrade**。约定：弹窗一律底部抽屉、日期选择器自绘（forui FDateField API 不透明）、状态色/文案常量集中不硬编码。`flutter analyze lib/features/todo` 0 问题，test/run 交用户。详情见「待办」专节。

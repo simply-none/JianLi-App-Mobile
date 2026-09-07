@@ -130,6 +130,17 @@ class ConversationRepository {
     );
   }
 
+  /// 按标题查找或创建主题（对齐 PC RecordProgressDialog「按标题写入主题对话」）。
+  /// 返回主题 id 字符串化；不存在则新建并返回其 id。
+  Future<String> findOrCreateThemeByTitle(String title, {String remark = ''}) async {
+    final existing = await (_db.select(_db.conversationTheme)
+          ..where((t) => t.title.equals(title)))
+        .get();
+    if (existing.isNotEmpty) return existing.first.id.toString();
+    final id = await createTheme(title: title, remark: remark);
+    return id.toString();
+  }
+
   /// 删除主题（对齐桌面端 deleteTheme：存在子主题时抛错；级联删除其下全部对话）
   Future<void> deleteTheme(int id) async {
     final children = await (_db.select(

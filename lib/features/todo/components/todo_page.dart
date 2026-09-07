@@ -1,23 +1,26 @@
-// 待办页（forui 化）—— 过滤切换 + 复选完成 + 新增对话框
+// 待办页（forui 化，对齐 PC 待办）—— 视图切换(列表/卡片/日历) + 搜索 + 筛选抽屉
+// + 已生效条件 chip + 统计横幅 + 分组(无/状态/到期/父任务) + 批量删除选择模式 + 新增/编辑
 //
-// 移动端第一批：单层列表 + 增/删/勾选；父子任务缩进与重复任务编辑列入 P2。
-// forui 改造点：FScaffold+FHeader.nested 骨架、FButton 过滤切换、FCheckbox 勾选、
-// showFDialog 新增、Dismissible 滑动删除（无 forui 等价物，material_ui 版保留）。
+// ⚠️ 页面操作规范：所有弹窗（新增/编辑/筛选/状态/标签/父任务/日期/记录进展/确认/当天待办）
+// 一律走底部抽屉（showFSheet + SheetSurface），见 todo_sheets.dart 与 SKILL.md。
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/ui/gradient_button.dart';
-import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/segmented.dart';
-import '../../../app/ui/sheet_surface.dart';
-import '../../../app/ui/squircle_box.dart';
+import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/todo.dart';
+import '../models/todo_filter.dart';
 import '../providers/todo_providers.dart';
+import 'todo_calendar_view.dart';
+import 'todo_card_view.dart';
+import 'todo_sheets.dart';
+import 'todo_tile.dart';
 
 /// 待办页
 class TodoPage extends ConsumerStatefulWidget {
@@ -28,7 +31,18 @@ class TodoPage extends ConsumerStatefulWidget {
 }
 
 class _TodoPageState extends ConsumerState<TodoPage> {
-  TodoFilter _filter = TodoFilter.active;
+  TodoViewMode _view = TodoViewMode.list;
+  String _search = '';
+  TodoFilterState _filter = const TodoFilterState();
+  bool _selectMode = false;
+  final Set<String> _selected = {};
+
+  // 视图切换
+  static const _viewItems = [
+    (FLucideIcons.list, '列表'),
+    (FLucideIcons.grid2x2, '卡片'),
+    (FLucideIcons.calendarDays, '日历'),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -36,242 +50,441 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final tagsAsync = ref.watch(todoTagsProvider);
     final t = context.theme;
 
-    // 过滤项（与原 SegmentedButton 一一对应）
-    const filters = [TodoFilter.active, TodoFilter.completed, TodoFilter.all];
-    const filterLabels = ['进行中', '已完成', '全部'];
-
     return FScaffold(
       header: FHeader.nested(
         title: const Text('待办'),
-        prefixes: [FHeaderAction.back(onPress: () => context.pop())],
-        // 右上角「新增待办」入口（替代原 FloatingActionButton）
+        prefixes: [
+          if (_selectMode)
+            FHeaderAction(
+              icon: const Icon(FLucideIcons.x),
+              onPress: () => setState(() {
+                _selectMode = false;
+                _selected.clear();
+              }),
+              semanticsLabel: '退出选择',
+            )
+          else
+            FHeaderAction.back(onPress: () => context.pop()),
+        ],
         suffixes: [
-          FHeaderAction(
-            icon: const Icon(FLucideIcons.plus),
-            onPress: () => _showAddDialog(context),
-            semanticsLabel: '新增待办',
-          ),
+          if (_selectMode) ...[
+            FHeaderAction(
+              icon: const Icon(FLucideIcons.trash2),
+              onPress: _selected.isEmpty ? null : _batchDelete,
+              semanticsLabel: '批量删除',
+            ),
+          ] else ...[
+            FHeaderAction(
+              icon: const Icon(FLucideIcons.search),
+              onPress: _toggleSearch,
+              semanticsLabel: '搜索',
+            ),
+            FHeaderAction(
+              icon: const Icon(FLucideIcons.listFilter),
+              onPress: _openFilter,
+              semanticsLabel: '筛选',
+            ),
+            FHeaderAction(
+              icon: const Icon(FLucideIcons.plus),
+              onPress: _addTodo,
+              semanticsLabel: '新增待办',
+            ),
+          ],
         ],
       ),
-      child: Column(
-        children: [
-          // 过滤切换（滑块分段，选中态下方渐变指示块）
-          Padding(
-            padding: const EdgeInsets.only(top: 8, bottom: 4),
-            child: JianliSegmented(
-              items: [for (final l in filterLabels) (null, l)],
-              selected: filters.indexOf(_filter),
-              onSelect: (i) => setState(() => _filter = filters[i]),
-            ),
-          ),
-          Expanded(
-            child: todosAsync.when(
-              loading: () => const Center(child: FCircularProgress()),
-              error: (e, _) => Center(
-                child: Text(
-                  '加载失败：$e',
-                  style: t.typography.body.sm.copyWith(color: t.colors.error),
-                  textAlign: TextAlign.center,
+      child: todosAsync.when(
+        loading: () => const Center(child: FCircularProgress()),
+        error: (e, _) => Center(
+          child: Text('加载失败：$e',
+              style: t.typography.body.sm.copyWith(color: t.colors.error),
+              textAlign: TextAlign.center),
+        ),
+        data: (all) {
+          final tags = tagsAsync.value ?? const [];
+          // 搜索与筛选条件合并（_search 单独持有，便于 chip 单独清除）
+          final filtered =
+              applyTodoFilters(all, _filter.copyWith(search: _search));
+          final groups = groupTodos(filtered, _filter.groupBy);
+
+          // 统计（基于全量，不随过滤跳变）
+          final total = all.length;
+          final inProgress =
+              all.where((x) => effectiveStatus(x) == 'in_progress').length;
+          final completed =
+              all.where((x) => effectiveStatus(x) == 'completed').length;
+          final cancelled =
+              all.where((x) => effectiveStatus(x) == 'cancelled').length;
+
+          if (total == 0) {
+            return const Center(
+              child: EmptyState(icon: FLucideIcons.listTodo, title: '这里空空如也'),
+            );
+          }
+
+          return Column(
+            children: [
+              // 搜索框
+              if (_searchVisible)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: FTextField(
+                    control: FTextFieldControl.managed(
+                      controller: _searchController,
+                      onChange: (v) => setState(() => _search = v.text),
+                    ),
+                    hint: '搜索待办…',
+                    autofocus: true,
+                  ),
+                ),
+              // 视图切换
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: JianliSegmented(
+                  items: [
+                    for (final v in _viewItems) (v.$1, v.$2),
+                  ],
+                  selected: _view.index,
+                  onSelect: (i) => setState(() => _view = TodoViewMode.values[i]),
                 ),
               ),
-              data: (todos) {
-                final items = applyTodoFilter(todos, _filter);
-                // 横幅统计基于全量（不随过滤切换跳变）
-                final activeCount = todos.where((t) => !t.completed).length;
-                final doneCount = todos.length - activeCount;
-                if (items.isEmpty) {
-                  return const EmptyState(
-                    icon: FLucideIcons.listTodo,
-                    title: '这里空空如也',
-                  );
-                }
-                return ColoredBox(
-                  color: AppTokens.pageTint(context),
-                  child: ListView(
-                    padding: EdgeInsets.only(
-                      top: AppTokens.listTopGapOf(context),
-                      bottom: AppTokens.pageBottomGapOf(context),
-                    ),
+              // 已生效筛选条件 chip（搜索单独持有，也纳入「有生效条件」判断）
+              if (_filter.hasActive || _search.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
                     children: [
-                      StaggerList(
-                        children: [
-                          // 页面专属蓝渐变横幅（与效率分组页「待办」入口色对齐）
-                          PageBanner(
-                            icon: FLucideIcons.listTodo,
-                            title: '待办',
-                            subtitle: '专注当下，一件一件来',
-                            accentIndex: 1,
-                            stats: [
-                              ('$activeCount', '进行中'),
-                              ('$doneCount', '已完成'),
-                            ],
+                      if (_search.isNotEmpty)
+                        _condChip('搜索：$_search', () => _clearSearch()),
+                      if (_filter.priority != null)
+                        _condChip('优先级：${priorityLabel(_filter.priority!)}',
+                            () => _updateFilter((f) => f.copyWith(clearPriority: true))),
+                      if (_filter.status != null)
+                        _condChip('状态：${statusMeta(_filter.status!).label}',
+                            () => _updateFilter((f) => f.copyWith(clearStatus: true))),
+                      if (_filter.tagKeys.isNotEmpty)
+                        _condChip('标签：${_filter.tagKeys.length} 个',
+                            () => _updateFilter((f) => f.copyWith(tagKeys: {}))),
+                      if (!_filter.showCompleted)
+                        _condChip('仅未完成',
+                            () => _updateFilter((f) => f.copyWith(showCompleted: true))),
+                      if (_filter.showTemplates)
+                        _condChip('含重复模板',
+                            () => _updateFilter((f) => f.copyWith(showTemplates: false))),
+                      if (_filter.groupBy != TodoGroupBy.none)
+                        _condChip('分组：${_groupLabel(_filter.groupBy)}',
+                            () => _updateFilter((f) => f.copyWith(groupBy: TodoGroupBy.none))),
+                      GestureDetector(
+                        onTap: _clearAllFilters,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: t.colors.destructive.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(AppTokens.radiusSm),
                           ),
-                          for (var i = 0; i < items.length; i++)
-                            _TodoTile(
-                              todo: items[i],
-                              accentIndex: i,
-                              tagCount: tagsAsync.value?.length ?? 0,
-                              onToggle: () => ref
-                                  .read(todoRepositoryProvider)
-                                  .toggleComplete(
-                                    items[i].key,
-                                    !items[i].completed,
-                                  ),
-                              onDelete: () => ref
-                                  .read(todoRepositoryProvider)
-                                  .deleteTodo(items[i].key),
-                            ),
-                        ],
+                          child: Text('清除全部',
+                              style: t.typography.body.xs
+                                  .copyWith(color: t.colors.destructive)),
+                        ),
                       ),
                     ],
                   ),
-                );
-              },
-            ),
-          ),
-        ],
+                ),
+              Expanded(
+                child: _view == TodoViewMode.calendar
+                    ? TodoCalendarView(
+                        items: filtered,
+                        onPickDay: (day, dayItems) => showTodoDaySheet(
+                          context,
+                          ref,
+                          day,
+                          dayItems,
+                          allTodos: all,
+                          tags: tags,
+                        ),
+                      )
+                    : _view == TodoViewMode.card
+                        ? filtered.isEmpty
+                            ? const Center(
+                                child: EmptyState(
+                                    icon: FLucideIcons.listTodo, title: '没有匹配的待办'),
+                              )
+                                      : TodoCardView(
+                                items: filtered,
+                                allTodos: all,
+                                tags: tags,
+                                selectable: _selectMode,
+                                selectedKeys: _selected,
+                                onToggle: (item) => ref
+                                    .read(todoRepositoryProvider)
+                                    .toggleComplete(
+                                      item.key,
+                                      effectiveStatus(item) != 'completed',
+                                    ),
+                                onMore: (item) => showTodoActionSheet(
+                                  context,
+                                  ref,
+                                  item,
+                                  allTodos: all,
+                                  tags: tags,
+                                ),
+                                onSelect: (item) => _toggleSelect(item.key),
+                                onTap: (item) => _openEdit(item),
+                              )
+                        : filtered.isEmpty
+                            ? const Center(
+                                child: EmptyState(
+                                    icon: FLucideIcons.listTodo, title: '没有匹配的待办'),
+                              )
+                            : ListView(
+                                padding: EdgeInsets.only(
+                                  top: AppTokens.listTopGapOf(context),
+                                  bottom: AppTokens.pageBottomGapOf(context),
+                                ),
+                                children: [
+                                  StaggerList(
+                                    children: [
+                                      PageBanner(
+                                        icon: FLucideIcons.listTodo,
+                                        title: '待办',
+                                        subtitle: '专注当下，一件一件来',
+                                        accentIndex: 1,
+                                        stats: [
+                                          ('$total', '全部'),
+                                          ('$inProgress', '进行中'),
+                                          ('$completed', '已完成'),
+                                          ('$cancelled', '已取消'),
+                                        ],
+                                      ),
+                                      for (final group in groups) ...[
+                                        if (_filter.groupBy != TodoGroupBy.none)
+                                          Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                                16, 12, 16, 4),
+                                            child: Text(
+                                              group.$1,
+                                              style: t.typography.body.sm.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                                color: t.colors.mutedForeground,
+                                              ),
+                                            ),
+                                          ),
+                                        for (final item in group.$2)
+                                          TodoListTile(
+                                            item: item,
+                                            allTodos: all,
+                                            tags: tags,
+                                            selectable: _selectMode,
+                                            selected: _selected.contains(item.key),
+                                            onToggle: () => ref
+                                                .read(todoRepositoryProvider)
+                                                .toggleComplete(
+                                                  item.key,
+                                                  effectiveStatus(item) != 'completed',
+                                                ),
+                                            onMore: () => showTodoActionSheet(
+                                              context,
+                                              ref,
+                                              item,
+                                              allTodos: all,
+                                              tags: tags,
+                                            ),
+                                            onSelect: () => _toggleSelect(item.key),
+                                            onTap: () => _openEdit(item),
+                                          ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  /// 新增待办（底部抽屉——小功能新增统一抽屉化；第一批仅采集标题）
-  Future<void> _showAddDialog(BuildContext context) async {
-    final controller = TextEditingController();
-    final title = await showFSheet<String>(
-      context: context,
-      side: FLayout.btt,
-      builder: (c) => SheetSurface(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          MediaQuery.of(c).viewInsets.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '新增待办',
-              style: c.theme.typography.body.lg.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '今天要完成什么？',
-              style: c.theme.typography.body.sm.copyWith(
-                color: c.theme.colors.mutedForeground,
-              ),
-            ),
-            const SizedBox(height: 14),
-            FTextField(
-              control: FTextFieldControl.managed(controller: controller),
-              hint: '要做什么？',
-              autofocus: true,
-              onSubmit: (v) => Navigator.pop(c, v),
-            ),
-            const SizedBox(height: 16),
-            GradientButton(
-              label: '添加',
-              icon: FLucideIcons.plus,
-              onPress: () => Navigator.pop(c, controller.text),
-            ),
-          ],
-        ),
-      ),
+  // ===== 搜索 =====
+  bool _searchVisible = false;
+  final _searchController = TextEditingController();
+
+  void _toggleSearch() {
+    setState(() {
+      _searchVisible = !_searchVisible;
+      if (!_searchVisible) {
+        _search = '';
+        _searchController.clear();
+      }
+    });
+  }
+
+  void _clearSearch() {
+    setState(() {
+      _search = '';
+      _searchController.clear();
+      _searchVisible = false;
+    });
+  }
+
+  // ===== 筛选 =====
+  void _updateFilter(TodoFilterState Function(TodoFilterState) fn) {
+    setState(() => _filter = fn(_filter));
+  }
+
+  Future<void> _openFilter() async {
+    final tags = ref.read(todoTagsProvider).value ?? const [];
+    final next = await showTodoFilterSheet(
+      context,
+      current: _filter.copyWith(search: _search),
+      tags: tags,
     );
-    if (title != null && title.trim().isNotEmpty) {
-      await ref.read(todoRepositoryProvider).addTodo(title: title.trim());
+    if (next != null) {
+      setState(() {
+        _filter = next;
+        _search = next.search;
+        _searchController.text = next.search;
+      });
     }
   }
-}
 
-/// 单条待办
-class _TodoTile extends StatelessWidget {
-  const _TodoTile({
-    required this.todo,
-    required this.accentIndex,
-    required this.tagCount,
-    required this.onToggle,
-    required this.onDelete,
-  });
+  void _clearAllFilters() {
+    setState(() {
+      _filter = const TodoFilterState();
+      _search = '';
+      _searchController.clear();
+      _searchVisible = false;
+    });
+  }
 
-  final TodoItem todo;
-  final int accentIndex;
-  final int tagCount;
-  final Future<void> Function() onToggle;
-  final Future<void> Function() onDelete;
+  String _groupLabel(TodoGroupBy g) => switch (g) {
+        TodoGroupBy.status => '按状态',
+        TodoGroupBy.due => '按到期',
+        TodoGroupBy.parent => '按父任务',
+        TodoGroupBy.none => '无',
+      };
 
-  @override
-  Widget build(BuildContext context) {
-    final t = context.theme;
-    final accent = AppTokens.accent(accentIndex);
-    // 滑动删除保留 Dismissible（forui 无等价物，material_ui 版已被主题着色）
-    return Dismissible(
-      key: ValueKey(todo.key),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        color: t.colors.destructive,
-        child: Icon(FLucideIcons.trash2, color: t.colors.destructiveForeground),
-      ),
-      onDismissed: (_) => onDelete(),
-      child: AppCard(
-        onTap: onToggle,
-        margin: const EdgeInsets.symmetric(vertical: 5),
+  // ===== 选择 / 批量删除 =====
+  void _toggleSelect(String key) {
+    setState(() {
+      if (_selected.contains(key)) {
+        _selected.remove(key);
+      } else {
+        _selected.add(key);
+      }
+    });
+  }
+
+  Future<void> _batchDelete() async {
+    final ok = await showTodoConfirmSheet(
+      context,
+      '批量删除',
+      '确定删除选中的 ${_selected.length} 项待办及其子任务？',
+    );
+    if (ok == true) {
+      final repo = ref.read(todoRepositoryProvider);
+      for (final k in List<String>.from(_selected)) {
+        await repo.deleteTodo(k);
+      }
+      setState(() {
+        _selectMode = false;
+        _selected.clear();
+      });
+    }
+  }
+
+  // ===== 新增 / 编辑 =====
+  Future<void> _addTodo() async {
+    final all = ref.read(todoListProvider).value ?? const [];
+    final tags = ref.read(todoTagsProvider).value ?? const [];
+    final now = _now();
+    final draft = TodoItem(
+      key: _uuid(),
+      title: '',
+      description: '',
+      completed: false,
+      priority: 'medium',
+      dueDate: null,
+      completedTime: null,
+      tags: const [],
+      status: 'not_started',
+      deadlineReminder: 0,
+      remindCount: 1,
+      remindInterval: 30,
+      remindIntervalUnit: 'minute',
+      createTime: null,
+      updateTime: now,
+      sortOrder: all.length,
+      parentIds: const [],
+      recurrenceRule: null,
+      recurrenceInterval: 1,
+      recurrenceWeekdays: const [],
+      recurrenceEnd: null,
+      recurrenceId: null,
+      isRecurrenceInstance: 0,
+    );
+    final saved = await showTodoEditSheet(
+      context,
+      ref,
+      initial: draft,
+      allTodos: all,
+      tags: tags,
+    );
+    if (saved != null) {
+      await ref.read(todoRepositoryProvider).upsertTodo(saved);
+    }
+  }
+
+  /// 编辑已有待办（底部抽屉表单 → upsert）
+  Future<void> _openEdit(TodoItem item) async {
+    final all = ref.read(todoListProvider).value ?? const [];
+    final tags = ref.read(todoTagsProvider).value ?? const [];
+    final saved = await showTodoEditSheet(
+      context,
+      ref,
+      initial: item,
+      allTodos: all,
+      tags: tags,
+    );
+    if (saved != null) {
+      await ref.read(todoRepositoryProvider).upsertTodo(saved);
+    }
+  }
+
+  Widget _condChip(String label, VoidCallback onTap) {
+    final theme = context.theme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: theme.colors.muted,
+          borderRadius: BorderRadius.circular(AppTokens.radiusSm),
+        ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            SquircleBox(
-              size: 40,
-              radius: 12,
-              gradient: AppTokens.accentGradient(accent),
-              alignment: Alignment.center,
-              child: Icon(FLucideIcons.listTodo, color: Colors.white, size: 18),
-            ),
-            const SizedBox(width: 12),
-            FCheckbox(value: todo.completed, onChange: (_) => onToggle()),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    todo.title,
-                    style: t.typography.body.md.copyWith(
-                      fontWeight: FontWeight.w600,
-                      decoration: todo.completed
-                          ? TextDecoration.lineThrough
-                          : null,
-                    ),
-                  ),
-                  if ((todo.dueDate?.isNotEmpty ?? false) ||
-                      todo.tags.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      [
-                        if (todo.dueDate?.isNotEmpty ?? false)
-                          '截止 ${todo.dueDate}',
-                        if (todo.tags.isNotEmpty) '${todo.tags.length} 个标签',
-                      ].join(' · '),
-                      style: t.typography.body.sm.copyWith(
-                        color: t.colors.mutedForeground,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (todo.isChild)
-              Icon(
-                FLucideIcons.cornerDownRight,
-                size: 16,
-                color: t.colors.mutedForeground,
-              ),
+            Text(label,
+                style: theme.typography.body.xs
+                    .copyWith(color: theme.colors.foreground)),
+            const SizedBox(width: 4),
+            Icon(FLucideIcons.x, size: 12, color: theme.colors.mutedForeground),
           ],
         ),
       ),
     );
   }
+
+  /// 新建待办的 key（与仓库一致：UUID v4，drift 表以 key 为主键）
+  String _uuid() => const Uuid().v4();
+
+  String _now() {
+    final n = DateTime.now();
+    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')} '
+        '${n.hour.toString().padLeft(2, '0')}:${n.minute.toString().padLeft(2, '0')}:${n.second.toString().padLeft(2, '0')}';
+  }
 }
+
+/// 视图模式
+enum TodoViewMode { list, card, calendar }

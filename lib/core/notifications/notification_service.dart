@@ -119,4 +119,27 @@ class NotificationService {
       ),
     );
   }
+
+  /// 单次定点通知（如待办截止提醒；repeats=false 即一次性，到点触发后不再重复）
+  static Future<void> scheduleOnce({
+    required int id,
+    required String channelKey,
+    required String title,
+    required String body,
+    required DateTime dateTime,
+  }) {
+    return AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: id,
+        channelKey: channelKey,
+        title: title,
+        body: body,
+      ),
+      schedule: NotificationCalendar.fromDate(
+        date: dateTime,
+        repeats: false,
+        allowWhileIdle: true,
+      ),
+    );
+  }
 }
