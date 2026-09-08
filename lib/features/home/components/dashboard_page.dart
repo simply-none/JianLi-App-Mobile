@@ -38,87 +38,92 @@ class DashboardPage extends ConsumerWidget {
     return FScaffold(
       child: ColoredBox(
         color: AppTokens.pageTint(context),
-        child: RefreshIndicator(
-          onRefresh: () async => ref.invalidate(dashboardStatsProvider),
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(
-              AppTokens.pagePaddingOf(context),
-              16,
-              AppTokens.pagePaddingOf(context),
-              32,
-            ),
-            children: [
-              StaggerList(
-                delayStep: 70,
-                children: [
-                  const _Header(),
-                  const SizedBox(height: 20),
-                  statsAsync.maybeWhen(
-                    data: (s) => Column(
-                      children: [
-                        _HeroCard(
-                          habitLabel: s.habitProgressLabel,
-                          todosActive: '${s.todosActive}',
-                          pomodoroToday: '${s.pomodoroToday}',
-                          remindersEnabled: '${s.remindersEnabled}',
-                        ),
-                        if (s.nextCountdownName != null) ...[
-                          const SizedBox(height: 8),
-                          EntryCard(
-                            icon: FLucideIcons.hourglass,
-                            title: s.nextCountdownName!,
-                            subtitle: '正在倒计时',
-                            accentIndex: 3,
-                            onTap: () => context.push('/countdown'),
+        // 顶部安全区：把滚动区限制在状态栏之下，避免滚动时内容钻到状态栏（时钟/电量）下
+        child: SafeArea(
+          top: true,
+          bottom: false,
+          child: RefreshIndicator(
+            onRefresh: () async => ref.invalidate(dashboardStatsProvider),
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                AppTokens.pagePaddingOf(context),
+                16,
+                AppTokens.pagePaddingOf(context),
+                32,
+              ),
+              children: [
+                StaggerList(
+                  delayStep: 70,
+                  children: [
+                    const _Header(),
+                    const SizedBox(height: 20),
+                    statsAsync.maybeWhen(
+                      data: (s) => Column(
+                        children: [
+                          _HeroCard(
+                            habitLabel: s.habitProgressLabel,
+                            todosActive: '${s.todosActive}',
+                            pomodoroToday: '${s.pomodoroToday}',
+                            remindersEnabled: '${s.remindersEnabled}',
                           ),
+                          if (s.nextCountdownName != null) ...[
+                            const SizedBox(height: 8),
+                            EntryCard(
+                              icon: FLucideIcons.hourglass,
+                              title: s.nextCountdownName!,
+                              subtitle: '正在倒计时',
+                              accentIndex: 3,
+                              onTap: () => context.push('/countdown'),
+                            ),
+                          ],
                         ],
+                      ),
+                      orElse: () => const _HeroPlaceholder(),
+                    ),
+                    const SizedBox(height: 8),
+                    const SectionHeader(title: '快捷入口'),
+                    Row(
+                      children: [
+                        for (final (icon, label, route, accentIndex)
+                            in _quickEntries)
+                          Expanded(
+                            child: _QuickTile(
+                              icon: icon,
+                              label: label,
+                              route: route,
+                              accentIndex: accentIndex,
+                            ),
+                          ),
                       ],
                     ),
-                    orElse: () => const _HeroPlaceholder(),
-                  ),
-                  const SizedBox(height: 8),
-                  const SectionHeader(title: '快捷入口'),
-                  Row(
-                    children: [
-                      for (final (icon, label, route, accentIndex)
-                          in _quickEntries)
-                        Expanded(
-                          child: _QuickTile(
-                            icon: icon,
-                            label: label,
-                            route: route,
-                            accentIndex: accentIndex,
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const SectionHeader(title: '效率'),
-                  EntryCard(
-                    icon: FLucideIcons.zap,
-                    title: '效率中心',
-                    subtitle: '习惯 · 待办 · 番茄钟 · 倒计时 · 提醒',
-                    accentIndex: 0,
-                    onTap: () => context.go('/efficiency'),
-                  ),
-                  const SectionHeader(title: '内容与工具'),
-                  EntryCard(
-                    icon: FLucideIcons.bookOpen,
-                    title: '内容库',
-                    subtitle: '笔记 · 主题对话 · 电子书',
-                    accentIndex: 4,
-                    onTap: () => context.go('/content'),
-                  ),
-                  EntryCard(
-                    icon: FLucideIcons.wrench,
-                    title: '工具箱',
-                    subtitle: '2FA · 密码 · 保险箱 · 二维码 · 同步',
-                    accentIndex: 2,
-                    onTap: () => context.go('/tools'),
-                  ),
-                ],
-              ),
-            ],
+                    const SizedBox(height: 8),
+                    const SectionHeader(title: '效率'),
+                    EntryCard(
+                      icon: FLucideIcons.zap,
+                      title: '效率中心',
+                      subtitle: '习惯 · 待办 · 番茄钟 · 倒计时 · 提醒',
+                      accentIndex: 0,
+                      onTap: () => context.go('/efficiency'),
+                    ),
+                    const SectionHeader(title: '内容与工具'),
+                    EntryCard(
+                      icon: FLucideIcons.bookOpen,
+                      title: '内容库',
+                      subtitle: '笔记 · 主题对话 · 电子书',
+                      accentIndex: 4,
+                      onTap: () => context.go('/content'),
+                    ),
+                    EntryCard(
+                      icon: FLucideIcons.wrench,
+                      title: '工具箱',
+                      subtitle: '2FA · 密码 · 保险箱 · 二维码 · 同步',
+                      accentIndex: 2,
+                      onTap: () => context.go('/tools'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

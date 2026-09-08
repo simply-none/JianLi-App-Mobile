@@ -42,10 +42,8 @@ class TwoFactorPage extends ConsumerStatefulWidget {
 
 class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
   final TextEditingController _passphraseController = TextEditingController();
-  bool _unlocked = false;
   bool _unlocking = false;
   String? _error;
-  List<TwoFactorAccount> _accounts = const [];
   String? _pickedVaultPath;
 
   /// 会话口令（仅解锁期间驻留内存，用于加密回写；锁定/退出即丢——与桌面端同策略）
@@ -59,6 +57,9 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
   void dispose() {
     _ticker?.cancel();
     _passphraseController.dispose();
+    // 路由切走即锁定（清空内存态 + 置反开关），满足「路由切换时锁住」
+    ref.read(twoFactorAccountsProvider.notifier).lock();
+    ref.read(twoFactorUnlockedProvider.notifier).state = false;
     super.dispose();
   }
 
@@ -76,16 +77,12 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
       await ref
           .read(twoFactorAccountsProvider.notifier)
           .unlock(_passphraseController.text);
-      final accounts = await ref
-          .read(twoFactorAccountsProvider.future)
-          .catchError((_) => <TwoFactorAccount>[]);
       if (!mounted) return;
       setState(() {
-        _accounts = accounts;
-        _unlocked = true;
         _sessionPassphrase = _passphraseController.text;
         _passphraseController.clear();
       });
+      ref.read(twoFactorUnlockedProvider.notifier).state = true;
       _startTicker();
     } catch (e) {
       if (!mounted) return;
@@ -98,9 +95,8 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
   void _lock() {
     _ticker?.cancel();
     ref.read(twoFactorAccountsProvider.notifier).lock();
+    ref.read(twoFactorUnlockedProvider.notifier).state = false;
     setState(() {
-      _unlocked = false;
-      _accounts = const [];
       _tick = 0;
       _sessionPassphrase = '';
     });
@@ -115,12 +111,16 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final accounts =
+        ref.watch(twoFactorAccountsProvider).value ??
+        const <TwoFactorAccount>[];
+    final unlocked = ref.watch(twoFactorUnlockedProvider);
     return FScaffold(
       header: FHeader.nested(
         title: const Text('2FA 动态码'),
         prefixes: [FHeaderAction.back(onPress: () => context.pop())],
         suffixes: [
-          if (_unlocked) ...[
+          if (unlocked) ...[
             // 新增账户（原 FAB 的替代入口）
             FHeaderAction(
               icon: const Icon(FLucideIcons.plus, size: 20),
@@ -136,7 +136,9 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
           ],
         ],
       ),
-      child: _unlocked ? _buildCodes(context) : _buildUnlockForm(context),
+      child: unlocked
+          ? _buildCodes(context, accounts)
+          : _buildUnlockForm(context),
     );
   }
 
@@ -364,8 +366,8 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
   }
 
   /// 动态码列表（顶部专属紫渐变横幅 + 账户码卡片）
-  Widget _buildCodes(BuildContext context) {
-    if (_accounts.isEmpty) {
+  Widget _buildCodes(BuildContext context, List<TwoFactorAccount> accounts) {
+    if (accounts.isEmpty) {
       return const EmptyState(
         icon: FLucideIcons.keyRound,
         title: 'vault 为空',
@@ -387,9 +389,9 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
               title: '2FA 动态码',
               subtitle: 'TOTP 实时出码，点击卡片复制',
               accentIndex: 0,
-              stats: [('${_accounts.length}', '已存账户')],
+              stats: [('${accounts.length}', '已存账户')],
             ),
-            for (final account in _accounts)
+            for (final account in accounts)
               Builder(
                 builder: (context) {
                   final meta = generateTotpWithMeta(

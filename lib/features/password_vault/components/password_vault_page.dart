@@ -38,11 +38,19 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
   String? _error;
 
   @override
+  void dispose() {
+    // 路由切走即锁定（清空内存明文 + 置反开关），满足「路由切换时锁住」
+    ref.read(passwordVaultEntriesProvider.notifier).lock();
+    ref.read(passwordVaultUnlockedProvider.notifier).state = false;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = context.theme;
     final existsAsync = ref.watch(passwordVaultExistsProvider);
     final entriesAsync = ref.watch(passwordVaultEntriesProvider);
-    final unlocked = ref.read(passwordVaultEntriesProvider.notifier).isUnlocked;
+    final unlocked = ref.watch(passwordVaultUnlockedProvider);
 
     return FScaffold(
       header: FHeader.nested(
@@ -61,6 +69,7 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
               icon: const Icon(FLucideIcons.lock, size: 20),
               onPress: () {
                 ref.read(passwordVaultEntriesProvider.notifier).lock();
+                ref.read(passwordVaultUnlockedProvider.notifier).state = false;
                 setState(() => _passphrase = null);
               },
               semanticsTooltip: '锁定',
@@ -181,6 +190,14 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
                             await notifier.createVault(passController.text);
                           }
                           if (mounted) _passphrase = passController.text;
+                          if (mounted) {
+                            ref
+                                    .read(
+                                      passwordVaultUnlockedProvider.notifier,
+                                    )
+                                    .state =
+                                true;
+                          }
                         } catch (e) {
                           if (mounted) _error = '口令错误或操作失败：$e';
                         } finally {

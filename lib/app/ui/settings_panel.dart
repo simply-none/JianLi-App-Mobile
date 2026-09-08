@@ -77,16 +77,22 @@ class _SettingsPanel extends ConsumerWidget {
         ref.watch(readingModeProvider).value ?? ReadingMode.normal;
     final width = MediaQuery.of(context).size.width;
 
-    return SafeArea(
-      child: Row(
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: width * 0.82),
-            child: Container(
-              color: t.colors.background,
-              child: Column(
-                children: [
-                  FHeader.nested(
+    // 面板铺满全屏高度：去掉外层 SafeArea，背景 Container 直接顶到状态栏与底部，
+    // 仅给内部 FHeader 单独留出状态栏高度，列表底部补 Home 指示条安全区——
+    // 避免顶部（状态栏）与底部（tab / Home 条）留空导致的突兀感。
+    final topPad = MediaQuery.of(context).padding.top;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Row(
+      children: [
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: width * 0.82),
+          child: Container(
+            color: t.colors.background,
+            child: Column(
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(top: topPad),
+                  child: FHeader.nested(
                     title: const Text('设置'),
                     suffixes: [
                       FHeaderAction(
@@ -95,95 +101,95 @@ class _SettingsPanel extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  Expanded(
-                    child: ListView(
-                      padding: EdgeInsets.fromLTRB(
-                        AppTokens.pagePaddingOf(context),
-                        8,
-                        AppTokens.pagePaddingOf(context),
-                        24,
-                      ),
-                      children: [
-                        const _SectionLabel('外观'),
-                        _ThemeStyleRow(
-                          selectedId: styleId,
-                          onPick: (id) {
-                            ref.read(themeStyleProvider.notifier).set(id);
-                            haptic(HapticType.light, context);
-                          },
-                        ),
-                        const SizedBox(height: 18),
-                        const _SectionLabel('主题模式'),
-                        JianliSegmented(
-                          items: const [
-                            (FLucideIcons.monitor, '系统'),
-                            (FLucideIcons.sun, '浅色'),
-                            (FLucideIcons.moon, '深色'),
-                          ],
-                          selected: modeIndex,
-                          onSelect: (i) => ref
-                              .read(themeModeProvider.notifier)
-                              .set(AppThemeMode.values[i]),
-                        ),
-                        const SizedBox(height: 26),
-                        // 阅览模式：正文字号档位（普通/大号），卡片 tag 点击切换
-                        const _SectionLabel('阅览模式'),
-                        _ReadingModeRow(
-                          mode: readingMode,
-                          onPick: (m) {
-                            ref.read(readingModeProvider.notifier).set(m);
-                            haptic(HapticType.light, context);
-                          },
-                        ),
-                        const SizedBox(height: 26),
-                        const _SectionLabel('数据与同步'),
-                        AppCard(
-                          margin: EdgeInsets.zero,
-                          child: FTile(
-                            onPress: () {
-                              Navigator.of(context).pop();
-                              // 面板已 pop，跨异步使用 originContext 前先查 mounted
-                              Future.microtask(() {
-                                if (!originContext.mounted) return;
-                                GoRouter.of(originContext).push('/sync');
-                              });
-                            },
-                            prefix: Icon(
-                              FLucideIcons.refreshCw,
-                              color: AppTokens.accent(3),
-                            ),
-                            title: const Text('局域网同步'),
-                            subtitle: const Text('在受信局域网内与其他设备互传数据'),
-                          ),
-                        ),
-                        const SizedBox(height: 26),
-                        const _SectionLabel('关于'),
-                        AppCard(
-                          margin: EdgeInsets.zero,
-                          child: FTile(
-                            prefix: Icon(
-                              FLucideIcons.info,
-                              color: AppTokens.accent(0),
-                            ),
-                            title: const Text('渐离 Jianli'),
-                            subtitle: const Text('效率 · 内容 · 工具 一体工作台'),
-                          ),
-                        ),
-                      ],
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      AppTokens.pagePaddingOf(context),
+                      8,
+                      AppTokens.pagePaddingOf(context),
+                      24 + bottomPad,
                     ),
+                    children: [
+                      const _SectionLabel('外观'),
+                      _ThemeStyleRow(
+                        selectedId: styleId,
+                        onPick: (id) {
+                          ref.read(themeStyleProvider.notifier).set(id);
+                          haptic(HapticType.light, context);
+                        },
+                      ),
+                      const SizedBox(height: 18),
+                      const _SectionLabel('主题模式'),
+                      JianliSegmented(
+                        items: const [
+                          (FLucideIcons.monitor, '系统'),
+                          (FLucideIcons.sun, '浅色'),
+                          (FLucideIcons.moon, '深色'),
+                        ],
+                        selected: modeIndex,
+                        onSelect: (i) => ref
+                            .read(themeModeProvider.notifier)
+                            .set(AppThemeMode.values[i]),
+                      ),
+                      const SizedBox(height: 26),
+                      // 阅览模式：正文字号档位（普通/大号），卡片 tag 点击切换
+                      const _SectionLabel('阅览模式'),
+                      _ReadingModeRow(
+                        mode: readingMode,
+                        onPick: (m) {
+                          ref.read(readingModeProvider.notifier).set(m);
+                          haptic(HapticType.light, context);
+                        },
+                      ),
+                      const SizedBox(height: 26),
+                      const _SectionLabel('数据与同步'),
+                      AppCard(
+                        margin: EdgeInsets.zero,
+                        child: FTile(
+                          onPress: () {
+                            Navigator.of(context).pop();
+                            // 面板已 pop，跨异步使用 originContext 前先查 mounted
+                            Future.microtask(() {
+                              if (!originContext.mounted) return;
+                              GoRouter.of(originContext).push('/sync');
+                            });
+                          },
+                          prefix: Icon(
+                            FLucideIcons.refreshCw,
+                            color: AppTokens.accent(3),
+                          ),
+                          title: const Text('局域网同步'),
+                          subtitle: const Text('在受信局域网内与其他设备互传数据'),
+                        ),
+                      ),
+                      const SizedBox(height: 26),
+                      const _SectionLabel('关于'),
+                      AppCard(
+                        margin: EdgeInsets.zero,
+                        child: FTile(
+                          prefix: Icon(
+                            FLucideIcons.info,
+                            color: AppTokens.accent(0),
+                          ),
+                          title: const Text('渐离 Jianli'),
+                          subtitle: const Text('效率 · 内容 · 工具 一体工作台'),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
-              behavior: HitTestBehavior.opaque,
-            ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            behavior: HitTestBehavior.opaque,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -218,7 +224,6 @@ class _ReadingModeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.theme;
     return Row(
       children: [
         for (final (i, m) in ReadingMode.values.indexed) ...[

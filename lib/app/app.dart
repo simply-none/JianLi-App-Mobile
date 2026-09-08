@@ -11,15 +11,47 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'providers/theme_providers.dart';
+import 'security/vault_auto_lock.dart';
 import 'theme/app_theme.dart';
 import 'router/app_router.dart';
 
 /// 渐离移动端根组件
-class JianliApp extends ConsumerWidget {
+class JianliApp extends ConsumerStatefulWidget {
   const JianliApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<JianliApp> createState() => _JianliAppState();
+}
+
+/// 根组件状态：挂接 App 生命周期监听——应用隐藏（切后台/多任务/被杀）即锁全部隐私保险箱。
+class _JianliAppState extends ConsumerState<JianliApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 应用隐藏即锁掉全部隐私保险箱（2FA / 密码库 / 文件保险箱），
+    // 避免切后台后被他人直接看到已解锁的明文。
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      lockAllVaults(ref);
+    }
+    super.didChangeAppLifecycleState(state);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final style = AppTheme.styleById(
       ref.watch(themeStyleProvider).value ?? 'zi',
     );

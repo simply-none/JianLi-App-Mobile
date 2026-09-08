@@ -43,18 +43,28 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
   FileVaultService get _service => ref.read(fileVaultServiceProvider);
 
   @override
+  void dispose() {
+    // 路由切走即锁定（清零内存密钥 + 置反开关），满足「路由切换时锁住」
+    _service.lock();
+    ref.read(fileVaultUnlockedProvider.notifier).state = false;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final unlocked = ref.watch(fileVaultUnlockedProvider);
     return FScaffold(
       header: FHeader.nested(
         title: const Text('私密文件保险箱'),
         prefixes: [FHeaderAction.back(onPress: () => context.pop())],
         suffixes: [
           // 锁定：清空内存中的密钥与文件列表
-          if (_service.isUnlocked)
+          if (unlocked)
             FHeaderAction(
               icon: const Icon(FLucideIcons.lock, size: 20),
               onPress: () {
                 _service.lock();
+                ref.read(fileVaultUnlockedProvider.notifier).state = false;
                 setState(() => _files = null);
               },
               semanticsTooltip: '锁定',
@@ -69,7 +79,7 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
           }
           final hasVault = snap.data!;
           if (!hasVault) return _buildSetup();
-          if (!_service.isUnlocked) return _buildUnlock();
+          if (!unlocked) return _buildUnlock();
           return _buildList();
         },
       ),
@@ -91,6 +101,9 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
         });
         try {
           await _service.setPassword(_passController.text);
+          if (mounted) {
+            ref.read(fileVaultUnlockedProvider.notifier).state = true;
+          }
         } catch (e) {
           if (mounted) _error = '$e';
         } finally {
@@ -115,6 +128,9 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
         });
         try {
           await _service.unlock(_passController.text);
+          if (mounted) {
+            ref.read(fileVaultUnlockedProvider.notifier).state = true;
+          }
         } catch (e) {
           if (mounted) _error = '口令错误：$e';
         } finally {
