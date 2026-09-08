@@ -2,9 +2,10 @@
 //
 // 结构：StatefulShellRoute 四分支（首页/效率/内容/工具，底部导航保持各自状态）
 //       + 全屏功能路由（从各分组页 push 进入）。
-// 转场：全屏 push 路由用 pageBuilder 包 fadeSlidePage（横向滑入+淡入，见
+// 转场：全屏 push 路由用 pageBuilder 包 slidePage（**纯横向滑入，无淡入**，见
 //       lib/app/anim/jianli_transitions.dart）；底部四分支保持 builder，由导航壳
-//       以 indexedStack 保持状态，转场在 Phase 2 再精细化（fadePage 已备好）。
+//       以 indexedStack 保持状态。
+//       ⚠️ 禁止给全屏页加淡入淡出：旧页不淡出、新页半透明叠上去会产生重影。
 import 'package:go_router/go_router.dart';
 
 import '../../features/habit/components/habit_page.dart';
@@ -77,48 +78,45 @@ final GoRouter appRouter = GoRouter(
     // ---- 效率 ----
     GoRoute(
       path: '/habit',
-      pageBuilder: (context, state) => fadeSlidePage(const HabitPage(), state),
+      pageBuilder: (context, state) => slidePage(const HabitPage(), state),
     ),
     GoRoute(
       path: '/todo',
-      pageBuilder: (context, state) => fadeSlidePage(const TodoPage(), state),
+      pageBuilder: (context, state) => slidePage(const TodoPage(), state),
     ),
     GoRoute(
       path: '/pomodoro',
-      pageBuilder: (context, state) =>
-          fadeSlidePage(const PomodoroPage(), state),
+      pageBuilder: (context, state) => slidePage(const PomodoroPage(), state),
     ),
     GoRoute(
       path: '/pomodoro/records',
       pageBuilder: (context, state) =>
-          fadeSlidePage(const PomodoroRecordsPage(), state),
+          slidePage(const PomodoroRecordsPage(), state),
     ),
     GoRoute(
       path: '/countdown',
-      pageBuilder: (context, state) =>
-          fadeSlidePage(const CountdownPage(), state),
+      pageBuilder: (context, state) => slidePage(const CountdownPage(), state),
     ),
     GoRoute(
       path: '/reminders',
       pageBuilder: (context, state) =>
-          fadeSlidePage(const ReminderListPage(), state),
+          slidePage(const ReminderListPage(), state),
     ),
     // ---- 内容 ----
     GoRoute(
       path: '/notes',
-      pageBuilder: (context, state) =>
-          fadeSlidePage(const NoteListPage(), state),
+      pageBuilder: (context, state) => slidePage(const NoteListPage(), state),
       routes: [
         GoRoute(
           path: 'edit',
-          pageBuilder: (context, state) => fadeSlidePage(
+          pageBuilder: (context, state) => slidePage(
             NoteEditorPage(noteKey: state.uri.queryParameters['noteKey']),
             state,
           ),
         ),
         GoRoute(
           path: ':key',
-          pageBuilder: (context, state) => fadeSlidePage(
+          pageBuilder: (context, state) => slidePage(
             NoteDetailPage(noteKey: state.pathParameters['key'] ?? ''),
             state,
           ),
@@ -128,11 +126,11 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/conversation',
       pageBuilder: (context, state) =>
-          fadeSlidePage(const ConversationPage(), state),
+          slidePage(const ConversationPage(), state),
       routes: [
         GoRoute(
           path: ':id',
-          pageBuilder: (context, state) => fadeSlidePage(
+          pageBuilder: (context, state) => slidePage(
             // highlight：跨主题引用跳转时定位高亮的消息 id（右侧抽屉点入）
             ConversationMessagesPage(
               themeId: state.pathParameters['id'] ?? '',
@@ -147,12 +145,11 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/ebook',
-      pageBuilder: (context, state) =>
-          fadeSlidePage(const BookshelfPage(), state),
+      pageBuilder: (context, state) => slidePage(const BookshelfPage(), state),
       routes: [
         GoRoute(
           path: 'reader',
-          pageBuilder: (context, state) => fadeSlidePage(
+          pageBuilder: (context, state) => slidePage(
             EpubReaderPage(filePath: state.uri.queryParameters['path'] ?? ''),
             state,
           ),
@@ -162,35 +159,33 @@ final GoRouter appRouter = GoRouter(
     // ---- 工具 ----
     GoRoute(
       path: '/twofactor',
-      pageBuilder: (context, state) =>
-          fadeSlidePage(const TwoFactorPage(), state),
+      pageBuilder: (context, state) => slidePage(const TwoFactorPage(), state),
     ),
     GoRoute(
       path: '/password-vault',
       pageBuilder: (context, state) =>
-          fadeSlidePage(const PasswordVaultPage(), state),
+          slidePage(const PasswordVaultPage(), state),
     ),
     GoRoute(
       path: '/file-vault',
-      pageBuilder: (context, state) =>
-          fadeSlidePage(const FileVaultPage(), state),
+      pageBuilder: (context, state) => slidePage(const FileVaultPage(), state),
     ),
     GoRoute(
       path: '/qr',
-      pageBuilder: (context, state) => fadeSlidePage(const QrPage(), state),
+      pageBuilder: (context, state) => slidePage(const QrPage(), state),
     ),
     GoRoute(
       path: '/sync',
-      pageBuilder: (context, state) => fadeSlidePage(const SyncPage(), state),
+      pageBuilder: (context, state) => slidePage(const SyncPage(), state),
     ),
     GoRoute(
       path: '/file-transfer',
       pageBuilder: (context, state) =>
-          fadeSlidePage(const FileTransferPage(), state),
+          slidePage(const FileTransferPage(), state),
     ),
     GoRoute(
       path: '/ferry',
-      // WebView 平台视图在 FadeTransition 中容易空白，用纯横向滑入转场
+      // WebView 平台视图对透明度动画敏感（淡入期间易空白），同样走纯横向滑入
       pageBuilder: (context, state) => slidePage(const FerryPage(), state),
     ),
   ],

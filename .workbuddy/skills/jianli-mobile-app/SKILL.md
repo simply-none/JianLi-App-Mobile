@@ -559,8 +559,9 @@ C:/apps/Android/AndroidSDK/build-tools/<版本号>/apksigner.bat verify --print-
 - `lib/app/anim/`：
   - `jianli_motion.dart` — `JianliMotion.enabled(context)`（读系统「减弱动态效果」）+ `duration(ctx, normal)` 自动降级。
   - `jianli_haptics.dart` — `haptic(type, [context])`，用内置 HapticFeedback（**无新依赖**）。
-  - `jianli_transitions.dart` — 自建 `fadeSlidePage` / `fadePage`（**刻意不引 `animations` 包**：其 Material 耦合重，易与 material_ui 平行 Material 类冲突）。
-- `app_router.dart`：全屏 push 路由改 `pageBuilder` 包 `fadeSlidePage`；**底部四分支保持 `builder`**（导航壳用 indexedStack 管状态，Tab 转场 Phase 2 再精细化，`fadePage` 已备好）。
+  - `jianli_transitions.dart` — 自建 **`slidePage`**（唯一 push 转场，纯 6% 横向滑入，**刻意不引 `animations` 包**：其 Material 耦合重，易与 material_ui 平行 Material 类冲突）。
+- `app_router.dart`：全屏 push 路由（20 条）统一 `pageBuilder` 包 `slidePage`；**底部四分支保持 `builder`**（导航壳用 indexedStack 管状态）。
+- ⚠️ **禁止给全屏页转场加淡入淡出**（重影根因）：原 `fadeSlidePage` / `fadePage` 已于 2026-09-08 删除——只给新页淡入、旧页不处理会导致两页叠加重影；若要淡入必须同时给旧页 `secondaryAnimation` 反向淡出。
 - `app.dart`：主题切换加 `AnimatedContainer` 背景过渡。
 
 **Phase 1 原子组件（已完成）**——均在 `lib/app/ui/`，全部 import material_ui、取色走 token：
