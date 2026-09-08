@@ -23,8 +23,13 @@ import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/ui_atoms.dart';
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../core/db/app_database.dart';
 import '../repositories/conversation_repository.dart';
+import '../utils/export_markdown.dart';
 
 /// 主题列表页
 class ConversationPage extends ConsumerWidget {
@@ -44,6 +49,10 @@ class ConversationPage extends ConsumerWidget {
         title: const Text('主题对话'),
         prefixes: [FHeaderAction.back(onPress: () => context.pop())],
         suffixes: [
+          FHeaderAction(
+            icon: const Icon(FLucideIcons.download),
+            onPress: () => _openExportPicker(context, ref),
+          ),
           FHeaderAction(
             icon: const Icon(FLucideIcons.plus),
             onPress: () => _showThemeEditor(context, ref),
@@ -141,6 +150,15 @@ class ConversationPage extends ConsumerWidget {
                   },
                 ),
                 FTile(
+                  prefix: const Icon(FLucideIcons.download, size: 16),
+                  title: const Text('导出 Markdown'),
+                  subtitle: const Text('导出该主题全部对话为 .md'),
+                  onPress: () {
+                    Navigator.pop(context);
+                    _exportTheme(context, ref, theme);
+                  },
+                ),
+                FTile(
                   prefix: Icon(
                     FLucideIcons.trash2,
                     size: 16,
@@ -173,6 +191,8 @@ class ConversationPage extends ConsumerWidget {
   }) async {
     final title = TextEditingController(text: existing?.title ?? '');
     final remark = TextEditingController(text: existing?.remark ?? '');
+    // 编辑草稿：主题标签 id（scope='theme'），对齐 PC 主题编辑可挂标签
+    final editTagIds = <String>{..._ThemeCard._parseIds(existing?.tags)};
     await showFSheet<void>(
       context: context,
       side: FLayout.btt,
@@ -206,6 +226,84 @@ class ConversationPage extends ConsumerWidget {
               label: const Text('备注（可选）'),
               control: FTextFieldControl.managed(controller: remark),
             ),
+            const SizedBox(height: 14),
+            // 主题标签选择（对齐 PC 主题编辑可挂标签；scope='theme'，复用消息标签彩色徽标规格）
+            StatefulBuilder(
+              builder: (ctx, setInner) {
+                final t = ctx.theme;
+                final themeTagDefs =
+                    ((ref.read(conversationTagsProvider).value ??
+                            const <ConversationTagData>[]))
+                        .where((d) => d.scope == 'theme')
+                        .toList();
+                final tagById = {for (final d in themeTagDefs) d.id.toString(): d};
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    GestureDetector(
+                      onTap: () async {
+                        final picked = await _openThemeTagPicker(ctx, ref, editTagIds);
+                        if (picked != null && ctx.mounted) {
+                          editTagIds
+                            ..clear()
+                            ..addAll(picked);
+                          setInner(() {});
+                        }
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: t.colors.card,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: t.colors.border),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              FLucideIcons.tags,
+                              size: 14,
+                              color: AppTokens.accent(4),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              editTagIds.isEmpty
+                                  ? '主题标签'
+                                  : '主题标签 ${editTagIds.length}',
+                              style: t.typography.body.xs.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (editTagIds.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          for (final id in editTagIds)
+                            if (tagById[id] != null)
+                              GestureDetector(
+                                onTap: () {
+                                  editTagIds.remove(id);
+                                  setInner(() {});
+                                },
+                                child: _ConvTagBadge(tag: tagById[id]!),
+                              ),
+                        ],
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
             const SizedBox(height: 16),
             GradientButton(
               label: existing == null ? '创建' : '保存',
@@ -215,12 +313,17 @@ class ConversationPage extends ConsumerWidget {
                 if (t.isEmpty) return;
                 final repo = ref.read(conversationRepositoryProvider);
                 if (existing == null) {
-                  repo.createTheme(title: t, remark: remark.text.trim());
+                  repo.createTheme(
+                    title: t,
+                    remark: remark.text.trim(),
+                    tagIds: editTagIds.toList(),
+                  );
                 } else {
                   repo.updateTheme(
                     existing.id,
                     title: t,
                     remark: remark.text.trim(),
+                    tagIds: editTagIds.toList(),
                   );
                 }
                 Navigator.pop(context);
@@ -279,6 +382,320 @@ class ConversationPage extends ConsumerWidget {
           variant: FToastVariant.destructive,
           title: const Text('删除失败'),
           description: Text('$e'.replaceFirst('Exception: ', '')),
+        );
+      }
+    }
+  }
+
+  /// 打开主题标签选择抽屉（scope='theme'，复用消息标签选择规格；草稿 + 完成/清空）
+  Future<Set<String>?> _openThemeTagPicker(
+    BuildContext context,
+    WidgetRef ref,
+    Set<String> seed,
+  ) async {
+    final tagDefs =
+        ((ref.read(conversationTagsProvider).value ??
+                const <ConversationTagData>[]))
+            .where((d) => d.scope == 'theme')
+            .toList();
+    final draft = <String>{...seed};
+    final result = await showFilterSheet<Set<String>>(
+      context: context,
+      title: '主题标签',
+      confirmLabel: '完成',
+      resetLabel: '清空',
+      body: (context, refresh) =>
+          _buildThemeTagPickerBody(context, ref, tagDefs, draft, refresh),
+      onReset: (refresh) {
+        draft.clear();
+        refresh();
+      },
+      onConfirm: () => Set<String>.of(draft),
+    );
+    if (result == null || !context.mounted) return null;
+    return result;
+  }
+
+  /// 主题标签选择抽屉选项区（统一规格 chip + 新建标签入口，创建 scope='theme'）
+  Widget _buildThemeTagPickerBody(
+    BuildContext context,
+    WidgetRef ref,
+    List<ConversationTagData> tagDefs,
+    Set<String> draft,
+    VoidCallback refresh,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (tagDefs.isEmpty)
+          Text(
+            '暂无主题标签，点下方「新建标签」创建',
+            style: context.theme.typography.body.xs.copyWith(
+              color: context.theme.colors.mutedForeground,
+            ),
+          )
+        else
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final tag in tagDefs)
+                _ConvTagOption(
+                  tag: tag,
+                  selected: draft.contains(tag.id.toString()),
+                  onTap: () {
+                    final key = tag.id.toString();
+                    draft.contains(key) ? draft.remove(key) : draft.add(key);
+                    refresh();
+                  },
+                ),
+            ],
+          ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: () => _createThemeTag(context, ref, draft, refresh),
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+              border: Border.all(
+                color: context.theme.colors.primary.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  FLucideIcons.plus,
+                  size: 13,
+                  color: context.theme.colors.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '新建标签',
+                  style: context.theme.typography.body.sm.copyWith(
+                    color: context.theme.colors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 新建主题标签（scope='theme'，创建后自动加入草稿并刷新选择区）
+  Future<void> _createThemeTag(
+    BuildContext context,
+    WidgetRef ref,
+    Set<String> draft,
+    VoidCallback refresh,
+  ) async {
+    final controller = TextEditingController();
+    final name = await showFSheet<String>(
+      context: context,
+      side: FLayout.btt,
+      builder: (context) => SheetSurface(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '新建主题标签',
+              style: context.theme.typography.body.lg.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '配色按顺序自动分配，与桌面端一致',
+              style: context.theme.typography.body.sm.copyWith(
+                color: context.theme.colors.mutedForeground,
+              ),
+            ),
+            const SizedBox(height: 14),
+            FTextField(
+              control: FTextFieldControl.managed(controller: controller),
+              hint: '输入标签名称',
+              autofocus: true,
+              onSubmit: (v) => Navigator.pop(context, v),
+            ),
+            const SizedBox(height: 16),
+            GradientButton(
+              label: '创建',
+              icon: FLucideIcons.check,
+              onPress: () => Navigator.pop(context, controller.text),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (name == null || name.trim().isEmpty || !context.mounted) return;
+    final tag = await ref
+        .read(conversationRepositoryProvider)
+        .createThemeTag(name.trim());
+    if (context.mounted) {
+      draft.add(tag.id.toString());
+      refresh();
+    }
+  }
+
+  /// 导出单个主题为 Markdown 并分享
+  Future<void> _exportTheme(
+    BuildContext context,
+    WidgetRef ref,
+    ConversationThemeData theme,
+  ) async {
+    final repo = ref.read(conversationRepositoryProvider);
+    final msgs = await repo.getMessagesByTheme(theme.id.toString());
+    final tagById = {
+      for (final t in (ref.read(conversationTagsProvider).value ??
+              const <ConversationTagData>[]))
+        t.id.toString(): t,
+    };
+    final md = buildThemeMarkdown(theme, msgs, tagById);
+    if (!context.mounted) return;
+    await _shareMarkdown(
+      context,
+      md,
+      '主题-${_sanitize(theme.title)}_${_timestamp()}.md',
+    );
+  }
+
+  /// 批量导出：底部多选抽屉（对齐 PC ExportThemesDialog），合并为单个 .md 分享
+  Future<void> _openExportPicker(BuildContext context, WidgetRef ref) async {
+    final themes = ref.read(conversationThemesProvider).value ??
+        const <ConversationThemeData>[];
+    if (themes.isEmpty) {
+      if (context.mounted) {
+        showFToast(context: context, title: const Text('暂无可导出的主题'));
+      }
+      return;
+    }
+    final draft = <int>{};
+    final result = await showFilterSheet<Set<int>>(
+      context: context,
+      title: '导出主题',
+      confirmLabel: '导出',
+      resetLabel: '清空',
+      body: (c, refresh) => _buildExportPickerBody(c, ref, refresh, themes, draft),
+      onReset: (refresh) {
+        draft.clear();
+        refresh();
+      },
+      onConfirm: () => Set<int>.of(draft),
+    );
+    if (result == null || result.isEmpty || !context.mounted) return;
+    final repo = ref.read(conversationRepositoryProvider);
+    final tagById = {
+      for (final t in (ref.read(conversationTagsProvider).value ??
+              const <ConversationTagData>[]))
+        t.id.toString(): t,
+    };
+    final messagesByTheme = <int, List<ConversationData>>{};
+    for (final id in result) {
+      messagesByTheme[id] = await repo.getMessagesByTheme(id.toString());
+    }
+    final selectedThemes = [
+      for (final th in themes)
+        if (result.contains(th.id)) th,
+    ];
+    final md = buildThemesMarkdown(selectedThemes, messagesByTheme, tagById);
+    if (!context.mounted) return;
+    await _shareMarkdown(context, md, '主题对话导出_${_timestamp()}.md');
+  }
+
+  /// 批量导出多选抽屉选项区（全选/反选 + 主题勾选行）
+  Widget _buildExportPickerBody(
+    BuildContext context,
+    WidgetRef ref,
+    VoidCallback refresh,
+    List<ConversationThemeData> themes,
+    Set<int> draft,
+  ) {
+    final counts =
+        ref.read(themeCountsProvider).value ?? const <String, int>{};
+    final allChecked =
+        themes.isNotEmpty && draft.length == themes.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            GestureDetector(
+              onTap: () {
+                if (allChecked) {
+                  draft.clear();
+                } else {
+                  draft.addAll(themes.map((t) => t.id));
+                }
+                refresh();
+              },
+              behavior: HitTestBehavior.opaque,
+              child: Text(
+                allChecked ? '取消全选' : '全选',
+                style: context.theme.typography.body.sm.copyWith(
+                  color: context.theme.colors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '已选 ${draft.length} / ${themes.length}',
+              style: context.theme.typography.body.xs.copyWith(
+                color: context.theme.colors.mutedForeground,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        for (final theme in themes)
+          _ExportThemeItem(
+            theme: theme,
+            count: counts[theme.id.toString()] ?? 0,
+            selected: draft.contains(theme.id),
+            onTap: () {
+              draft.contains(theme.id)
+                  ? draft.remove(theme.id)
+                  : draft.add(theme.id);
+              refresh();
+            },
+          ),
+      ],
+    );
+  }
+
+  /// 生成 Markdown 文本并写入临时目录，经系统分享面板导出（对齐 PC 落盘 .md）
+  Future<void> _shareMarkdown(
+    BuildContext context,
+    String markdown,
+    String filename,
+  ) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$filename');
+      await file.writeAsString(markdown);
+      if (!context.mounted) return;
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], text: '主题对话导出'),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        showFToast(
+          context: context,
+          variant: FToastVariant.destructive,
+          title: const Text('导出失败'),
+          description: Text('$e'),
         );
       }
     }
@@ -1936,4 +2353,102 @@ class _RefPickItem extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 批量导出多选抽屉的单个主题行（勾选圆点 + 标题 + 对话数）
+class _ExportThemeItem extends StatelessWidget {
+  const _ExportThemeItem({
+    required this.theme,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final ConversationThemeData theme;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return FTappable(
+      onPress: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTokens.accentSoft(context, AppTokens.accent(4))
+              : t.colors.card,
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          border: Border.all(
+            color: selected
+                ? AppTokens.accent(4).withValues(alpha: 0.4)
+                : t.colors.border,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: selected ? AppTokens.accent(4) : t.colors.background,
+                border: Border.all(
+                  color: selected
+                      ? AppTokens.accent(4)
+                      : t.colors.mutedForeground,
+                ),
+              ),
+              child: selected
+                  ? const Icon(
+                      FLucideIcons.check,
+                      size: 13,
+                      color: Colors.white,
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                theme.title ?? '未命名主题',
+                style: t.typography.body.sm,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: t.colors.background,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: t.typography.body.xs.copyWith(
+                  color: t.colors.mutedForeground,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 文件名安全化：去除非法字符并限制长度（对齐 PC sanitizeName）
+String _sanitize(String? s) {
+  final v = (s ?? '未命名').replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  return v.length > 40 ? v.substring(0, 40) : v;
+}
+
+/// 时间戳：YYYYMMDD_HHmmss（对齐 PC 导出文件名时间戳）
+String _timestamp() {
+  final d = DateTime.now();
+  String p(int n) => n.toString().padLeft(2, '0');
+  return '${d.year}${p(d.month)}${p(d.day)}_${p(d.hour)}${p(d.minute)}${p(d.second)}';
 }

@@ -100,15 +100,20 @@ class ConversationRepository {
         .watch();
   }
 
-  /// 新建主题（桌面端字段：title/tags/create_time/update_time/remark/parent_id）
-  Future<int> createTheme({required String title, String remark = ''}) async {
+  /// 新建主题（桌面端字段：title/tags(JSON 标签 id 数组)/create_time/update_time/remark/parent_id）
+  /// tagIds：主题标签 id 数组（scope='theme'），与桌面端 createTheme 对齐。
+  Future<int> createTheme({
+    required String title,
+    String remark = '',
+    List<String> tagIds = const [],
+  }) async {
     final now = _now();
     return _db
         .into(_db.conversationTheme)
         .insert(
           ConversationThemeCompanion.insert(
             title: Value(title),
-            tags: const Value('[]'),
+            tags: Value(jsonEncode(tagIds)),
             createTime: Value(now),
             updateTime: Value(now),
             remark: Value(remark),
@@ -117,8 +122,14 @@ class ConversationRepository {
         );
   }
 
-  /// 更新主题（标题 / 备注，与桌面端 updateTheme 对齐；自动刷新 update_time）
-  Future<void> updateTheme(int id, {String? title, String? remark}) async {
+  /// 更新主题（标题 / 备注 / 标签，与桌面端 updateTheme 对齐；自动刷新 update_time）
+  /// tagIds：不传则不动标签列；传空数组表示清空标签。
+  Future<void> updateTheme(
+    int id, {
+    String? title,
+    String? remark,
+    List<String>? tagIds,
+  }) async {
     await (_db.update(
       _db.conversationTheme,
     )..where((t) => t.id.equals(id))).write(
@@ -126,6 +137,9 @@ class ConversationRepository {
         updateTime: Value(_now()),
         title: title == null ? const Value.absent() : Value(title),
         remark: remark == null ? const Value.absent() : Value(remark),
+        tags: tagIds == null
+            ? const Value.absent()
+            : Value(jsonEncode(tagIds)),
       ),
     );
   }
@@ -238,6 +252,57 @@ class ConversationRepository {
       scope: 'conversation',
       createTime: _now(),
     );
+  }
+
+  /// 新建主题标签（scope='theme'；配色对齐桌面端 TAG_COLORS 按顺序取色）
+  /// 与 createConversationTag 平行，仅 scope 不同；创建后自动选中由调用方处理。
+  Future<ConversationTagData> createThemeTag(String name) async {
+    const palette = [
+      '#6366f1',
+      '#ec4899',
+      '#f59e0b',
+      '#10b981',
+      '#3b82f6',
+      '#8b5cf6',
+      '#ef4444',
+      '#14b8a6',
+      '#f97316',
+      '#06b6d4',
+    ];
+    final existing = await (_db.select(
+      _db.conversationTag,
+    )..where((t) => t.scope.equals('theme'))).get();
+    final color = palette[existing.length % palette.length];
+    final id = await _db
+        .into(_db.conversationTag)
+        .insert(
+          ConversationTagCompanion.insert(
+            name: Value(name),
+            color: Value(color),
+            scope: const Value('theme'),
+            createTime: Value(_now()),
+          ),
+        );
+    return ConversationTagData(
+      id: id,
+      name: name,
+      color: color,
+      scope: 'theme',
+      createTime: _now(),
+    );
+  }
+
+  /// 取某主题下的全部对话（排除软删，按 create_time 升序）——导出 Markdown 用，
+  /// 口径与桌面端 getConversationsByTheme 一致。
+  Future<List<ConversationData>> getMessagesByTheme(String themeId) async {
+    return (_db.select(_db.conversation)
+          ..where(
+            (t) =>
+                t.themeId.equals(themeId) &
+                (t.isDeleted.isNull() | t.isDeleted.equals('0')),
+          )
+          ..orderBy([(t) => OrderingTerm.asc(t.createTime)]))
+        .get();
   }
 
   /// 软删除一条消息（对齐桌面端追溯语义：is_deleted='1'，行保留）
