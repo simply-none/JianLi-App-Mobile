@@ -11,7 +11,7 @@
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
-/// 主题样式（5 套流行配色）——主色 + 暗色提亮主色
+/// 主题样式（9 套配色）——主色 + 暗色提亮主色
 class ThemeStyle {
   const ThemeStyle({
     required this.id,
@@ -30,7 +30,7 @@ class ThemeStyle {
 class AppTheme {
   AppTheme._();
 
-  /// 5 套流行主题样式（主色 / 暗色提亮主色）
+  /// 9 套主题样式（主色 / 暗色提亮主色）
   static const List<ThemeStyle> styles = [
     ThemeStyle(
       id: 'zi',
@@ -61,6 +61,31 @@ class AppTheme {
       name: '樱粉',
       lightPrimary: Color(0xFFEC4899),
       darkPrimary: Color(0xFFF472B6),
+    ),
+    // —— 以下 4 套：莫兰迪灰调（低饱和、灰度高，非正色）——
+    ThemeStyle(
+      id: 'red',
+      name: '丹枫红',
+      lightPrimary: Color(0xFFB06A72),
+      darkPrimary: Color(0xFFCC8E96),
+    ),
+    ThemeStyle(
+      id: 'yellow',
+      name: '秋香黄',
+      lightPrimary: Color(0xFFC2A24E),
+      darkPrimary: Color(0xFFD9BE78),
+    ),
+    ThemeStyle(
+      id: 'cyan',
+      name: '远山青',
+      lightPrimary: Color(0xFF6F9C99),
+      darkPrimary: Color(0xFF92B8B5),
+    ),
+    ThemeStyle(
+      id: 'gray',
+      name: '霜月灰',
+      lightPrimary: Color(0xFF8E9099),
+      darkPrimary: Color(0xFFB0B2B9),
     ),
   ];
 
