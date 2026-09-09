@@ -383,10 +383,13 @@ class _ReminderEditorState extends ConsumerState<_ReminderEditor> {
                         .copyWith(fontWeight: FontWeight.w700),
                   ),
                 ),
-                FHeaderAction(
-                  icon: const Icon(FLucideIcons.x),
-                  onPress: () => Navigator.pop(context),
-                  semanticsLabel: '关闭',
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(FLucideIcons.x, size: 18, color: t.colors.foreground),
+                  ),
                 ),
               ],
             ),

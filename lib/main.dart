@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'app/app.dart';
+import 'core/notifications/notification_service.dart';
 import 'core/sync/device_nickname.dart';
 
 // —— 代码级 paint 调试开关（页面规范，默认全关）——
@@ -28,5 +29,9 @@ Future<void> main() async {
   debugRepaintRainbowEnabled = kDebugRepaintRainbow;
   // 预加载本机随机昵称（#昵称），保证首页 build 前缓存就绪
   await ensureNickname();
+  // ⚠️ 必须在 runApp 前注册通知渠道，否则 reminders 排程的 createNotification 会因
+  // channelKey 未注册而静默丢弃（表现 = 所有提醒都不弹系统通知）。awesome_notifications
+  // 的 initialize 不依赖 BuildContext，可在 main 直接 await。
+  await NotificationService.init();
   runApp(const ProviderScope(child: JianliApp()));
 }

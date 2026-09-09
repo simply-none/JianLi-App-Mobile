@@ -66,11 +66,16 @@ dashboardStatsProvider = FutureProvider<DashboardStats>((ref) async {
           .getSingle()
           .then((r) => r.read(db.pomodoroStatus.id.count()) ?? 0);
 
-  // 启用的提醒
+  // 活跃提醒：所有启用的提醒（含用户自建 / 习惯 / 待办），但排除番茄钟 stateful。
+  // - stateful 由 App 前台驱动、不走系统通知，且 id='pomodoro' 单行不代表「一条提醒」，不能计入。
+  // - 习惯(source='habit')/待办(source='todo')的启用提醒要计入（与用户预期一致）。
+  // - mode 为 NULL 的行也一并保留（不靠 mode 过滤掉异常数据）。
   final enabledReminders =
       await (db.selectOnly(db.reminders)
             ..addColumns([db.reminders.id.count()])
-            ..where(db.reminders.enabled.equals('1')))
+            ..where(db.reminders.enabled.equals('1') &
+                (db.reminders.mode.isNull() |
+                    db.reminders.mode.isNotValue('stateful'))))
           .getSingle()
           .then((r) => r.read(db.reminders.id.count()) ?? 0);
 

@@ -40,16 +40,22 @@ class NotificationChannels {
           channelKey: habit,
           channelName: '习惯提醒',
           channelDescription: '习惯打卡到点提醒',
+          channelShowBadge: true,
+          playSound: true,
         ),
         NotificationChannel(
           channelKey: todo,
           channelName: '待办提醒',
           channelDescription: '待办截止与重复实例提醒',
+          channelShowBadge: true,
+          playSound: true,
         ),
         NotificationChannel(
           channelKey: pomodoro,
           channelName: '番茄钟',
           channelDescription: '番茄钟工作/休息阶段切换提醒',
+          channelShowBadge: true,
+          playSound: true,
         ),
         NotificationChannel(
           channelKey: alarm,
