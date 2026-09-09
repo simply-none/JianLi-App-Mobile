@@ -36,6 +36,7 @@ class DashboardPage extends ConsumerWidget {
     final statsAsync = ref.watch(dashboardStatsProvider);
 
     return FScaffold(
+      childPad: false,
       child: ColoredBox(
         color: AppTokens.pageTint(context),
         // 顶部安全区：把滚动区限制在状态栏之下，避免滚动时内容钻到状态栏（时钟/电量）下

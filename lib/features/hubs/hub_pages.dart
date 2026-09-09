@@ -29,6 +29,7 @@ class EfficiencyHubPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FScaffold(
+      childPad: false,
       header: FHeader(
         title: const Text('效率'),
         suffixes: const [SettingsButton()],
@@ -51,6 +52,7 @@ class ContentHubPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FScaffold(
+      childPad: false,
       header: FHeader(
         title: const Text('内容'),
         suffixes: const [SettingsButton()],
@@ -77,6 +79,7 @@ class ToolsHubPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FScaffold(
+      childPad: false,
       header: FHeader(
         title: const Text('工具'),
         suffixes: const [SettingsButton()],
