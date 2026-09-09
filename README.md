@@ -153,12 +153,37 @@ set TMP=C:\src\tmp
 set TEMP=C:\src\tmp
 set PUB_HOSTED_URL=https://pub.flutter-io.cn
 set FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+export ANDROID_HOME=C:/apps/Android/AndroidSDK ANDROID_SDK_ROOT=C:/apps/Android/AndroidSDK
 set GRADLE_USER_HOME=C:\src\gradle-home
+export GRADLE_USER_HOME=C:/src/gradle-home            # ← 最关键
+export JAVA_HOME="/c/apps/Android/Android Studio/jbr"  # PATH 的 java 是 1.8，Gradle 9 要 ≥17
+
+
+<!-- 构建apk -->
+flutter build apk --release --split-per-abi
 ```
 
 > Gradle 的 Maven 镜像（阿里云）已写死在 `android/settings.gradle.kts`，**不要删**；
 
 ---
+
+### flutter build 必需环境变量（2026-09-09 实测，缺一不可）
+不加这些变量报的错**全都不是真代码错**，别去改 Dart：
+```bash
+export TMP=C:/src/tmp TEMP=C:/src/tmp
+export PUB_HOSTED_URL=https://pub.flutter-io.cn
+export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+export ANDROID_HOME=C:/apps/Android/AndroidSDK ANDROID_SDK_ROOT=C:/apps/Android/AndroidSDK
+export GRADLE_USER_HOME=C:/src/gradle-home            # ← 最关键
+export JAVA_HOME="/c/apps/Android/Android Studio/jbr"  # PATH 的 java 是 1.8，Gradle 9 要 ≥17
+C:/src/flutter/bin/flutter build apk --release --split-per-abi
+```
+- 缺 `ANDROID_HOME` → 7 秒速败 `No Android SDK found`（SDK 不在默认位置）。
+- 缺 `GRADLE_USER_HOME` → Gradle 用默认 `C:\Users\风起\.gradle`，中文用户名路径下
+  `.lock 拒绝访问`，卡 10 分钟后报 `Error resolving plugin [dev.flutter.flutter-plugin-loader]`，
+  **看着像依赖问题，实为锁权限问题**；改回项目 gradle-home 后 3 分钟通过。
+- **判据**：日志出现 `Running Gradle task 'assembleRelease'` = Dart/kernel 阶段已通过 = **Dart 代码没问题**，
+  此后任何失败都是 Gradle/环境问题，不要回头改 Dart。
 
 ## 5. 拉依赖
 

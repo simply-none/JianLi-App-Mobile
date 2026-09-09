@@ -170,24 +170,28 @@ class HabitRepository {
     final minute = parts.length > 1 ? int.tryParse(parts[1]) : null;
     if (hour == null || minute == null) return;
     if (weekDays.isEmpty) {
-      await NotificationService.scheduleDaily(
+      // 每天：scheduleCalendar 只给 hour/minute 即每日重复
+      await NotificationService.scheduleCalendar(
         id: id.hashCode,
         channelKey: NotificationChannels.habit,
         title: '习惯提醒',
         body: title,
         hour: hour,
         minute: minute,
+        repeats: true,
       );
     } else {
       for (final wd in weekDays) {
-        await NotificationService.scheduleWeekly(
+        // 按星期：awesome weekday 1=周日…7=周六，PC 约定 0=周日…6=周六 → +1
+        await NotificationService.scheduleCalendar(
           id: id.hashCode + wd,
           channelKey: NotificationChannels.habit,
           title: '习惯提醒',
           body: title,
+          weekday: wd + 1,
           hour: hour,
           minute: minute,
-          weekday: wd,
+          repeats: true,
         );
       }
     }

@@ -3582,6 +3582,17 @@ class $RemindersTable extends Reminders
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _deliveryMeta = const VerificationMeta(
+    'delivery',
+  );
+  @override
+  late final GeneratedColumn<String> delivery = GeneratedColumn<String>(
+    'delivery',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3607,6 +3618,7 @@ class $RemindersTable extends Reminders
     repeat,
     date,
     source,
+    delivery,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3760,6 +3772,12 @@ class $RemindersTable extends Reminders
         source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
       );
     }
+    if (data.containsKey('delivery')) {
+      context.handle(
+        _deliveryMeta,
+        delivery.isAcceptableOrUnknown(data['delivery']!, _deliveryMeta),
+      );
+    }
     return context;
   }
 
@@ -3861,6 +3879,10 @@ class $RemindersTable extends Reminders
         DriftSqlType.string,
         data['${effectivePrefix}source'],
       ),
+      delivery: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}delivery'],
+      ),
     );
   }
 
@@ -3911,6 +3933,10 @@ class Reminder extends DataClass implements Insertable<Reminder> {
 
   /// 提醒来源（桌面端待办截止提醒引擎写入 'todo'；用户手建为空）
   final String? source;
+
+  /// 送达方式：'notification'（系统通知，默认）/ 'alarm'（闹钟：精确+全屏意图+高重要渠道）
+  /// 对齐 PC newTips 的「提醒方式」概念，移动端作为用户可选维度。
+  final String? delivery;
   const Reminder({
     required this.id,
     this.name,
@@ -3935,6 +3961,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
     this.repeat,
     this.date,
     this.source,
+    this.delivery,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4006,6 +4033,9 @@ class Reminder extends DataClass implements Insertable<Reminder> {
     if (!nullToAbsent || source != null) {
       map['source'] = Variable<String>(source);
     }
+    if (!nullToAbsent || delivery != null) {
+      map['delivery'] = Variable<String>(delivery);
+    }
     return map;
   }
 
@@ -4066,6 +4096,9 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       source: source == null && nullToAbsent
           ? const Value.absent()
           : Value(source),
+      delivery: delivery == null && nullToAbsent
+          ? const Value.absent()
+          : Value(delivery),
     );
   }
 
@@ -4098,6 +4131,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       repeat: serializer.fromJson<String?>(json['repeat']),
       date: serializer.fromJson<String?>(json['date']),
       source: serializer.fromJson<String?>(json['source']),
+      delivery: serializer.fromJson<String?>(json['delivery']),
     );
   }
   @override
@@ -4127,6 +4161,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       'repeat': serializer.toJson<String?>(repeat),
       'date': serializer.toJson<String?>(date),
       'source': serializer.toJson<String?>(source),
+      'delivery': serializer.toJson<String?>(delivery),
     };
   }
 
@@ -4154,6 +4189,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
     Value<String?> repeat = const Value.absent(),
     Value<String?> date = const Value.absent(),
     Value<String?> source = const Value.absent(),
+    Value<String?> delivery = const Value.absent(),
   }) => Reminder(
     id: id ?? this.id,
     name: name.present ? name.value : this.name,
@@ -4178,6 +4214,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
     repeat: repeat.present ? repeat.value : this.repeat,
     date: date.present ? date.value : this.date,
     source: source.present ? source.value : this.source,
+    delivery: delivery.present ? delivery.value : this.delivery,
   );
   Reminder copyWithCompanion(RemindersCompanion data) {
     return Reminder(
@@ -4208,6 +4245,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
       repeat: data.repeat.present ? data.repeat.value : this.repeat,
       date: data.date.present ? data.date.value : this.date,
       source: data.source.present ? data.source.value : this.source,
+      delivery: data.delivery.present ? data.delivery.value : this.delivery,
     );
   }
 
@@ -4236,7 +4274,8 @@ class Reminder extends DataClass implements Insertable<Reminder> {
           ..write('time: $time, ')
           ..write('repeat: $repeat, ')
           ..write('date: $date, ')
-          ..write('source: $source')
+          ..write('source: $source, ')
+          ..write('delivery: $delivery')
           ..write(')'))
         .toString();
   }
@@ -4266,6 +4305,7 @@ class Reminder extends DataClass implements Insertable<Reminder> {
     repeat,
     date,
     source,
+    delivery,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -4293,7 +4333,8 @@ class Reminder extends DataClass implements Insertable<Reminder> {
           other.time == this.time &&
           other.repeat == this.repeat &&
           other.date == this.date &&
-          other.source == this.source);
+          other.source == this.source &&
+          other.delivery == this.delivery);
 }
 
 class RemindersCompanion extends UpdateCompanion<Reminder> {
@@ -4320,6 +4361,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
   final Value<String?> repeat;
   final Value<String?> date;
   final Value<String?> source;
+  final Value<String?> delivery;
   final Value<int> rowid;
   const RemindersCompanion({
     this.id = const Value.absent(),
@@ -4345,6 +4387,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     this.repeat = const Value.absent(),
     this.date = const Value.absent(),
     this.source = const Value.absent(),
+    this.delivery = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   RemindersCompanion.insert({
@@ -4371,6 +4414,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     this.repeat = const Value.absent(),
     this.date = const Value.absent(),
     this.source = const Value.absent(),
+    this.delivery = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id);
   static Insertable<Reminder> custom({
@@ -4397,6 +4441,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     Expression<String>? repeat,
     Expression<String>? date,
     Expression<String>? source,
+    Expression<String>? delivery,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4423,6 +4468,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
       if (repeat != null) 'repeat': repeat,
       if (date != null) 'date': date,
       if (source != null) 'source': source,
+      if (delivery != null) 'delivery': delivery,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4451,6 +4497,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     Value<String?>? repeat,
     Value<String?>? date,
     Value<String?>? source,
+    Value<String?>? delivery,
     Value<int>? rowid,
   }) {
     return RemindersCompanion(
@@ -4477,6 +4524,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
       repeat: repeat ?? this.repeat,
       date: date ?? this.date,
       source: source ?? this.source,
+      delivery: delivery ?? this.delivery,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4553,6 +4601,9 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
     if (source.present) {
       map['source'] = Variable<String>(source.value);
     }
+    if (delivery.present) {
+      map['delivery'] = Variable<String>(delivery.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4585,6 +4636,7 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
           ..write('repeat: $repeat, ')
           ..write('date: $date, ')
           ..write('source: $source, ')
+          ..write('delivery: $delivery, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -16824,6 +16876,7 @@ typedef $$RemindersTableCreateCompanionBuilder = RemindersCompanion Function({
   Value<String?> repeat,
   Value<String?> date,
   Value<String?> source,
+  Value<String?> delivery,
   Value<int> rowid,
 });
 typedef $$RemindersTableUpdateCompanionBuilder = RemindersCompanion Function({
@@ -16850,6 +16903,7 @@ typedef $$RemindersTableUpdateCompanionBuilder = RemindersCompanion Function({
   Value<String?> repeat,
   Value<String?> date,
   Value<String?> source,
+  Value<String?> delivery,
   Value<int> rowid,
 });
 
@@ -16974,6 +17028,11 @@ class $$RemindersTableFilterComposer
 
   ColumnFilters<String> get source => $composableBuilder(
     column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get delivery => $composableBuilder(
+    column: $table.delivery,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -17101,6 +17160,11 @@ class $$RemindersTableOrderingComposer
     column: $table.source,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get delivery => $composableBuilder(
+    column: $table.delivery,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$RemindersTableAnnotationComposer
@@ -17184,6 +17248,9 @@ class $$RemindersTableAnnotationComposer
 
   GeneratedColumn<String> get source =>
       $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get delivery =>
+      $composableBuilder(column: $table.delivery, builder: (column) => column);
 }
 
 class $$RemindersTableTableManager
@@ -17237,6 +17304,7 @@ class $$RemindersTableTableManager
                 Value<String?> repeat = const Value.absent(),
                 Value<String?> date = const Value.absent(),
                 Value<String?> source = const Value.absent(),
+                Value<String?> delivery = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => RemindersCompanion(
                 id: id,
@@ -17262,6 +17330,7 @@ class $$RemindersTableTableManager
                 repeat: repeat,
                 date: date,
                 source: source,
+                delivery: delivery,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -17289,6 +17358,7 @@ class $$RemindersTableTableManager
                 Value<String?> repeat = const Value.absent(),
                 Value<String?> date = const Value.absent(),
                 Value<String?> source = const Value.absent(),
+                Value<String?> delivery = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => RemindersCompanion.insert(
                 id: id,
@@ -17314,6 +17384,7 @@ class $$RemindersTableTableManager
                 repeat: repeat,
                 date: date,
                 source: source,
+                delivery: delivery,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

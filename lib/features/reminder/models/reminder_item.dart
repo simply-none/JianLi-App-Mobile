@@ -26,7 +26,11 @@ class ReminderItem {
     required this.unit,
     required this.idleTime,
     required this.source,
+    required this.delivery,
+    required this.month,
+    required this.dayOfMonth,
     required this.statesSummary,
+    required this.loop,
   });
 
   factory ReminderItem.fromRow(Reminder row) {
@@ -45,9 +49,55 @@ class ReminderItem {
       unit: row.unit,
       idleTime: row.idleTime,
       source: row.source ?? '',
+      delivery: row.delivery ?? 'notification',
+      month: row.month,
+      dayOfMonth: row.dayOfMonth,
+      loop: row.loop ?? '1',
       statesSummary: states.isEmpty ? null : '${states.length} 个状态',
     );
   }
+
+  /// 不可变更新（启停 / 编辑保存时用）
+  ReminderItem copyWith({
+    String? id,
+    String? mode,
+    String? title,
+    String? content,
+    bool? enabled,
+    List<int>? weekDays,
+    String? time,
+    String? date,
+    String? repeat,
+    String? interval,
+    String? unit,
+    String? idleTime,
+    String? source,
+    String? delivery,
+    String? month,
+    String? dayOfMonth,
+    String? statesSummary,
+    String? loop,
+  }) =>
+      ReminderItem(
+        id: id ?? this.id,
+        mode: mode ?? this.mode,
+        title: title ?? this.title,
+        content: content ?? this.content,
+        enabled: enabled ?? this.enabled,
+        weekDays: weekDays ?? this.weekDays,
+        time: time ?? this.time,
+        date: date ?? this.date,
+        repeat: repeat ?? this.repeat,
+        interval: interval ?? this.interval,
+        unit: unit ?? this.unit,
+        idleTime: idleTime ?? this.idleTime,
+        source: source ?? this.source,
+        delivery: delivery ?? this.delivery,
+        month: month ?? this.month,
+        dayOfMonth: dayOfMonth ?? this.dayOfMonth,
+        statesSummary: statesSummary ?? this.statesSummary,
+        loop: loop ?? this.loop,
+      );
 
   final String id;
   final String mode;
@@ -65,6 +115,12 @@ class ReminderItem {
   final String? date;
   final String? repeat;
 
+  /// 每年/每月定点：月（yearly 用，1-12）
+  final String? month;
+
+  /// 每年/每月定点：日（monthly/yearly 用，1-31）
+  final String? dayOfMonth;
+
   /// 周期间隔 + 单位（interval 模式）
   final String? interval;
   final String? unit;
@@ -73,10 +129,22 @@ class ReminderItem {
   final String? idleTime;
   final String source;
 
+  /// 送达方式：'notification'（系统通知）/ 'alarm'（闹钟：精确+全屏）
+  final String delivery;
+
+  /// 状态序列是否循环（stateful 用；默认 '1'）
+  final String loop;
+
   /// stateful 模式的状态摘要
   final String? statesSummary;
 
   bool get isStateful => mode == 'stateful';
+
+  /// 是否为闹钟送达（精确+全屏）
+  bool get isAlarm => delivery == 'alarm';
+
+  /// 送达方式中文标签
+  String get deliveryLabel => isAlarm ? '闹钟' : '通知';
 
   /// 模式的中文标签
   String get modeLabel {
@@ -87,6 +155,26 @@ class ReminderItem {
         return '周期';
       default:
         return weekDays.isEmpty ? '每天' : '每周${weekDays.length}天';
+    }
+  }
+
+  /// 重复方式中文标签（覆盖 hourly/yearly 等 time 模式的细分，列表副标题用）
+  String get repeatLabel {
+    switch (repeat) {
+      case 'daily':
+        return '每天';
+      case 'weekly':
+        return weekDays.isEmpty ? '每周' : '每周${weekDays.length}天';
+      case 'once':
+        return '一次性';
+      case 'monthly':
+        return '每月';
+      case 'hourly':
+        return '每小时';
+      case 'yearly':
+        return '每年';
+      default:
+        return modeLabel;
     }
   }
 }

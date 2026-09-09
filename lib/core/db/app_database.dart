@@ -74,7 +74,7 @@ class AppDatabase extends _$AppDatabase {
   // AppDatabase.forFile(File f) : super(LazyDatabase(() async => NativeDatabase(f, readOnly: true)));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -91,8 +91,10 @@ class AppDatabase extends _$AppDatabase {
             // 其余 25 张表 IF NOT EXISTS 跳过，数据原样保留。
             await m.createAll();
           }
-          // 未来加列示例（createAll 的 IF NOT EXISTS 不会给「已存在表」补列）：
-          // if (from < 3) { await m.addColumn(todoList, todoList.someNewCol); }
+          // v2→v3：reminders 表新增 delivery 列（提醒送达方式：通知/闹钟）
+          if (from < 3) {
+            await m.addColumn(reminders, reminders.delivery);
+          }
         },
       );
 }

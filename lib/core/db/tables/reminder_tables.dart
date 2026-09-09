@@ -57,6 +57,10 @@ class Reminders extends Table {
   /// 提醒来源（桌面端待办截止提醒引擎写入 'todo'；用户手建为空）
   TextColumn get source => text().nullable()();
 
+  /// 送达方式：'notification'（系统通知，默认）/ 'alarm'（闹钟：精确+全屏意图+高重要渠道）
+  /// 对齐 PC newTips 的「提醒方式」概念，移动端作为用户可选维度。
+  TextColumn get delivery => text().named('delivery').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- 文件互传后台保活：发送过程中保持屏幕/CPU 唤醒，避免息屏中断（#19） -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 提醒「闹钟」模式：Android 12+ 精确闹钟（preciseAlarm）所需；普通「通知」模式不依赖 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- 闹钟/高优通知锁屏全屏弹出所需（normal 权限） -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- 文件互传接收目录 = 系统 Download/渐离App文件互传/：
          API 30+ 需「所有文件访问」（MANAGE_EXTERNAL_STORAGE，运行时引导授权）；
          API ≤12L 用 WRITE_EXTERNAL_STORAGE + application 的 requestLegacyExternalStorage -->
