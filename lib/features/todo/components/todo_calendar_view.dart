@@ -102,8 +102,8 @@ class TodoCalendarView extends StatelessWidget {
         padding: EdgeInsets.only(
           top: AppTokens.listTopGapOf(context),
           bottom: AppTokens.pageBottomGapOf(context),
-          left: AppTokens.pagePaddingOf(context),
-          right: AppTokens.pagePaddingOf(context),
+          left: AppTokens.pagePadding,
+          right: AppTokens.pagePadding,
         ),
         children: [
           Container(
@@ -220,7 +220,7 @@ Future<void> showTodoDaySheet(
                             },
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 10),
+                                  horizontal: AppTokens.pagePadding, vertical: 10),
                               decoration: BoxDecoration(
                                 color: t.colors.muted,
                                 borderRadius:

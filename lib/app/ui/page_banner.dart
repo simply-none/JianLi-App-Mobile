@@ -45,9 +45,9 @@ class PageBanner extends StatelessWidget {
       padding:
           margin ??
           EdgeInsets.fromLTRB(
-            AppTokens.pagePaddingOf(context),
+            AppTokens.pagePadding,
             12,
-            AppTokens.pagePaddingOf(context),
+            AppTokens.pagePadding,
             4,
           ),
       child: Container(

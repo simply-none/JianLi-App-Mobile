@@ -1515,7 +1515,7 @@ class _ConversationMessagesPageState
                                 },
                                 margin: const EdgeInsets.symmetric(vertical: 5),
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
+                                  horizontal: AppTokens.pagePadding,
                                   vertical: 10,
                                 ),
                                 child: Column(
@@ -1697,9 +1697,9 @@ class _ConversationMessagesPageState
                         )
                       : ListView(
                           padding: EdgeInsets.fromLTRB(
-                            AppTokens.pagePaddingOf(context),
+                            AppTokens.pagePadding,
                             12,
-                            AppTokens.pagePaddingOf(context),
+                            AppTokens.pagePadding,
                             12,
                           ),
                           reverse: true, // 从底部最新消息开始展示

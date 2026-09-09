@@ -98,9 +98,9 @@ class _HubList extends StatelessWidget {
       color: AppTokens.pageTint(context),
       child: ListView(
         padding: EdgeInsets.fromLTRB(
-          AppTokens.pagePaddingOf(context),
+          AppTokens.pagePadding,
           8,
-          AppTokens.pagePaddingOf(context),
+          AppTokens.pagePadding,
           32,
         ),
         children: [

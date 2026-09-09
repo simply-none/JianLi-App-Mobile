@@ -332,7 +332,7 @@ class _EntryTile extends StatelessWidget {
     final t = context.theme;
     return AppCard(
       margin: const EdgeInsets.symmetric(vertical: 5),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: AppTokens.pagePadding, vertical: 10),
       child: Row(
         children: [
           // 首字母徽标（专属蓝强调色渐变底盘）

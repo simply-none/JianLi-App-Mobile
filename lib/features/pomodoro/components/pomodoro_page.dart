@@ -126,9 +126,9 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
                   // 阶段进度环（白卡承托，避免渐变上叠渐变）
                   AppCard(
                     margin: EdgeInsets.fromLTRB(
-                      AppTokens.pagePaddingOf(context),
+                      AppTokens.pagePadding,
                       8,
-                      AppTokens.pagePaddingOf(context),
+                      AppTokens.pagePadding,
                       8,
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 24),

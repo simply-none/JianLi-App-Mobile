@@ -160,9 +160,9 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
           padding: EdgeInsets.zero,
           child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
-              AppTokens.pagePaddingOf(context),
+              AppTokens.pagePadding,
               16,
-              AppTokens.pagePaddingOf(context),
+              AppTokens.pagePadding,
               24,
             ),
             child: Column(

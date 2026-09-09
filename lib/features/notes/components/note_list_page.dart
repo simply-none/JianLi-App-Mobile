@@ -51,7 +51,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     final tagDefsAsync = ref.watch(noteTagsProvider);
     final tagDefs = tagDefsAsync.value ?? const <NoteTag>[];
     final defByKey = {for (final d in tagDefs) d.key: d};
-    final hPad = AppTokens.pagePaddingOf(context);
+    final hPad = AppTokens.pagePadding;
 
     return FScaffold(
       header: FHeader.nested(
@@ -311,9 +311,9 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: EdgeInsets.fromLTRB(
-        AppTokens.pagePaddingOf(context),
+        AppTokens.pagePadding,
         8,
-        AppTokens.pagePaddingOf(context),
+        AppTokens.pagePadding,
         0,
       ),
       child: Row(

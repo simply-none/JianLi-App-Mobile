@@ -69,9 +69,9 @@ class NoteDetailPage extends ConsumerWidget {
               children: [
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                    AppTokens.pagePaddingOf(context),
+                    AppTokens.pagePadding,
                     14,
-                    AppTokens.pagePaddingOf(context),
+                    AppTokens.pagePadding,
                     4,
                   ),
                   child: Row(
@@ -96,9 +96,9 @@ class NoteDetailPage extends ConsumerWidget {
                 ),
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                    AppTokens.pagePaddingOf(context),
+                    AppTokens.pagePadding,
                     0,
-                    AppTokens.pagePaddingOf(context),
+                    AppTokens.pagePadding,
                     8,
                   ),
                   child: Wrap(
@@ -198,7 +198,7 @@ class NoteHtmlView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(AppTokens.pagePaddingOf(context)),
+      padding: EdgeInsets.all(AppTokens.pagePadding),
       child: HtmlWidget(
         html,
         textStyle: TextStyle(

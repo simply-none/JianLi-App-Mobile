@@ -92,9 +92,9 @@ class _SettingsPanel extends ConsumerWidget {
                 FHeader.nested(
                   title: const Text('设置'),
                   // FHeader.nested 自带 SafeArea(top)；归零其内部顶部内边距，标题正好贴状态栏。
-                  style: FHeaderStyleDelta(
+                  style: FHeaderStyleDelta.delta(
                     padding: EdgeInsetsGeometryDelta.value(
-                      const EdgeInsets.only(left: 12, right: 12, bottom: 10),
+                      const EdgeInsets.only(left: AppTokens.pagePadding, right: AppTokens.pagePadding, bottom: 10),
                     ),
                   ),
                   suffixes: [
@@ -107,9 +107,9 @@ class _SettingsPanel extends ConsumerWidget {
                 Expanded(
                   child: ListView(
                     padding: EdgeInsets.fromLTRB(
-                      AppTokens.pagePaddingOf(context),
+                      AppTokens.pagePadding,
                       8,
-                      AppTokens.pagePaddingOf(context),
+                      AppTokens.pagePadding,
                       24 + bottomPad,
                     ),
                     children: [

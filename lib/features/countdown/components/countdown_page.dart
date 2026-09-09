@@ -176,9 +176,9 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
     final progress = total <= 0 ? 0.0 : 1 - remaining / total;
     return Container(
       margin: EdgeInsets.fromLTRB(
-        AppTokens.pagePaddingOf(context),
+        AppTokens.pagePadding,
         4,
-        AppTokens.pagePaddingOf(context),
+        AppTokens.pagePadding,
         8,
       ),
       decoration: BoxDecoration(

@@ -46,9 +46,9 @@ class DashboardPage extends ConsumerWidget {
             onRefresh: () async => ref.invalidate(dashboardStatsProvider),
             child: ListView(
               padding: EdgeInsets.fromLTRB(
-                AppTokens.pagePaddingOf(context),
+                AppTokens.pagePadding,
                 16,
-                AppTokens.pagePaddingOf(context),
+                AppTokens.pagePadding,
                 32,
               ),
               children: [
@@ -198,7 +198,7 @@ class _HeroCard extends StatelessWidget {
             Positioned(right: -36, top: -36, child: _decoCircle(120, 0.10)),
             Positioned(right: 44, bottom: -48, child: _decoCircle(96, 0.08)),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+              padding: const EdgeInsets.symmetric(horizontal: AppTokens.pagePadding, vertical: 24),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [

@@ -225,9 +225,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
                     Expanded(
                       child: ListView(
                         padding: EdgeInsets.fromLTRB(
-                          AppTokens.pagePaddingOf(context),
+                          AppTokens.pagePadding,
                           12,
-                          AppTokens.pagePaddingOf(context),
+                          AppTokens.pagePadding,
                           16,
                         ),
                         children: [
@@ -330,9 +330,9 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
                     // 底部固定保存条（页面规范：保存/提交按钮统一固定底部，不随内容滚动）
                     Padding(
                       padding: EdgeInsets.fromLTRB(
-                        AppTokens.pagePaddingOf(context),
+                        AppTokens.pagePadding,
                         8,
-                        AppTokens.pagePaddingOf(context),
+                        AppTokens.pagePadding,
                         8,
                       ),
                       child: GradientButton(
@@ -386,7 +386,7 @@ class _CategoryChip extends StatelessWidget {
     return FTappable(
       onPress: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: AppTokens.pagePadding, vertical: 6),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(999),

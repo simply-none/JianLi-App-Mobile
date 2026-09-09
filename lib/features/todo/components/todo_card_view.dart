@@ -40,8 +40,8 @@ class TodoCardView extends StatelessWidget {
       padding: EdgeInsets.only(
         top: AppTokens.listTopGapOf(context),
         bottom: AppTokens.pageBottomGapOf(context),
-        left: AppTokens.pagePaddingOf(context),
-        right: AppTokens.pagePaddingOf(context),
+        left: AppTokens.pagePadding,
+        right: AppTokens.pagePadding,
       ),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,

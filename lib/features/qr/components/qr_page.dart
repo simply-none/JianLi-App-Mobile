@@ -109,9 +109,9 @@ class _QrPageState extends ConsumerState<QrPage> {
     final payload = _currentPayload;
     return ListView(
       padding: EdgeInsets.fromLTRB(
-        AppTokens.pagePaddingOf(context),
+        AppTokens.pagePadding,
         8,
-        AppTokens.pagePaddingOf(context),
+        AppTokens.pagePadding,
         24,
       ),
       children: [
@@ -296,9 +296,9 @@ class _QrPageState extends ConsumerState<QrPage> {
           color: AppTokens.pageTint(context),
           child: ListView(
             padding: EdgeInsets.fromLTRB(
-              AppTokens.pagePaddingOf(context),
+              AppTokens.pagePadding,
               8,
-              AppTokens.pagePaddingOf(context),
+              AppTokens.pagePadding,
               24,
             ),
             children: [
@@ -346,7 +346,7 @@ class _QrHistoryTile extends StatelessWidget {
     final t = context.theme;
     return AppCard(
       margin: const EdgeInsets.symmetric(vertical: 5),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: AppTokens.pagePadding, vertical: 10),
       onTap: onCopy,
       child: Row(
         children: [

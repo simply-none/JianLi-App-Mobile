@@ -167,16 +167,36 @@ class AppTheme {
       backgroundColor: Colors.transparent,
       childPadding: EdgeInsetsGeometryDelta.scale(k),
     );
+    // 统一 FHeader 左右内边距为全局 AppTokens.pagePadding（12，固定、不随字号缩放），
+    // 与所有页面正文左右边距一致；其余标题样式（字重/动作样式）沿用 base 派生。
+    final scaledColors = base.colors.copyWith(
+      primary: primary,
+      primaryForeground: Colors.white,
+      background: tint,
+    );
+    final scaledType = base.typography.scale(sizeScalar: k);
+    final _baseStyle = FStyle.inherit(colors: scaledColors, typography: scaledType, touch: true);
+    final _headerFStyle = FStyle(
+      formFieldStyle: _baseStyle.formFieldStyle,
+      focusedOutlineStyle: _baseStyle.focusedOutlineStyle,
+      iconStyle: _baseStyle.iconStyle,
+      sizes: _baseStyle.sizes,
+      tappableStyle: _baseStyle.tappableStyle,
+      pagePadding: EdgeInsets.symmetric(horizontal: AppTokens.pagePadding, vertical: 8),
+    );
+    final _headerStyles = FHeaderStyles.inherit(
+      colors: scaledColors,
+      typography: scaledType,
+      style: _headerFStyle,
+      touch: true,
+    );
     return FThemeData(
       touch: true,
       debugLabel: 'Jianli ${style.id} ${isLight ? 'L' : 'D'}',
-      colors: base.colors.copyWith(
-        primary: primary,
-        primaryForeground: Colors.white,
-        background: tint,
-      ),
-      typography: base.typography.scale(sizeScalar: k),
+      colors: scaledColors,
+      typography: scaledType,
       scaffoldStyle: scaledScaffold,
+      headerStyles: _headerStyles,
     );
   }
 }
@@ -196,8 +216,8 @@ class AppTokens {
   static const double baseFontSizeNormal = 12;
   static const double baseFontSizeLarge = 18;
 
-  /// 页面水平边距（页面级 ListView / 横幅 / 全屏页统一水平值，与 FScaffold childPad 对齐）
-  static const double pagePadding = 16;
+  /// 页面左右边距（全局唯一边距变量，固定 12px，不随字号缩放；改这里全 App 生效）
+  static const double pagePadding = 12;
 
   /// 列表页顶部缝隙（贴横幅/首元素）
   static const double listTopGap = 4;
@@ -205,18 +225,14 @@ class AppTokens {
   /// 列表页底部留白（滚动余量基准值；实际用 pageBottomGapOf 随字号缩放）
   static const double pageBottomGap = 24;
 
-  // —— 间距缩放（阅览模式切换时全局空隙随字号联动） ——
+  // —— 间距缩放（阅览模式切换时仅「垂直缝隙」随字号联动；左右边距固定，见 pagePadding） ——
 
   /// 间距缩放系数：当前主题 md 字号 / 基准字号（普通 = 1.0；大号 = 18/12 = 1.5）。
-  /// 页面级 padding 必须用下方 *Of 系列取值，禁止直接用静态常量（那是基准值）。
+  /// 仅用于 listTopGap / pageBottomGap 等垂直缝隙；页面左右边距用固定常量 [pagePadding]，不随字号缩放。
   static double spacingScale(BuildContext context) {
     final md = context.theme.typography.body.md.fontSize ?? baseFontSizeNormal;
     return md / baseFontSizeNormal;
   }
-
-  /// 页面水平边距（随字号缩放）
-  static double pagePaddingOf(BuildContext context) =>
-      pagePadding * spacingScale(context);
 
   /// 列表页顶部缝隙（随字号缩放）
   static double listTopGapOf(BuildContext context) =>

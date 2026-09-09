@@ -112,7 +112,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                   child: ColoredBox(
                     color: AppTokens.pageTint(context),
                     child: SingleChildScrollView(
-                      padding: EdgeInsets.all(AppTokens.pagePaddingOf(context)),
+                      padding: EdgeInsets.all(AppTokens.pagePadding),
                       child: HtmlWidget(
                         // 正文字号随全局基准字号体系（阅览模式在根组件驱动主题）
                         book!.chapters[_chapter].html,
@@ -174,9 +174,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
             children: [
               Padding(
                 padding: EdgeInsets.fromLTRB(
-                  AppTokens.pagePaddingOf(context),
+                  AppTokens.pagePadding,
                   0,
-                  AppTokens.pagePaddingOf(context),
+                  AppTokens.pagePadding,
                   8,
                 ),
                 child: Text('目录', style: context.theme.typography.body.lg),

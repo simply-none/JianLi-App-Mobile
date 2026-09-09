@@ -214,9 +214,9 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
         side: FLayout.btt,
         builder: (context) => SheetSurface(
           padding: EdgeInsets.fromLTRB(
-            AppTokens.pagePaddingOf(context),
+            AppTokens.pagePadding,
             16,
-            AppTokens.pagePaddingOf(context),
+            AppTokens.pagePadding,
             24,
           ),
           child: Column(
@@ -399,7 +399,7 @@ class _FileTile extends StatelessWidget {
     final t = context.theme;
     return AppCard(
       margin: const EdgeInsets.symmetric(vertical: 5),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: AppTokens.pagePadding, vertical: 10),
       onTap: onTap,
       child: Row(
         children: [
