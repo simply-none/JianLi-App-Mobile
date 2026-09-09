@@ -15,7 +15,6 @@ import '../providers/theme_providers.dart';
 import '../theme/app_theme.dart';
 import 'segmented.dart';
 import 'squircle_box.dart';
-import 'ui_atoms.dart';
 
 /// 齿轮设置按钮（首页 / 三个分组页 右上角复用）
 class SettingsButton extends StatelessWidget {
@@ -77,10 +76,10 @@ class _SettingsPanel extends ConsumerWidget {
         ref.watch(readingModeProvider).value ?? ReadingMode.normal;
     final width = MediaQuery.of(context).size.width;
 
-    // 面板铺满全屏高度：去掉外层 SafeArea，背景 Container 直接顶到状态栏与底部，
-    // 仅给内部 FHeader 单独留出状态栏高度，列表底部补 Home 指示条安全区——
-    // 避免顶部（状态栏）与底部（tab / Home 条）留空导致的突兀感。
-    final topPad = MediaQuery.of(context).padding.top;
+    // 面板铺满全屏高度：背景 Container 直接顶到状态栏与底部。
+    // FHeader.nested 自身已含 SafeArea(top)（状态栏安全区），故无需再额外包状态栏高度；
+    // 其内部顶部 8px 内边距也已在下方 header 的 style 里归零，标题正好落在状态栏高度处。
+    // 列表底部补 Home 指示条安全区（见下方 ListView padding）。
     final bottomPad = MediaQuery.of(context).padding.bottom;
     return Row(
       children: [
@@ -90,17 +89,20 @@ class _SettingsPanel extends ConsumerWidget {
             color: t.colors.background,
             child: Column(
               children: [
-                Padding(
-                  padding: EdgeInsets.only(top: topPad),
-                  child: FHeader.nested(
-                    title: const Text('设置'),
-                    suffixes: [
-                      FHeaderAction(
-                        icon: Icon(FLucideIcons.x),
-                        onPress: () => Navigator.of(context).pop(),
-                      ),
-                    ],
+                FHeader.nested(
+                  title: const Text('设置'),
+                  // FHeader.nested 自带 SafeArea(top)；归零其内部顶部内边距，标题正好贴状态栏。
+                  style: FHeaderStyleDelta(
+                    padding: EdgeInsetsGeometryDelta.value(
+                      const EdgeInsets.only(left: 12, right: 12, bottom: 10),
+                    ),
                   ),
+                  suffixes: [
+                    FHeaderAction(
+                      icon: Icon(FLucideIcons.x),
+                      onPress: () => Navigator.of(context).pop(),
+                    ),
+                  ],
                 ),
                 Expanded(
                   child: ListView(
@@ -144,37 +146,41 @@ class _SettingsPanel extends ConsumerWidget {
                       ),
                       const SizedBox(height: 26),
                       const _SectionLabel('数据与同步'),
-                      AppCard(
-                        margin: EdgeInsets.zero,
-                        child: FTile(
-                          onPress: () {
-                            Navigator.of(context).pop();
-                            // 面板已 pop，跨异步使用 originContext 前先查 mounted
-                            Future.microtask(() {
-                              if (!originContext.mounted) return;
-                              GoRouter.of(originContext).push('/sync');
-                            });
-                          },
-                          prefix: Icon(
-                            FLucideIcons.refreshCw,
-                            color: AppTokens.accent(3),
+                      FTileGroup(
+                        divider: FItemDivider.none,
+                        children: [
+                          FTile(
+                            onPress: () {
+                              Navigator.of(context).pop();
+                              // 面板已 pop，跨异步使用 originContext 前先查 mounted
+                              Future.microtask(() {
+                                if (!originContext.mounted) return;
+                                GoRouter.of(originContext).push('/sync');
+                              });
+                            },
+                            prefix: Icon(
+                              FLucideIcons.refreshCw,
+                              color: AppTokens.accent(3),
+                            ),
+                            title: const Text('局域网同步'),
+                            subtitle: const Text('在受信局域网内与其他设备互传数据'),
                           ),
-                          title: const Text('局域网同步'),
-                          subtitle: const Text('在受信局域网内与其他设备互传数据'),
-                        ),
+                        ],
                       ),
                       const SizedBox(height: 26),
                       const _SectionLabel('关于'),
-                      AppCard(
-                        margin: EdgeInsets.zero,
-                        child: FTile(
-                          prefix: Icon(
-                            FLucideIcons.info,
-                            color: AppTokens.accent(0),
+                      FTileGroup(
+                        divider: FItemDivider.none,
+                        children: [
+                          FTile(
+                            prefix: Icon(
+                              FLucideIcons.info,
+                              color: AppTokens.accent(0),
+                            ),
+                            title: const Text('渐离 Jianli'),
+                            subtitle: const Text('效率 · 内容 · 工具 一体工作台'),
                           ),
-                          title: const Text('渐离 Jianli'),
-                          subtitle: const Text('效率 · 内容 · 工具 一体工作台'),
-                        ),
+                        ],
                       ),
                     ],
                   ),

@@ -200,6 +200,12 @@ final Provider<FileVaultService> fileVaultServiceProvider =
 
 /// 文件保险箱是否已解锁（UI 开关，页面 watch 它；全局/路由锁会置 false 即时回到门禁）。
 /// 与服务的 _dataKey 解耦，单独成开关以保证「锁态」可响应。
-final StateProvider<bool> fileVaultUnlockedProvider = StateProvider<bool>(
-  (ref) => false,
-);
+class FileVaultUnlocked extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void unlock() => state = true;
+  void lock() => state = false;
+}
+final fileVaultUnlockedProvider =
+    NotifierProvider<FileVaultUnlocked, bool>(FileVaultUnlocked.new);

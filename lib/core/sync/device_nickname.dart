@@ -3,7 +3,7 @@
 // 格式：【形容词1】【形容词2】的【名词】，例如「软萌俏皮的樱桃」。
 // 词库与 PC 端 transferModule.ts 同源（随即词库.md），三组各取其一拼接。
 //
-// 持久化：shared_preferences，默认留存 3 天；过期或缺失则重新随机。
+// 持久化：shared_preferences，首次生成后永久留存，不再轮换（仅旧后缀格式触发一次性重生）。
 // 同步获取：localNickname（缓存优先，未加载时回退 hostname）。
 //   调用方应先 await ensureNickname()（幂等），main() 启动已预加载。
 //
@@ -44,8 +44,6 @@ const List<String> _nickNoun = [
   '糖果', '纽扣', '铃铛', '纸船', '风筝', '气球', '弹珠', '积木', '玩偶', '抱枕',
 ];
 
-const Duration _nickTtl = Duration(days: 3);
-
 String? _nickCache;
 
 String _randomNickname() {
@@ -56,13 +54,11 @@ String _randomNickname() {
   return '$a1$a2的$n';
 }
 
-/// 确保昵称已加载（幂等）：过期/缺失则重新生成并持久化。
+/// 确保昵称已加载（幂等）：首次生成后永久留存，不再轮换（仅旧后缀格式触发一次性重生）。
 Future<void> ensureNickname() async {
   if (_nickCache != null) return;
   final sp = await SharedPreferences.getInstance();
   final name = sp.getString('device_nickname');
-  final ts = sp.getInt('device_nickname_ts') ?? 0;
-  final now = DateTime.now().millisecondsSinceEpoch;
   // 迁移：基座已不含平台后缀；旧格式（带「的渐离App/的App/的PC」等后缀）一律重生
   final hasOldSuffix = name != null &&
       (name.endsWith('的渐离App') ||
@@ -70,13 +66,12 @@ Future<void> ensureNickname() async {
           name.endsWith('的PC') ||
           name.endsWith(' (App)') ||
           name.endsWith(' (PC)'));
-  if (name != null &&
-      name.isNotEmpty &&
-      !hasOldSuffix &&
-      now - ts < _nickTtl.inMilliseconds) {
+  if (name != null && name.isNotEmpty && !hasOldSuffix) {
+    // 已存在且格式合法：永久复用，不再按时间轮换
     _nickCache = name;
   } else {
     final generated = _randomNickname();
+    final now = DateTime.now().millisecondsSinceEpoch;
     await sp.setString('device_nickname', generated);
     await sp.setInt('device_nickname_ts', now);
     _nickCache = generated;

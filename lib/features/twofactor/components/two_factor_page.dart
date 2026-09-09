@@ -59,7 +59,7 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
     _passphraseController.dispose();
     // 路由切走即锁定（清空内存态 + 置反开关），满足「路由切换时锁住」
     ref.read(twoFactorAccountsProvider.notifier).lock();
-    ref.read(twoFactorUnlockedProvider.notifier).state = false;
+    ref.read(twoFactorUnlockedProvider.notifier).lock();
     super.dispose();
   }
 
@@ -82,7 +82,7 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
         _sessionPassphrase = _passphraseController.text;
         _passphraseController.clear();
       });
-      ref.read(twoFactorUnlockedProvider.notifier).state = true;
+      ref.read(twoFactorUnlockedProvider.notifier).unlock();
       _startTicker();
     } catch (e) {
       if (!mounted) return;
@@ -95,7 +95,7 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
   void _lock() {
     _ticker?.cancel();
     ref.read(twoFactorAccountsProvider.notifier).lock();
-    ref.read(twoFactorUnlockedProvider.notifier).state = false;
+    ref.read(twoFactorUnlockedProvider.notifier).lock();
     setState(() {
       _tick = 0;
       _sessionPassphrase = '';

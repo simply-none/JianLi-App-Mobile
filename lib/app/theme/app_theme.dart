@@ -62,30 +62,31 @@ class AppTheme {
       lightPrimary: Color(0xFFEC4899),
       darkPrimary: Color(0xFFF472B6),
     ),
-    // —— 以下 4 套：莫兰迪灰调（低饱和、灰度高，非正色）——
+    // —— 以下 4 套：莫兰迪灰调（低饱和、灰度高，非正色）；2026-09-09 提亮对齐前 5 套，
+    //    霜月灰 → 霜月白（white）——
     ThemeStyle(
       id: 'red',
       name: '丹枫红',
-      lightPrimary: Color(0xFFB06A72),
-      darkPrimary: Color(0xFFCC8E96),
+      lightPrimary: Color(0xFFC97B82),
+      darkPrimary: Color(0xFFE0A6AC),
     ),
     ThemeStyle(
       id: 'yellow',
       name: '秋香黄',
-      lightPrimary: Color(0xFFC2A24E),
-      darkPrimary: Color(0xFFD9BE78),
+      lightPrimary: Color(0xFFDDBB66),
+      darkPrimary: Color(0xFFEBD39A),
     ),
     ThemeStyle(
       id: 'cyan',
       name: '远山青',
-      lightPrimary: Color(0xFF6F9C99),
-      darkPrimary: Color(0xFF92B8B5),
+      lightPrimary: Color(0xFF93C2BD),
+      darkPrimary: Color(0xFFB2D6D1),
     ),
     ThemeStyle(
-      id: 'gray',
-      name: '霜月灰',
-      lightPrimary: Color(0xFF8E9099),
-      darkPrimary: Color(0xFFB0B2B9),
+      id: 'white',
+      name: '霜月白',
+      lightPrimary: Color(0xFFAEB6C6),
+      darkPrimary: Color(0xFFC8CFDC),
     ),
   ];
 

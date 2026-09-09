@@ -25,7 +25,7 @@ void lockAllVaults(WidgetRef ref) {
   ref.read(fileVaultServiceProvider).lock();
   ref.read(twoFactorAccountsProvider.notifier).lock();
   // 置反 UI 开关（让仍挂载的页面即时回到门禁态）
-  ref.read(passwordVaultUnlockedProvider.notifier).state = false;
-  ref.read(fileVaultUnlockedProvider.notifier).state = false;
-  ref.read(twoFactorUnlockedProvider.notifier).state = false;
+  ref.read(passwordVaultUnlockedProvider.notifier).lock();
+  ref.read(fileVaultUnlockedProvider.notifier).lock();
+  ref.read(twoFactorUnlockedProvider.notifier).lock();
 }

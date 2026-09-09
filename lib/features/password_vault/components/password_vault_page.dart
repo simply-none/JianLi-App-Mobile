@@ -41,7 +41,7 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
   void dispose() {
     // 路由切走即锁定（清空内存明文 + 置反开关），满足「路由切换时锁住」
     ref.read(passwordVaultEntriesProvider.notifier).lock();
-    ref.read(passwordVaultUnlockedProvider.notifier).state = false;
+    ref.read(passwordVaultUnlockedProvider.notifier).lock();
     super.dispose();
   }
 
@@ -69,7 +69,7 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
               icon: const Icon(FLucideIcons.lock, size: 20),
               onPress: () {
                 ref.read(passwordVaultEntriesProvider.notifier).lock();
-                ref.read(passwordVaultUnlockedProvider.notifier).state = false;
+                ref.read(passwordVaultUnlockedProvider.notifier).lock();
                 setState(() => _passphrase = null);
               },
               semanticsTooltip: '锁定',
@@ -191,12 +191,7 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
                           }
                           if (mounted) _passphrase = passController.text;
                           if (mounted) {
-                            ref
-                                    .read(
-                                      passwordVaultUnlockedProvider.notifier,
-                                    )
-                                    .state =
-                                true;
+                            ref.read(passwordVaultUnlockedProvider.notifier).unlock();
                           }
                         } catch (e) {
                           if (mounted) _error = '口令错误或操作失败：$e';

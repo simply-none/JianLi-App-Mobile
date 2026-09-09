@@ -72,6 +72,12 @@ twoFactorAccountsProvider =
 
 /// 2FA 是否已解锁（UI 开关，页面 watch 它；全局/路由锁会置 false 即时回到门禁）。
 /// 与 controller 的明文账户列表解耦，单独成开关以保证「锁态」可响应。
-final StateProvider<bool> twoFactorUnlockedProvider = StateProvider<bool>(
-  (ref) => false,
-);
+class TwoFactorUnlocked extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void unlock() => state = true;
+  void lock() => state = false;
+}
+final twoFactorUnlockedProvider =
+    NotifierProvider<TwoFactorUnlocked, bool>(TwoFactorUnlocked.new);

@@ -46,7 +46,7 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
   void dispose() {
     // 路由切走即锁定（清零内存密钥 + 置反开关），满足「路由切换时锁住」
     _service.lock();
-    ref.read(fileVaultUnlockedProvider.notifier).state = false;
+    ref.read(fileVaultUnlockedProvider.notifier).lock();
     super.dispose();
   }
 
@@ -64,7 +64,7 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
               icon: const Icon(FLucideIcons.lock, size: 20),
               onPress: () {
                 _service.lock();
-                ref.read(fileVaultUnlockedProvider.notifier).state = false;
+                ref.read(fileVaultUnlockedProvider.notifier).lock();
                 setState(() => _files = null);
               },
               semanticsTooltip: '锁定',
@@ -102,7 +102,7 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
         try {
           await _service.setPassword(_passController.text);
           if (mounted) {
-            ref.read(fileVaultUnlockedProvider.notifier).state = true;
+            ref.read(fileVaultUnlockedProvider.notifier).unlock();
           }
         } catch (e) {
           if (mounted) _error = '$e';
@@ -129,7 +129,7 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
         try {
           await _service.unlock(_passController.text);
           if (mounted) {
-            ref.read(fileVaultUnlockedProvider.notifier).state = true;
+            ref.read(fileVaultUnlockedProvider.notifier).unlock();
           }
         } catch (e) {
           if (mounted) _error = '口令错误：$e';
