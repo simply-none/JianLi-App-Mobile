@@ -133,6 +133,164 @@ class EbookRepository {
       EbookBookshelfCompanion(percent: Value(percent), lastReadAt: Value(now)),
     );
   }
+
+  // ---- 书签（ebook_bookmark，按章节索引锚点 chapter:<i>）----
+
+  /// 某书的书签流（按创建时间升序）
+  Stream<List<EbookBookmarkData>> watchBookmarks(String contentHash) {
+    return (_db.select(
+      _db.ebookBookmark,
+    )..where((t) => t.contentHash.equals(contentHash))
+     ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])).watch();
+  }
+
+  /// 是否存在某章节的书签
+  Future<EbookBookmarkData?> findBookmark(
+    String contentHash,
+    int chapterIndex,
+  ) async {
+    return (_db.select(
+      _db.ebookBookmark,
+    )..where(
+      (t) =>
+          t.contentHash.equals(contentHash) &
+          t.cfi.equals('chapter:$chapterIndex'),
+    )).getSingleOrNull();
+  }
+
+  /// 新增书签（按当前章节）
+  Future<EbookBookmarkData> addBookmark({
+    required String filePath,
+    required String contentHash,
+    required String format,
+    required int chapterIndex,
+    required String label,
+    required double percent,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    final id = await _db.into(_db.ebookBookmark).insert(
+      EbookBookmarkCompanion.insert(
+        filePath: Value(filePath),
+        contentHash: Value(contentHash),
+        format: Value(format),
+        cfi: Value('chapter:$chapterIndex'),
+        label: Value(label),
+        percent: Value(percent.toStringAsFixed(1)),
+        createdAt: Value(now),
+      ),
+    );
+    return (_db.select(
+      _db.ebookBookmark,
+    )..where((t) => t.id.equals(id))).getSingle();
+  }
+
+  /// 删除书签
+  Future<void> removeBookmark(int id) async {
+    await (_db.delete(
+      _db.ebookBookmark,
+    )..where((t) => t.id.equals(id))).go();
+  }
+
+  // ---- 批注 / 划线（ebook_annotation，anchor 锚定 chapter:<i>）----
+
+  /// 某书的批注流（按创建时间升序）
+  Stream<List<EbookAnnotationData>> watchAnnotations(String contentHash) {
+    return (_db.select(
+      _db.ebookAnnotation,
+    )..where((t) => t.contentHash.equals(contentHash))
+     ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])).watch();
+  }
+
+  /// 新增批注（type=markStrong 表示划线高亮；note 为可选笔记内容）
+  Future<int> addAnnotation({
+    required String filePath,
+    required String contentHash,
+    required String format,
+    required String anchor,
+    required String annotatedText,
+    String? note,
+    required String color,
+    required String type,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    return _db.into(_db.ebookAnnotation).insert(
+      EbookAnnotationCompanion.insert(
+        filePath: Value(filePath),
+        contentHash: Value(contentHash),
+        format: Value(format),
+        anchor: Value(anchor),
+        annotatedText: Value(annotatedText),
+        note: Value(note),
+        color: Value(color),
+        type: Value(type),
+        createdAt: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  /// 删除批注
+  Future<void> removeAnnotation(int id) async {
+    await (_db.delete(
+      _db.ebookAnnotation,
+    )..where((t) => t.id.equals(id))).go();
+  }
+
+  // ---- 分类（ebook_category + ebook_book_category）----
+
+  /// 全部分类流
+  Stream<List<EbookCategoryData>> watchCategories() {
+    return (_db.select(
+      _db.ebookCategory,
+    )..orderBy([(t) => OrderingTerm.asc(t.id)])).watch();
+  }
+
+  /// 全部书-分类关联流（前端据此构建 book_path -> categoryIds 映射）
+  Stream<List<EbookBookCategoryData>> watchAllBookCategories() {
+    return _db.select(_db.ebookBookCategory).watch();
+  }
+
+  /// 新增分类（重名忽略），返回分类 id
+  Future<int> addCategory(String name, {String? color}) async {
+    final now = DateTime.now().toIso8601String();
+    return _db.into(_db.ebookCategory).insert(
+      EbookCategoryCompanion.insert(
+        name: name,
+        createdAt: Value(now),
+        color: Value(color),
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
+  }
+
+  /// 给书打分类标签（复合主键，重复写入幂等）
+  Future<void> assignCategory(String bookPath, int categoryId) async {
+    await _db.into(_db.ebookBookCategory).insertOnConflictUpdate(
+      EbookBookCategoryCompanion.insert(
+        bookPath: bookPath,
+        categoryId: categoryId,
+      ),
+    );
+  }
+
+  /// 取消书的某分类标签
+  Future<void> unassignCategory(String bookPath, int categoryId) async {
+    await (_db.delete(
+      _db.ebookBookCategory,
+    )..where(
+      (t) => t.bookPath.equals(bookPath) & t.categoryId.equals(categoryId),
+    )).go();
+  }
+
+  /// 删除分类（同时清理关联）
+  Future<void> removeCategory(int id) async {
+    await (_db.delete(
+      _db.ebookBookCategory,
+    )..where((t) => t.categoryId.equals(id))).go();
+    await (_db.delete(
+      _db.ebookCategory,
+    )..where((t) => t.id.equals(id))).go();
+  }
 }
 
 /// 仓库 provider
@@ -171,10 +329,11 @@ List<BookChapter> splitTxtChapters(String content) {
   // 首段（封面/前言）
   if (matches.first.start > 0) {
     final head = content.substring(0, matches.first.start).trim();
-    if (head.isNotEmpty)
+    if (head.isNotEmpty) {
       chapters.add(
         BookChapter(title: '前言', html: '<p>${_escapeHtml(head)}</p>'),
       );
+    }
   }
   for (var i = 0; i < matches.length; i++) {
     final start = matches[i].start;

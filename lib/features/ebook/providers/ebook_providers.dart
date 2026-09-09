@@ -13,3 +13,28 @@ final StreamProvider<List<EbookBookshelfData>> bookshelfStreamProvider =
     StreamProvider<List<EbookBookshelfData>>(
       (ref) => ref.watch(ebookRepositoryProvider).watchBookshelf(),
     );
+
+/// 书签流（按 content_hash 区分书）
+final bookmarksStreamProvider = StreamProvider.family<List<EbookBookmarkData>, String>(
+  (ref, contentHash) =>
+      ref.watch(ebookRepositoryProvider).watchBookmarks(contentHash),
+);
+
+/// 批注流（按 content_hash 区分书）
+final annotationsStreamProvider =
+    StreamProvider.family<List<EbookAnnotationData>, String>(
+      (ref, contentHash) =>
+          ref.watch(ebookRepositoryProvider).watchAnnotations(contentHash),
+    );
+
+/// 全部分类流
+final StreamProvider<List<EbookCategoryData>> categoriesStreamProvider =
+    StreamProvider<List<EbookCategoryData>>(
+      (ref) => ref.watch(ebookRepositoryProvider).watchCategories(),
+    );
+
+/// 全部书-分类关联流（前端构建 book_path -> categoryIds 映射）
+final StreamProvider<List<EbookBookCategoryData>> bookCategoriesStreamProvider =
+    StreamProvider<List<EbookBookCategoryData>>(
+      (ref) => ref.watch(ebookRepositoryProvider).watchAllBookCategories(),
+    );

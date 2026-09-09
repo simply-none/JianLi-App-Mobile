@@ -13,11 +13,13 @@ class BookCell extends StatelessWidget {
   const BookCell({
     super.key,
     required this.book,
+    this.categoryLabels = const [],
     required this.onOpen,
     required this.onRemove,
   });
 
   final EbookBookshelfData book;
+  final List<String> categoryLabels;
   final VoidCallback onOpen;
   final VoidCallback onRemove;
 
@@ -72,6 +74,36 @@ class BookCell extends StatelessWidget {
                       color: Colors.white.withValues(alpha: 0.85),
                     ),
                   ),
+                  if (categoryLabels.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        for (final label in categoryLabels)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.22),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              label,
+                              style: t.typography.body.xs.copyWith(
+                                color: Colors.white,
+                                fontSize: 10,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
