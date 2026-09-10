@@ -10,7 +10,7 @@ void main() {
 
     // Dashboard 标题与快捷入口区块可见
     // 注：数据库统计依赖 path_provider，测试环境会走错误分支（显示加载/空态），不影响壳渲染
-    expect(find.text('渐离'), findsOneWidget);
+    expect(find.text('渐离App'), findsOneWidget);
     expect(find.text('快捷入口'), findsOneWidget);
     // 「效率」同时出现在底部导航与区块标题，至少出现一次即可
     expect(find.text('效率'), findsWidgets);

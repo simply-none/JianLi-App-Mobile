@@ -2,7 +2,8 @@
 //
 // 数据经顶层 bookshelfStreamProvider（⚠️ 禁止 build 内联 StreamProvider——
 // 每次重建都是新 provider，页面永远 loading，实踩见 ebook_providers.dart 头注释）。
-// 导入入口在顶栏 +；删除 = 长按书格 → 底部抽屉二次确认（全局弹窗规范）。
+// 导入入口在顶栏 +；长按书格 = 动作菜单（笔记标注 → /ebook/notes 页面 / 移出书架）
+// —— 移出书架仍走底部抽屉二次确认（全局弹窗规范）。
 // 分类（2026-09-09）：顶栏「标签」管理分类与给书打标签；顶部 chips 按分类筛选。
 import 'dart:io';
 
@@ -90,46 +91,43 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
               );
             }
             // 按选中分类筛选
-            final filtered =
-                _selectedCat == null
-                    ? books
-                    : books
-                        .where(
-                          (b) =>
-                              (bookToCats[b.filePath] ?? {}).contains(
-                                _selectedCat,
-                              ),
-                        )
-                        .toList();
+            final filtered = _selectedCat == null
+                ? books
+                : books
+                      .where(
+                        (b) => (bookToCats[b.filePath] ?? {}).contains(
+                          _selectedCat,
+                        ),
+                      )
+                      .toList();
 
             // 分类筛选 chips（有分类才显示；始终用 SliverToBoxAdapter 包裹，
             // 无分类时内部退化为空 SizedBox，避免条件元素触发 lint）
-            final catChips =
-                catsAsync.value == null || catsAsync.value!.isEmpty
-                    ? const SizedBox.shrink()
-                    : Column(
-                        children: [
-                          const SizedBox(height: 8),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: AppTokens.pagePadding,
-                            ),
-                            child: Row(
-                              spacing: 8,
-                              children: [
-                                _catChip('全部', _selectedCat == null, () {
-                                  setState(() => _selectedCat = null);
-                                }),
-                                for (final c in catsAsync.value!)
-                                  _catChip(c.name, _selectedCat == c.id, () {
-                                    setState(() => _selectedCat = c.id);
-                                  }),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
+            final catChips = catsAsync.value == null || catsAsync.value!.isEmpty
+                ? const SizedBox.shrink()
+                : Column(
+                    children: [
+                      const SizedBox(height: 8),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: AppTokens.pagePadding,
+                        ),
+                        child: Row(
+                          spacing: 8,
+                          children: [
+                            _catChip('全部', _selectedCat == null, () {
+                              setState(() => _selectedCat = null);
+                            }),
+                            for (final c in catsAsync.value!)
+                              _catChip(c.name, _selectedCat == c.id, () {
+                                setState(() => _selectedCat = c.id);
+                              }),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
             final catSliver = SliverToBoxAdapter(child: catChips);
 
             if (filtered.isEmpty) {
@@ -173,16 +171,15 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                         ),
                     delegate: SliverChildBuilderDelegate((context, i) {
                       final book = filtered[i];
-                      final labels =
-                          (bookToCats[book.filePath] ?? {})
-                              .map((id) => catMap[id]?.name ?? '')
-                              .where((n) => n.isNotEmpty)
-                              .toList();
+                      final labels = (bookToCats[book.filePath] ?? {})
+                          .map((id) => catMap[id]?.name ?? '')
+                          .where((n) => n.isNotEmpty)
+                          .toList();
                       return BookCell(
                         book: book,
                         categoryLabels: labels,
                         onOpen: () => _openBook(book),
-                        onRemove: () => _confirmRemove(context, ref, book),
+                        onMenu: () => _showBookActionsSheet(book),
                       );
                     }, childCount: filtered.length),
                   ),
@@ -199,15 +196,10 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
   /// 此时提示用「传书」拉取，避免打开一个空阅读页。
   void _openBook(EbookBookshelfData book) {
     if (!File(book.filePath).existsSync()) {
-      showFToast(
-        context: context,
-        title: const Text('该书文件不在本机，请用「传书」从电脑导入'),
-      );
+      showFToast(context: context, title: const Text('该书文件不在本机，请用「传书」从电脑导入'));
       return;
     }
-    context.push(
-      '/ebook/reader?path=${Uri.encodeComponent(book.filePath)}',
-    );
+    context.push('/ebook/reader?path=${Uri.encodeComponent(book.filePath)}');
   }
 
   /// 分类筛选 chip
@@ -235,9 +227,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
         showFToast(
           context: context,
           title: Text(
-            book == null
-                ? '仅支持 EPUB / TXT'
-                : '已导入《${book.title ?? book.name}》',
+            book == null ? '仅支持 EPUB / TXT' : '已导入《${book.title ?? book.name}》',
           ),
         );
       }
@@ -247,6 +237,85 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
         showFToast(context: context, title: Text('导入失败：$e'));
       }
     }
+  }
+
+  /// 长按封面的动作菜单（2026-09-10 新增）：「笔记标注」/「移出书架」
+  ///
+  /// 笔记标注 → push `/ebook/notes`（独立页面全量展示，不折叠省略）；
+  /// 移出书架 → 仍走 `_confirmRemove` 的底部抽屉二次确认。
+  /// ⚠️ 全局规范：弹窗一律底部抽屉 `showFSheet + SheetSurface`（红线 #10）。
+  Future<void> _showBookActionsSheet(EbookBookshelfData book) async {
+    final hash = book.contentHash ?? '';
+    await showFSheet<void>(
+      context: context,
+      side: FLayout.btt,
+      mainAxisMaxRatio: null,
+      builder: (c) => SheetSurface(
+        padding: EdgeInsets.fromLTRB(
+          AppTokens.pagePadding,
+          12,
+          AppTokens.pagePadding,
+          12,
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '《${book.title ?? book.name ?? '未命名'}》',
+                style: c.theme.typography.body.lg,
+              ),
+              const SizedBox(height: 12),
+              FTileGroup(
+                divider: FItemDivider.none,
+                children: [
+                  FTile(
+                    prefix: Icon(
+                      FLucideIcons.highlighter,
+                      size: 18,
+                      color: c.theme.colors.foreground,
+                    ),
+                    title: const Text('笔记标注'),
+                    subtitle: const Text('查看本书全部划线与笔记'),
+                    onPress: () {
+                      Navigator.pop(c);
+                      if (hash.isEmpty) {
+                        showFToast(
+                          context: context,
+                          title: const Text('该书暂无内容标识，无法查看笔记'),
+                        );
+                        return;
+                      }
+                      context.push(
+                        '/ebook/notes?path=${Uri.encodeComponent(book.filePath)}'
+                        '&hash=${Uri.encodeComponent(hash)}'
+                        '&title=${Uri.encodeComponent(book.title ?? book.name ?? '笔记标注')}',
+                      );
+                    },
+                  ),
+                  FTile(
+                    prefix: Icon(
+                      FLucideIcons.trash2,
+                      size: 18,
+                      color: c.theme.colors.destructive,
+                    ),
+                    title: Text(
+                      '移出书架',
+                      style: TextStyle(color: c.theme.colors.destructive),
+                    ),
+                    onPress: () {
+                      Navigator.pop(c);
+                      _confirmRemove(context, ref, book);
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// 删除确认（底部抽屉二次确认；仅删书架引用不删内容）
@@ -338,9 +407,9 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
               final bookToCats = <String, Set<int>>{};
               for (final bc
                   in bookCatsAsync.value ?? const <EbookBookCategoryData>[]) {
-                bookToCats.putIfAbsent(bc.bookPath, () => <int>{}).add(
-                  bc.categoryId,
-                );
+                bookToCats
+                    .putIfAbsent(bc.bookPath, () => <int>{})
+                    .add(bc.categoryId);
               }
               final books = shelf.value ?? const <EbookBookshelfData>[];
 
@@ -474,9 +543,14 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
       // 取不到目录就隐藏保存目录行（不影响导入）
     }
 
-    Future<void> loadRemote(PeerDevice peer, void Function(void Function()) setSt) async {
+    Future<void> loadRemote(
+      PeerDevice peer,
+      void Function(void Function()) setSt,
+    ) async {
       setSt(() => loading = true);
-      final books = await ref.read(ebookTransferProvider).fetchRemoteBooks(peer);
+      final books = await ref
+          .read(ebookTransferProvider)
+          .fetchRemoteBooks(peer);
       setSt(() {
         remoteBooks = books;
         loading = false;
@@ -522,11 +596,11 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
         setSt(() => progressText = '传输中 ${i + 1}/$total · $name');
         final r = direction == 0
             ? await ref
-                .read(ebookTransferProvider)
-                .downloadBook(peer, item as RemoteBook)
+                  .read(ebookTransferProvider)
+                  .downloadBook(peer, item as RemoteBook)
             : await ref
-                .read(ebookTransferProvider)
-                .uploadBook(peer, item as EbookBookshelfData);
+                  .read(ebookTransferProvider)
+                  .uploadBook(peer, item as EbookBookshelfData);
         if (r.ok) {
           okCount++;
         } else {
@@ -575,8 +649,9 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
               final currentKeys = direction == 0
                   ? remoteBooks.map((b) => b.filePath).toList()
                   : localBooks.map((b) => b.filePath).toList();
-              final selCount =
-                  currentKeys.where((k) => checked.contains(k)).length;
+              final selCount = currentKeys
+                  .where((k) => checked.contains(k))
+                  .length;
               final allSelected =
                   currentKeys.isNotEmpty && selCount == currentKeys.length;
 
@@ -627,7 +702,9 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                           FButton(
                             variant: FButtonVariant.outline,
                             onPress: () {
-                              Clipboard.setData(ClipboardData(text: saveDirPath));
+                              Clipboard.setData(
+                                ClipboardData(text: saveDirPath),
+                              );
                               if (mounted) {
                                 showFToast(
                                   context: context,
@@ -652,7 +729,8 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                           child: FTextField(
                             label: const Text('设备 IP（可手填）'),
                             control: FTextFieldControl.managed(
-                              onChange: (v) => setSt(() => manualIp = v.text.trim()),
+                              onChange: (v) =>
+                                  setSt(() => manualIp = v.text.trim()),
                             ),
                           ),
                         ),
@@ -724,9 +802,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                         children: [
                           Expanded(
                             child: Text(
-                              transferring
-                                  ? progressText
-                                  : '已选 $selCount 本',
+                              transferring ? progressText : '已选 $selCount 本',
                               style: t.typography.body.sm.copyWith(
                                 color: t.colors.mutedForeground,
                               ),
@@ -759,9 +835,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                               if (peers.isEmpty)
                                 const Padding(
                                   padding: EdgeInsets.all(24),
-                                  child: Center(
-                                    child: Text('未发现设备，可扫描或手填 IP'),
-                                  ),
+                                  child: Center(child: Text('未发现设备，可扫描或手填 IP')),
                                 ),
                               FTileGroup(
                                 divider: FItemDivider.none,
@@ -796,10 +870,12 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                                         selected: checked.contains(b.filePath),
                                         prefix: FCheckbox(
                                           value: checked.contains(b.filePath),
-                                          onChange: (_) => toggle(b.filePath, setSt),
+                                          onChange: (_) =>
+                                              toggle(b.filePath, setSt),
                                         ),
                                         title: GestureDetector(
-                                          onTap: () => toggle(b.filePath, setSt),
+                                          onTap: () =>
+                                              toggle(b.filePath, setSt),
                                           child: Text(
                                             b.display,
                                             maxLines: 1,
@@ -807,7 +883,8 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                                           ),
                                         ),
                                         subtitle: GestureDetector(
-                                          onTap: () => toggle(b.filePath, setSt),
+                                          onTap: () =>
+                                              toggle(b.filePath, setSt),
                                           child: Text(
                                             b.size == null
                                                 ? b.format
@@ -821,10 +898,12 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                                         selected: checked.contains(b.filePath),
                                         prefix: FCheckbox(
                                           value: checked.contains(b.filePath),
-                                          onChange: (_) => toggle(b.filePath, setSt),
+                                          onChange: (_) =>
+                                              toggle(b.filePath, setSt),
                                         ),
                                         title: GestureDetector(
-                                          onTap: () => toggle(b.filePath, setSt),
+                                          onTap: () =>
+                                              toggle(b.filePath, setSt),
                                           child: Text(
                                             b.title ?? b.name ?? '未命名',
                                             maxLines: 1,
@@ -832,7 +911,8 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                                           ),
                                         ),
                                         subtitle: GestureDetector(
-                                          onTap: () => toggle(b.filePath, setSt),
+                                          onTap: () =>
+                                              toggle(b.filePath, setSt),
                                           child: Text(b.format ?? ''),
                                         ),
                                       ),
@@ -940,9 +1020,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                         onPress: transferring
                             ? null
                             : () => transferSelected(peer, setSt),
-                        child: Text(
-                          transferring ? '传输中…' : '传输选中 ($selCount)',
-                        ),
+                        child: Text(transferring ? '传输中…' : '传输选中 ($selCount)'),
                       ),
                     ),
                 ],
@@ -963,7 +1041,8 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
   }
 
   /// 分类 id 集合转可读名称（无则「未分类」）
-  String _catNames(Set<int> ids, Map<int, EbookCategoryData> map) {    final names = ids
+  String _catNames(Set<int> ids, Map<int, EbookCategoryData> map) {
+    final names = ids
         .map((id) => map[id]?.name ?? '')
         .where((n) => n.isNotEmpty)
         .join('、');

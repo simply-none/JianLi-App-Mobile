@@ -20,11 +20,18 @@ import '../providers/reader_settings.dart';
 import '../repositories/ebook_repository.dart';
 import '../services/epub_service.dart';
 
-/// 阅读器页（路由参数：书籍沙盒路径）
+/// 阅读器页（路由参数：书籍沙盒路径；可选 initialChapter = 从笔记页跳转的指定章节）
 class EpubReaderPage extends ConsumerStatefulWidget {
-  const EpubReaderPage({super.key, required this.filePath});
+  const EpubReaderPage({
+    super.key,
+    required this.filePath,
+    this.initialChapter,
+  });
 
   final String filePath;
+
+  /// 指定起始章节索引（笔记标注页「跳到该章」用；null = 按已保存进度恢复）
+  final int? initialChapter;
 
   @override
   ConsumerState<EpubReaderPage> createState() => _EpubReaderPageState();
@@ -60,19 +67,22 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         _loading = false;
       });
       // 恢复进度（按书架行 content_hash / path 找上次章节）
+      // ⚠️ initialChapter（笔记页「跳到该章」传入）优先于已保存进度
       final repo = ref.read(ebookRepositoryProvider);
       final row = await repo.findBookByPath(widget.filePath);
+      var restored = 0;
       if (row != null) {
         _contentHash = row.contentHash;
         _format = row.format ?? 'epub';
         final progress = await repo.getProgress(row);
         final cfi = progress?.cfi ?? '';
-        final idx = cfi.startsWith('chapter:')
+        restored = cfi.startsWith('chapter:')
             ? int.tryParse(cfi.substring(8)) ?? 0
             : 0;
-        if (mounted && idx > 0 && (book.chapters.length > idx)) {
-          setState(() => _chapter = idx);
-        }
+      }
+      final target = widget.initialChapter ?? restored;
+      if (mounted && target > 0 && book.chapters.length > target) {
+        setState(() => _chapter = target);
       }
     } catch (e) {
       if (!mounted) return;
@@ -120,8 +130,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       }
       return;
     }
-    final percent =
-        book.chapters.isEmpty ? 0.0 : (_chapter + 1) / book.chapters.length * 100;
+    final percent = book.chapters.isEmpty
+        ? 0.0
+        : (_chapter + 1) / book.chapters.length * 100;
     await repo.addBookmark(
       filePath: widget.filePath,
       contentHash: hash,
@@ -182,7 +193,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         child: _loading
             ? const Center(child: FCircularProgress())
             : _error != null
-            ? Center(child: Text(_error!, style: TextStyle(color: text)))
+            ? Center(
+                child: Text(_error!, style: TextStyle(color: text)),
+              )
             : Column(
                 children: [
                   Expanded(
@@ -309,35 +322,37 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                                   subtitle: b.percent != null
                                       ? Text('${b.percent}%')
                                       : null,
-                                    suffix: Row(
-                                      spacing: 8,
-                                      children: [
-                                        FButton(
-                                          variant: FButtonVariant.ghost,
-                                          onPress: () async {
-                                            Navigator.pop(context);
-                                            final idx = int.tryParse(
-                                                  (b.cfi ?? '')
-                                                          .startsWith('chapter:')
-                                                      ? (b.cfi ?? '').substring(8)
-                                                      : '',
-                                                ) ??
-                                                _chapter;
-                                            await _goChapter(idx);
-                                          },
-                                          child: const Text('跳转'),
-                                        ),
-                                        FButton(
-                                          variant: FButtonVariant.destructive,
-                                          onPress: () async {
-                                            await ref
-                                                .read(ebookRepositoryProvider)
-                                                .removeBookmark(b.id);
-                                          },
-                                          child: const Icon(FLucideIcons.trash2),
-                                        ),
-                                      ],
-                                    ),
+                                  suffix: Row(
+                                    spacing: 8,
+                                    children: [
+                                      FButton(
+                                        variant: FButtonVariant.ghost,
+                                        onPress: () async {
+                                          Navigator.pop(context);
+                                          final idx =
+                                              int.tryParse(
+                                                (b.cfi ?? '').startsWith(
+                                                      'chapter:',
+                                                    )
+                                                    ? (b.cfi ?? '').substring(8)
+                                                    : '',
+                                              ) ??
+                                              _chapter;
+                                          await _goChapter(idx);
+                                        },
+                                        child: const Text('跳转'),
+                                      ),
+                                      FButton(
+                                        variant: FButtonVariant.destructive,
+                                        onPress: () async {
+                                          await ref
+                                              .read(ebookRepositoryProvider)
+                                              .removeBookmark(b.id);
+                                        },
+                                        child: const Icon(FLucideIcons.trash2),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                             ],
                           ),
@@ -404,14 +419,17 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                               children: [
                                 if (adding) ...[
                                   Padding(
-                                    padding: EdgeInsets.all(AppTokens.pagePadding),
+                                    padding: EdgeInsets.all(
+                                      AppTokens.pagePadding,
+                                    ),
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           '类型',
-                                          style: context.theme.typography.body.sm,
+                                          style:
+                                              context.theme.typography.body.sm,
                                         ),
                                         const SizedBox(height: 8),
                                         JianliSegmented(
@@ -419,12 +437,14 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                                             (FLucideIcons.highlighter, '划线'),
                                             (FLucideIcons.notebookPen, '笔记'),
                                           ],
-                                          selected: type == 'markStrong' ? 0 : 1,
+                                          selected: type == 'markStrong'
+                                              ? 0
+                                              : 1,
                                           onSelect: (i) {
                                             setSt(
-                                              () =>
-                                                  type =
-                                                      i == 0 ? 'markStrong' : 'note',
+                                              () => type = i == 0
+                                                  ? 'markStrong'
+                                                  : 'note',
                                             );
                                           },
                                         ),
@@ -463,14 +483,14 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                                                       format: _format,
                                                       anchor:
                                                           'chapter:$_chapter',
-                                                      annotatedText:
-                                                          book
-                                                              .chapters[_chapter]
-                                                              .title,
+                                                      annotatedText: book
+                                                          .chapters[_chapter]
+                                                          .title,
                                                       note: note.trim().isEmpty
                                                           ? null
                                                           : note.trim(),
-                                                      color: type == 'markStrong'
+                                                      color:
+                                                          type == 'markStrong'
                                                           ? 'yellow'
                                                           : '',
                                                       type: type,
@@ -493,13 +513,12 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                                       FTile(
                                         title: Text(
                                           a.annotatedText ??
-                                              (a.type == 'note'
-                                                  ? '笔记'
-                                                  : '划线'),
+                                              (a.type == 'note' ? '笔记' : '划线'),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
-                                        subtitle: a.note != null && a.note!.isNotEmpty
+                                        subtitle:
+                                            a.note != null && a.note!.isNotEmpty
                                             ? Text(
                                                 a.note!,
                                                 maxLines: 2,
@@ -522,10 +541,13 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                                                 ),
                                               ),
                                             FButton(
-                                              variant: FButtonVariant.destructive,
+                                              variant:
+                                                  FButtonVariant.destructive,
                                               onPress: () async {
                                                 await ref
-                                                    .read(ebookRepositoryProvider)
+                                                    .read(
+                                                      ebookRepositoryProvider,
+                                                    )
                                                     .removeAnnotation(a.id);
                                               },
                                               child: const Icon(
@@ -579,10 +601,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                     final at = lower.indexOf(query.toLowerCase(), from);
                     if (at < 0) break;
                     final start = at < 20 ? 0 : at - 20;
-                    final end = (at + query.length + 20).clamp(
-                      0,
-                      plain.length,
-                    );
+                    final end = (at + query.length + 20).clamp(0, plain.length);
                     results.add((
                       i,
                       book.chapters[i].title,
@@ -619,9 +638,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                   Expanded(
                     child: results.isEmpty
                         ? Center(
-                            child: Text(
-                              query.isEmpty ? '输入关键词检索全文' : '无匹配结果',
-                            ),
+                            child: Text(query.isEmpty ? '输入关键词检索全文' : '无匹配结果'),
                           )
                         : ListView(
                             padding: const EdgeInsets.only(bottom: 12),

@@ -15,7 +15,7 @@ import 'security/vault_auto_lock.dart';
 import 'theme/app_theme.dart';
 import 'router/app_router.dart';
 
-/// 渐离移动端根组件
+/// 渐离App移动端根组件
 class JianliApp extends ConsumerStatefulWidget {
   const JianliApp({super.key});
 
@@ -64,7 +64,7 @@ class _JianliAppState extends ConsumerState<JianliApp>
         : AppTokens.baseFontSizeNormal;
 
     return MaterialApp.router(
-      title: '渐离',
+      title: '渐离App',
       debugShowCheckedModeBanner: false,
       supportedLocales: FLocalizations.supportedLocales,
       localizationsDelegates: FLocalizations.localizationsDelegates,

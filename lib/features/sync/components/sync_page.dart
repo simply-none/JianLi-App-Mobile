@@ -163,7 +163,7 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                     children: [
                       Expanded(
                         child: Text(
-                          '需 PC 端渐离在线',
+                          '需 PC 端渐离App在线',
                           style: t.typography.body.sm.copyWith(
                             color: t.colors.mutedForeground,
                           ),

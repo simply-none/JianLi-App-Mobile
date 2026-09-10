@@ -24,6 +24,7 @@ import '../../features/qr/components/qr_page.dart';
 import '../../features/password_vault/components/password_vault_page.dart';
 import '../../features/file_vault/components/file_vault_page.dart';
 import '../../features/ebook/components/bookshelf_page.dart';
+import '../../features/ebook/components/book_notes_page.dart';
 import '../../features/ebook/components/epub_reader_page.dart';
 import '../../features/conversation/components/conversation_page.dart';
 import '../../features/sync/components/sync_page.dart';
@@ -150,7 +151,25 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: 'reader',
           pageBuilder: (context, state) => slidePage(
-            EpubReaderPage(filePath: state.uri.queryParameters['path'] ?? ''),
+            EpubReaderPage(
+              filePath: state.uri.queryParameters['path'] ?? '',
+              // 「笔记标注 → 跳到该章」传入的初始章节（null 时按已保存进度恢复）
+              initialChapter: int.tryParse(
+                state.uri.queryParameters['chapter'] ?? '',
+              ),
+            ),
+            state,
+          ),
+        ),
+        GoRoute(
+          // 书籍笔记/标注页（书架长按 →「笔记标注」；全量展示，不省略）
+          path: 'notes',
+          pageBuilder: (context, state) => slidePage(
+            BookNotesPage(
+              filePath: state.uri.queryParameters['path'] ?? '',
+              contentHash: state.uri.queryParameters['hash'] ?? '',
+              title: state.uri.queryParameters['title'],
+            ),
             state,
           ),
         ),

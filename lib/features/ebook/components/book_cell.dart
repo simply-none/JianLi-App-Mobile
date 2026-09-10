@@ -1,7 +1,8 @@
 // 书架单本书格（原子组件）—— 渐变封面 + 标题 + 进度条
 //
-// 按标题 hash 取专属强调色（同一本书颜色稳定）；长按删除入口由调用方定义
-// （删除确认遵循全局规范：底部抽屉 showFSheet 二次确认，不用居中 FDialog）。
+// 按标题 hash 取专属强调色（同一本书颜色稳定）；长按弹出动作菜单由调用方定义
+// （2026-09-10 起长按 = 「笔记标注 / 移出书架」菜单；移出书架仍需底部抽屉二次确认，
+//  见全局规范：所有弹出窗一律底部抽屉 showFSheet + SheetSurface）。
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -15,13 +16,15 @@ class BookCell extends StatelessWidget {
     required this.book,
     this.categoryLabels = const [],
     required this.onOpen,
-    required this.onRemove,
+    required this.onMenu,
   });
 
   final EbookBookshelfData book;
   final List<String> categoryLabels;
   final VoidCallback onOpen;
-  final VoidCallback onRemove;
+
+  /// 长按封面 → 动作菜单（查看笔记标注 / 移出书架）
+  final VoidCallback onMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +37,7 @@ class BookCell extends StatelessWidget {
     final percent = (book.percent ?? 0).clamp(0.0, 1.0);
     return FTappable(
       onPress: onOpen,
-      onLongPress: onRemove,
+      onLongPress: onMenu,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

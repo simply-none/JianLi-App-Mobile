@@ -49,4 +49,6 @@ agent_created: true
 | 变更史 | `modules/changelog.md` | 维护说明（append-only，每完成一件事在此追加一条） | 查历史决策 / 雷区固化记录、要追加新变更时 |
 
 > ⚠️ 日常维护：每完成一个功能域或踩出新雷区，**先改对应主题模块**，再在 `modules/changelog.md` 追加一条日期前缀记录；功能域状态有变改 `modules/features.md`。不要再往本 hub 堆内容。
-> 决策类长文仍在 `references/`（file-transfer-plan.md / ui-modernization-plan.md / ferry-plan.md），与本知识模块区分。
+> 决策类长文仍在 `references/`（file-transfer-plan.md / ui-modernization-plan.md / ferry-plan.md / **ebook-reader-v2-plan.md**），与本知识模块区分。
+>
+> 📖 **电子书阅读增强（划线 / 翻页 / 笔记入口）方案**见 `references/ebook-reader-v2-plan.md`（2026-09-10 制定，主线方案 = 接 `flutter_epub_viewer` ^2.0.0，内核 epub.js 与桌面端 epubjs 0.3.93 同源 → CFI 双端互通；TXT 合成最小 EPUB 并入同一管线；零改表）。落地前务必先读，尤其是 M1 Go/No-Go 门禁与「开放待确认 5 条」。

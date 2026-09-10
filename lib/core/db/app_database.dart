@@ -1,4 +1,4 @@
-// App 数据库（drift）—— 渐离移动端数据层入口
+// App 数据库（drift）—— 渐离App移动端数据层入口
 //
 // 设计要点（对应 .zcode/skills/jianli-app/references/flutter-port.md）：
 // 1. 与桌面端 db.sqlite 同构：表定义逐列对齐（驼峰列用 @Named 锁定），
@@ -34,7 +34,7 @@ import 'tables/tool_tables.dart';
 
 part 'app_database.g.dart';
 
-/// 渐离移动端数据库
+/// 渐离App移动端数据库
 /// 首批 22 张表 + 工具表 3 张（countdown / qr_history / qr_template），共 25 张；
 /// v2 新增 file_transfer（文件互传历史）。
 @DriftDatabase(

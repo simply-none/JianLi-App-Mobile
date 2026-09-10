@@ -177,7 +177,7 @@ class _SettingsPanel extends ConsumerWidget {
                               FLucideIcons.info,
                               color: AppTokens.accent(0),
                             ),
-                            title: const Text('渐离 Jianli'),
+                            title: const Text('渐离App'),
                             subtitle: const Text('效率 · 内容 · 工具 一体工作台'),
                           ),
                         ],

@@ -361,7 +361,7 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
                     children: [
                       Expanded(
                         child: Text(
-                          '需另一端渐离在线；模拟器填 10.0.2.2',
+                          '需另一端渐离App在线；模拟器填 10.0.2.2',
                           style: t.typography.body.sm.copyWith(
                             color: t.colors.mutedForeground,
                           ),
@@ -873,7 +873,7 @@ class _HistoryTile extends StatelessWidget {
 
   Future<void> _share(String path) async {
     await SharePlus.instance.share(
-      ShareParams(files: [XFile(path)], text: '来自渐离文件互传'),
+      ShareParams(files: [XFile(path)], text: '来自渐离App文件互传'),
     );
   }
 }
