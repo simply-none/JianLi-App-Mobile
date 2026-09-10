@@ -18,11 +18,40 @@ class EbookRepository {
   final AppDatabase _db;
   static const _uuid = Uuid();
 
-  /// 书架流
+  /// 原始 drift 库句柄（传书服务需要直接查书架表暴露本机书目）
+  AppDatabase get db => _db;
+
+  /// 书架流（⚠️ 跨端同步后按 content_hash 去重，见方法内说明）
   Stream<List<EbookBookshelfData>> watchBookshelf() {
     return (_db.select(
       _db.ebookBookshelf,
-    )..orderBy([(t) => OrderingTerm.desc(t.lastReadAt)])).watch();
+    )..orderBy([(t) => OrderingTerm.desc(t.lastReadAt)])).watch().map(_dedupeByHash);
+  }
+
+  /// 同一本书去重：同步会把对端的书架行也拉过来，而对端 file_path 是它自己的
+  /// 绝对路径（PC）≠ 本机沙盒路径 → 同一 content_hash 出现两条，UI 会重复显示。
+  /// 规则：按 content_hash 归并，**优先保留本机文件实际存在的那条**（保留原排序）。
+  List<EbookBookshelfData> _dedupeByHash(List<EbookBookshelfData> rows) {
+    final kept = <EbookBookshelfData>[];
+    final indexByHash = <String, int>{};
+    for (final r in rows) {
+      final hash = r.contentHash;
+      if (hash == null || hash.isEmpty) {
+        kept.add(r); // 无哈希（老数据）原样保留
+        continue;
+      }
+      final at = indexByHash[hash];
+      if (at == null) {
+        indexByHash[hash] = kept.length;
+        kept.add(r);
+        continue;
+      }
+      // 已收过同 hash：仅当「已有那条文件不存在、当前这条存在」时替换
+      final prevExists = File(kept[at].filePath).existsSync();
+      final curExists = File(r.filePath).existsSync();
+      if (!prevExists && curExists) kept[at] = r;
+    }
+    return kept;
   }
 
   /// 导入书籍到沙盒（epub/txt），以内容 sha256 做身份键（对齐桌面端 content_hash 约定）
@@ -31,8 +60,20 @@ class EbookRepository {
     if (!src.existsSync()) return null;
     final ext = p.extension(sourcePath).toLowerCase();
     if (ext != '.epub' && ext != '.txt') return null;
-
     final bytes = await src.readAsBytes();
+    return importBookBytes(
+      name: p.basenameWithoutExtension(sourcePath),
+      format: ext == '.epub' ? 'epub' : 'txt',
+      bytes: bytes,
+    );
+  }
+
+  /// 从字节流导入（跨端传书：对端只给文件名 + 字节，本机没有源文件路径）
+  Future<EbookBookshelfData?> importBookBytes({
+    required String name,
+    required String format,
+    required List<int> bytes,
+  }) async {
     final hash = sha256.convert(bytes).toString();
 
     // 同内容已存在（跨路径去重）
@@ -44,15 +85,15 @@ class EbookRepository {
     final dir = await getApplicationDocumentsDirectory();
     final booksDir = Directory(p.join(dir.path, 'books'));
     if (!booksDir.existsSync()) booksDir.createSync(recursive: true);
+    final ext = format == 'epub' ? '.epub' : '.txt';
     final localPath = p.join(booksDir.path, '${_uuid.v4()}$ext');
     await File(localPath).writeAsBytes(bytes);
 
     final now = DateTime.now().toIso8601String();
-    final name = p.basenameWithoutExtension(sourcePath);
     final companion = EbookBookshelfCompanion.insert(
       filePath: localPath,
       name: Value(name),
-      format: Value(ext == '.epub' ? 'epub' : 'txt'),
+      format: Value(format),
       percent: const Value(0.0),
       lastReadAt: Value(now),
       addedAt: Value(now),

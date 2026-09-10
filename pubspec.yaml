@@ -47,6 +47,8 @@ dependencies:
   workmanager: ^0.10.9
   flutter_quill: ^11.5.1
   epubx: ^4.0.0
+  archive: ^3.6.1 # EPUB 宽容解析（绕过 epubx 的 TOC 解析异常）：解压 OPF/内容文件
+  xml: ^6.6.1 # EPUB 宽容解析：解析 container.xml / OPF manifest+spine
   file_picker: ^12.2.0
   image_picker: ^1.2.3
   path: ^1.9.1

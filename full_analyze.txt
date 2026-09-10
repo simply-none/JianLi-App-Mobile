@@ -1,0 +1,38 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+Analyzing jianli-mobile-app...                                  
+
+   info - The local variable '_baseStyle' starts with an underscore. Try renaming the variable to not start with an underscore - lib\app\theme\app_theme.dart:178:11 - no_leading_underscores_for_local_identifiers
+   info - The local variable '_headerFStyle' starts with an underscore. Try renaming the variable to not start with an underscore - lib\app\theme\app_theme.dart:179:11 - no_leading_underscores_for_local_identifiers
+   info - The local variable '_headerStyles' starts with an underscore. Try renaming the variable to not start with an underscore - lib\app\theme\app_theme.dart:187:11 - no_leading_underscores_for_local_identifiers
+   info - Invalid use of a private type in a public API. Try making the private type public, or making the API that uses the private type also be private - lib\core\sync\sync_service.dart:46:27 - library_private_types_in_public_api
+   info - Invalid use of a private type in a public API. Try making the private type public, or making the API that uses the private type also be private - lib\core\sync\sync_service.dart:46:50 - library_private_types_in_public_api
+   info - Angle brackets will be interpreted as HTML. Try using backticks around the content with angle brackets, or try replacing `<` with `&lt;` and `>` with `&gt;` - lib\features\ebook\components\bookshelf_page.dart:99:43 - unintended_html_in_doc_comment
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\ebook\repositories\ebook_repository.dart:175:7 - curly_braces_in_flow_control_structures
+warning - Unused import: '../../app/theme/app_theme.dart'. Try removing the import directive - lib\features\ferry\ferry_page.dart:15:8 - unused_import
+warning - Unused import: '../../app/ui/page_banner.dart'. Try removing the import directive - lib\features\ferry\ferry_page.dart:16:8 - unused_import
+warning - The value of the field '_url' isn't used. Try removing the field, or using it - lib\features\ferry\ferry_page.dart:48:11 - unused_field
+warning - The value of the field '_assetCheck' isn't used. Try removing the field, or using it - lib\features\ferry\ferry_page.dart:53:11 - unused_field
+warning - The value of the field '_qyferryAssets' isn't used. Try removing the field, or using it - lib\features\ferry\ferry_page.dart:54:16 - unused_field
+   info - Statements in a for should be enclosed in a block. Try wrapping the statement in a block - lib\features\ferry\ferry_page.dart:211:32 - curly_braces_in_flow_control_structures
+   info - Don't invoke 'print' in production code. Try using a logging framework - lib\features\ferry\ferry_server.dart:69:5 - avoid_print
+   info - Don't invoke 'print' in production code. Try using a logging framework - lib\features\ferry\ferry_server.dart:103:7 - avoid_print
+   info - Don't invoke 'print' in production code. Try using a logging framework - lib\features\ferry\ferry_server.dart:109:9 - avoid_print
+   info - Don't invoke 'print' in production code. Try using a logging framework - lib\features\ferry\ferry_server.dart:135:7 - avoid_print
+   info - Don't invoke 'print' in production code. Try using a logging framework - lib\features\ferry\ferry_server.dart:137:7 - avoid_print
+warning - Unused import: '../repositories/transfer_repository.dart'. Try removing the import directive - lib\features\file_transfer\components\file_transfer_page.dart:38:8 - unused_import
+warning - The value of the field '_ask' isn't used. Try removing the field, or using it - lib\features\file_transfer\components\file_transfer_page.dart:63:16 - unused_field
+   info - 'allowMultiple' is deprecated and shouldn't be used. use pickFile for single-file selection; this parameter will be removed in a future release. Try replacing the use of the deprecated member with the replacement - lib\features\file_transfer\components\file_transfer_page.dart:178:7 - deprecated_member_use
+   info - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check - lib\features\file_transfer\components\file_transfer_page.dart:245:29 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check. Guard a 'State.context' use with a 'mounted' check on the State, and other BuildContext use with a 'mounted' check on the BuildContext - lib\features\file_transfer\components\file_transfer_page.dart:949:18 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check. Guard a 'State.context' use with a 'mounted' check on the State, and other BuildContext use with a 'mounted' check on the BuildContext - lib\features\file_transfer\components\file_transfer_page.dart:966:18 - use_build_context_synchronously
+   info - The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/services.dart'. Try removing the import directive - lib\features\file_transfer\services\file_actions.dart:10:8 - unnecessary_import
+   info - The imported package 'mime' isn't a dependency of the importing package. Try adding a dependency for 'mime' in the 'pubspec.yaml' file - lib\features\file_transfer\services\transfer_client.dart:19:8 - depend_on_referenced_packages
+warning - The '!' will have no effect because the receiver can't be null. Try removing the '!' operator - lib\features\file_transfer\services\transfer_client.dart:197:63 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null. Try removing the '!' operator - lib\features\file_transfer\services\transfer_client.dart:202:25 - unnecessary_non_null_assertion
+warning - Unused import: 'package:drift/drift.dart'. Try removing the import directive - lib\features\file_transfer\services\transfer_server.dart:21:8 - unused_import
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\file_transfer\services\transfer_server.dart:336:18 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\file_transfer\services\transfer_server.dart:337:23 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\habit\models\habit.dart:65:7 - curly_braces_in_flow_control_structures
+   info - Unnecessary use of multiple underscores. Try using '_' - lib\features\sync\components\sync_log_list.dart:44:31 - unnecessary_underscores
+
+33 issues found. (ran in 12.3s)

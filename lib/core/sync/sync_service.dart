@@ -32,18 +32,28 @@ const List<String> kSyncableTables = [
   'conversation_theme',
   'conversation',
   'conversation_tag',
+  // 电子书七表（2026-09-09 加入）：bookshelf/progress 主键是 file_path，
+  // 其余自增 id，ebook_book_category 为 (book_path, category_id) 复合主键。
+  // ⚠️ INSERT OR REPLACE 按各表自身主键幂等，复合主键同样成立（导出行含全部列）。
+  'ebook_bookshelf',
+  'ebook_progress',
+  'ebook_bookmark',
+  'ebook_annotation',
+  'ebook_category',
+  'ebook_book_category',
+  'ebook_bg_image',
 ];
 
 /// 可插拔路由（文件互传等模块向同步数据面注入自定义端点，复用 47124 不新开端口）
-typedef _RouteMatcher = bool Function(HttpRequest request);
-typedef _RouteHandler = Future<void> Function(HttpRequest request);
+typedef RouteMatcher = bool Function(HttpRequest request);
+typedef RouteHandler = Future<void> Function(HttpRequest request);
 
-final List<(_RouteMatcher, _RouteHandler)> _extraRoutes = [];
+final List<(RouteMatcher, RouteHandler)> _extraRoutes = [];
 
 /// 注册一个自定义路由处理器。
 /// 每个请求先依次匹配 `_extraRoutes`，命中即交由 handler 处理（handler 自行关闭 response）。
 /// 内置 /ping /export /sync 分支保持不变；文件互传的 /file/* 由 transfer_server 注册。
-void registerRouteHandler(_RouteMatcher matcher, _RouteHandler handler) {
+void registerRouteHandler(RouteMatcher matcher, RouteHandler handler) {
   _extraRoutes.add((matcher, handler));
 }
 

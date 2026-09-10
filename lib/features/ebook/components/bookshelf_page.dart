@@ -4,7 +4,10 @@
 // 每次重建都是新 provider，页面永远 loading，实踩见 ebook_providers.dart 头注释）。
 // 导入入口在顶栏 +；删除 = 长按书格 → showFDialog 二次确认（破坏性规范）。
 // 分类（2026-09-09）：顶栏「标签」管理分类与给书打标签；顶部 chips 按分类筛选。
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,11 +15,14 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/segmented.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
+import '../../../core/sync/sync_discovery.dart';
 import '../providers/ebook_providers.dart';
 import '../repositories/ebook_repository.dart';
+import '../services/ebook_transfer.dart';
 import 'book_cell.dart';
 
 /// 书架页
@@ -33,6 +39,8 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 进入书架即注册 /ebook/* 接收路由（否则电脑端主动来拉时手机还没挂上端点）
+    ref.watch(ebookTransferProvider);
     final shelfAsync = ref.watch(bookshelfStreamProvider);
     final catsAsync = ref.watch(categoriesStreamProvider);
     final bookCatsAsync = ref.watch(bookCategoriesStreamProvider);
@@ -53,6 +61,10 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
         title: const Text('电子书'),
         prefixes: [FHeaderAction.back(onPress: () => context.pop())],
         suffixes: [
+          FHeaderAction(
+            icon: const Icon(FLucideIcons.arrowLeftRight),
+            onPress: () => _showTransferSheet(),
+          ),
           FHeaderAction(
             icon: const Icon(FLucideIcons.tags),
             onPress: () => _showCategoryManager(),
@@ -168,9 +180,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                       return BookCell(
                         book: book,
                         categoryLabels: labels,
-                        onOpen: () => context.push(
-                          '/ebook/reader?path=${Uri.encodeComponent(book.filePath)}',
-                        ),
+                        onOpen: () => _openBook(book),
                         onRemove: () => _confirmRemove(context, ref, book),
                       );
                     }, childCount: filtered.length),
@@ -181,6 +191,21 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
           },
         ),
       ),
+    );
+  }
+
+  /// 打开一本书；同步过来的对端记录其 file_path 是对方路径、本机并无文件，
+  /// 此时提示用「传书」拉取，避免打开一个空阅读页。
+  void _openBook(EbookBookshelfData book) {
+    if (!File(book.filePath).existsSync()) {
+      showFToast(
+        context: context,
+        title: const Text('该书文件不在本机，请用「传书」从电脑导入'),
+      );
+      return;
+    }
+    context.push(
+      '/ebook/reader?path=${Uri.encodeComponent(book.filePath)}',
     );
   }
 
@@ -204,6 +229,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
       final path = files.first.path;
       if (path == null) return;
       final book = await ref.read(ebookRepositoryProvider).importBook(path);
+      // 此处 context 是入参（非 State.context），守卫必须用 context.mounted
       if (context.mounted) {
         showFToast(
           context: context,
@@ -392,9 +418,360 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
     );
   }
 
+  /// 跨端传书抽屉：扫描设备 → 选设备 → 选方向（从电脑导入 / 导入到电脑）
+  /// → 勾选多本 → 底部「传输选中(N)」一键批量传输。
+  ///
+  /// ⚠️ 表单/流程状态全部放在本方法作用域（StatefulBuilder 的 builder 闭包内变量
+  /// 每次 setSt 重建都会被重置，见 SKILL 红线）。勾选集合用 `checked` 存书的 filePath
+  /// （双端 filePath 唯一），切换方向/设备时清空，避免跨端混选。
+  Future<void> _showTransferSheet() async {
+    final discovery = SyncDiscovery();
+    var peers = <PeerDevice>[];
+    var selectedIndex = -1;
+    var direction = 0; // 0=从电脑导入（拉），1=导入到电脑（推）
+    var remoteBooks = <RemoteBook>[];
+    var scanning = false;
+    var loading = false;
+    var manualIp = '';
+    var checked = <String>{}; // 已勾选书的 filePath
+    var transferring = false;
+    var progressText = '';
+
+    Future<void> loadRemote(PeerDevice peer, void Function(void Function()) setSt) async {
+      setSt(() => loading = true);
+      final books = await ref.read(ebookTransferProvider).fetchRemoteBooks(peer);
+      setSt(() {
+        remoteBooks = books;
+        loading = false;
+      });
+    }
+
+    void toggle(String key, void Function(void Function()) setSt) {
+      if (transferring) return;
+      setSt(() {
+        if (checked.contains(key)) {
+          checked.remove(key);
+        } else {
+          checked.add(key);
+        }
+      });
+    }
+
+    Future<void> transferSelected(
+      PeerDevice peer,
+      void Function(void Function()) setSt,
+    ) async {
+      final items = direction == 0
+          ? remoteBooks.where((b) => checked.contains(b.filePath)).toList()
+          : localBooksForChecked(checked);
+      final total = items.length;
+      if (total == 0) return;
+      setSt(() => transferring = true);
+      var okCount = 0;
+      var failCount = 0;
+      for (var i = 0; i < total; i++) {
+        setSt(() => progressText = '传输中 ${i + 1}/$total');
+        final r = direction == 0
+            ? await ref
+                .read(ebookTransferProvider)
+                .downloadBook(peer, items[i] as RemoteBook)
+            : await ref
+                .read(ebookTransferProvider)
+                .uploadBook(peer, items[i] as EbookBookshelfData);
+        if (r.ok) {
+          okCount++;
+        } else {
+          failCount++;
+        }
+      }
+      setSt(() {
+        transferring = false;
+        checked.clear();
+        progressText = '';
+      });
+      if (mounted) {
+        showFToast(
+          context: context,
+          title: Text(
+            '已传输 $okCount 本${failCount > 0 ? '，$failCount 本失败' : ''}',
+          ),
+        );
+      }
+    }
+
+    await showFSheet<void>(
+      context: context,
+      side: FLayout.btt,
+      mainAxisMaxRatio: null,
+      builder: (ctx) => SheetSurface(
+        child: SafeArea(
+          child: StatefulBuilder(
+            builder: (ctx, setSt) {
+              final t = ctx.theme;
+              final shelf = ref.watch(bookshelfStreamProvider);
+              final localBooks = shelf.value ?? const <EbookBookshelfData>[];
+              final peer = selectedIndex >= 0 && selectedIndex < peers.length
+                  ? peers[selectedIndex]
+                  : null;
+
+              // 当前方向下的书目 filePath 列表（用于全选判定）
+              final currentKeys = direction == 0
+                  ? remoteBooks.map((b) => b.filePath).toList()
+                  : localBooks.map((b) => b.filePath).toList();
+              final selCount =
+                  currentKeys.where((k) => checked.contains(k)).length;
+              final allSelected =
+                  currentKeys.isNotEmpty && selCount == currentKeys.length;
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      AppTokens.pagePadding,
+                      12,
+                      AppTokens.pagePadding,
+                      8,
+                    ),
+                    child: Text('传书', style: t.typography.body.lg),
+                  ),
+                  // 顶部：扫描 + 手动 IP（局域网广播常被 NAT 拦，保留手填入口）
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: AppTokens.pagePadding,
+                    ),
+                    child: Row(
+                      spacing: 8,
+                      children: [
+                        Expanded(
+                          child: FTextField(
+                            label: const Text('设备 IP（可手填）'),
+                            control: FTextFieldControl.managed(
+                              onChange: (v) => setSt(() => manualIp = v.text.trim()),
+                            ),
+                          ),
+                        ),
+                        FButton(
+                          onPress: manualIp.isEmpty
+                              ? null
+                              : () => setSt(() {
+                                  peers = [
+                                    ...peers,
+                                    PeerDevice(
+                                      ip: manualIp,
+                                      name: '手动设备 $manualIp',
+                                      id: manualIp,
+                                      platform: 'unknown',
+                                    ),
+                                  ];
+                                  selectedIndex = peers.length - 1;
+                                  checked.clear();
+                                }),
+                          child: const Text('添加'),
+                        ),
+                        FButton(
+                          variant: FButtonVariant.outline,
+                          onPress: scanning
+                              ? null
+                              : () async {
+                                  setSt(() => scanning = true);
+                                  final found = await discovery.scan();
+                                  setSt(() {
+                                    peers = found.values.toList();
+                                    scanning = false;
+                                  });
+                                },
+                          child: Text(scanning ? '扫描中…' : '扫描'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (peer != null)
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: AppTokens.pagePadding,
+                      ),
+                      child: JianliSegmented(
+                        items: const [
+                          (FLucideIcons.download, '从这台导入'),
+                          (FLucideIcons.upload, '传到这台'),
+                        ],
+                        selected: direction,
+                        onSelect: (i) {
+                          setSt(() {
+                            direction = i;
+                            checked.clear();
+                          });
+                          if (i == 0) loadRemote(peer, setSt);
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  // 已选计数 + 全选/取消全选
+                  if (peer != null && currentKeys.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: AppTokens.pagePadding,
+                      ),
+                      child: Row(
+                        spacing: 8,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              transferring
+                                  ? progressText
+                                  : '已选 $selCount 本',
+                              style: t.typography.body.sm.copyWith(
+                                color: t.colors.mutedForeground,
+                              ),
+                            ),
+                          ),
+                          FButton(
+                            variant: FButtonVariant.outline,
+                            onPress: transferring
+                                ? null
+                                : () => setSt(() {
+                                    if (allSelected) {
+                                      checked.removeAll(currentKeys);
+                                    } else {
+                                      checked.addAll(currentKeys);
+                                    }
+                                  }),
+                            child: Text(allSelected ? '取消全选' : '全选'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: loading
+                        ? const Center(child: FCircularProgress())
+                        : peer == null
+                        ? ListView(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            children: [
+                              if (peers.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(24),
+                                  child: Center(
+                                    child: Text('未发现设备，可扫描或手填 IP'),
+                                  ),
+                                ),
+                              FTileGroup(
+                                divider: FItemDivider.none,
+                                children: [
+                                  for (var i = 0; i < peers.length; i++)
+                                    FTile(
+                                      title: Text(peers[i].name),
+                                      subtitle: Text(peers[i].ip),
+                                      onPress: () {
+                                        setSt(() {
+                                          selectedIndex = i;
+                                          checked.clear();
+                                        });
+                                        if (direction == 0) {
+                                          loadRemote(peers[i], setSt);
+                                        }
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ],
+                          )
+                        : ListView(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            children: [
+                              FTileGroup(
+                                divider: FItemDivider.none,
+                                children: [
+                                  if (direction == 0)
+                                    for (final b in remoteBooks)
+                                      FTile(
+                                        selected: checked.contains(b.filePath),
+                                        prefix: FCheckbox(
+                                          value: checked.contains(b.filePath),
+                                          onChange: (_) => toggle(b.filePath, setSt),
+                                        ),
+                                        title: GestureDetector(
+                                          onTap: () => toggle(b.filePath, setSt),
+                                          child: Text(
+                                            b.display,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        subtitle: GestureDetector(
+                                          onTap: () => toggle(b.filePath, setSt),
+                                          child: Text(
+                                            b.size == null
+                                                ? b.format
+                                                : '${b.format} · ${(b.size! / 1024 / 1024).toStringAsFixed(1)}MB',
+                                          ),
+                                        ),
+                                      ),
+                                  if (direction == 1)
+                                    for (final b in localBooks)
+                                      FTile(
+                                        selected: checked.contains(b.filePath),
+                                        prefix: FCheckbox(
+                                          value: checked.contains(b.filePath),
+                                          onChange: (_) => toggle(b.filePath, setSt),
+                                        ),
+                                        title: GestureDetector(
+                                          onTap: () => toggle(b.filePath, setSt),
+                                          child: Text(
+                                            b.title ?? b.name ?? '未命名',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        subtitle: GestureDetector(
+                                          onTap: () => toggle(b.filePath, setSt),
+                                          child: Text(b.format ?? ''),
+                                        ),
+                                      ),
+                                ],
+                              ),
+                            ],
+                          ),
+                  ),
+                  // 底部：一键批量传输
+                  if (peer != null && selCount > 0)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        AppTokens.pagePadding,
+                        8,
+                        AppTokens.pagePadding,
+                        4,
+                      ),
+                      child: FButton(
+                        onPress: transferring
+                            ? null
+                            : () => transferSelected(peer, setSt),
+                        child: Text(
+                          transferring ? '传输中…' : '传输选中 ($selCount)',
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 取勾选的本地书（按 filePath 命中），用于批量上传
+  List<EbookBookshelfData> localBooksForChecked(Set<String> checked) {
+    // 需要实时书架数据；借由 provider 读一次快照
+    final localBooks =
+        ref.read(bookshelfStreamProvider).value ?? const <EbookBookshelfData>[];
+    return localBooks.where((b) => checked.contains(b.filePath)).toList();
+  }
+
   /// 分类 id 集合转可读名称（无则「未分类」）
-  String _catNames(Set<int> ids, Map<int, EbookCategoryData> map) {
-    final names = ids
+  String _catNames(Set<int> ids, Map<int, EbookCategoryData> map) {    final names = ids
         .map((id) => map[id]?.name ?? '')
         .where((n) => n.isNotEmpty)
         .join('、');
