@@ -23,6 +23,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../core/android/media_scan.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
@@ -115,10 +116,15 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
     }
     final server = ref.read(transferServerProvider);
     if (!await server.hasPublicDownloadsAccess()) {
-      await [
-        Permission.manageExternalStorage,
-        Permission.storage,
-      ].request();
+      // API 30+ 只有「所有文件访问」能写共享 Download，申请 storage 无效；≤29 才弹传统授权框
+      if (await getAndroidSdkInt() >= 30) {
+        await Permission.manageExternalStorage.request();
+      } else {
+        await [
+          Permission.manageExternalStorage,
+          Permission.storage,
+        ].request();
+      }
     }
     final granted = await server.hasPublicDownloadsAccess();
     if (!granted) {

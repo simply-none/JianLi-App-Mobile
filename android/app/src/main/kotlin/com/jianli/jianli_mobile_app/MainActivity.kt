@@ -2,6 +2,8 @@ package com.jianli.jianli_mobile_app
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.MediaScannerConnection
+import android.os.Build
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -59,6 +61,20 @@ class MainActivity : FlutterActivity() {
                         result.success(openWithApp(path, pkg, act))
                     } catch (e: Exception) {
                         result.error("OPEN_APP_FAILED", e.message, null)
+                    }
+                }
+                // 读取 Android API level（Dart 侧据此区分 API 30+ 必须「所有文件访问」的边界）
+                "getSdkVersion" -> {
+                    result.success(Build.VERSION.SDK_INT)
+                }
+                // 落盘后触发 MediaStore 重新索引，使写入共享 Download 的文件立即被文件管理器/系统媒体可见
+                "scanFile" -> {
+                    val path = call.argument<String>("path") ?: ""
+                    try {
+                        MediaScannerConnection.scanFile(this, arrayOf(path), null, null)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SCAN_FAILED", e.message, null)
                     }
                 }
                 else -> result.notImplemented()

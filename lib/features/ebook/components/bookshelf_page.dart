@@ -458,6 +458,8 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
     var checked = <String>{}; // 已勾选书的 filePath
     var transferring = false;
     var progressText = '';
+    // 传书记录日志：逐本记录成功/失败及原因，便于排查失败（不持久化，关抽屉即清空）
+    var transferLog = <({bool ok, String line})>[];
 
     // 申请公共 Download 写权限（系统文件管理器可见的保存目录）；未授权 booksDir 自动回退沙盒
     await EbookRepository.ensurePublicDownloadsPermission();
@@ -501,23 +503,42 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
           : localBooksForChecked(checked);
       final total = items.length;
       if (total == 0) return;
-      setSt(() => transferring = true);
+      setSt(() {
+        transferring = true;
+        transferLog.clear();
+      });
       var okCount = 0;
       var failCount = 0;
+      final dirLabel = direction == 0 ? '←导入' : '→传出';
       for (var i = 0; i < total; i++) {
-        setSt(() => progressText = '传输中 ${i + 1}/$total');
+        final item = items[i];
+        final String name;
+        if (direction == 0) {
+          name = (item as RemoteBook).display;
+        } else {
+          final b = item as EbookBookshelfData;
+          name = b.title ?? b.name ?? '未命名';
+        }
+        setSt(() => progressText = '传输中 ${i + 1}/$total · $name');
         final r = direction == 0
             ? await ref
                 .read(ebookTransferProvider)
-                .downloadBook(peer, items[i] as RemoteBook)
+                .downloadBook(peer, item as RemoteBook)
             : await ref
                 .read(ebookTransferProvider)
-                .uploadBook(peer, items[i] as EbookBookshelfData);
+                .uploadBook(peer, item as EbookBookshelfData);
         if (r.ok) {
           okCount++;
         } else {
           failCount++;
         }
+        // 逐本记录结果 + 失败原因，供下方「传书记录」日志排查
+        final time = DateTime.now().toIso8601String().substring(11, 19);
+        transferLog.add((
+          ok: r.ok,
+          line: '[$time] $dirLabel $name · ${r.ok ? '成功' : '失败：${r.message}'}',
+        ));
+        setSt(() {}); // 刷新传书记录日志（逐本实时显示）
       }
       setSt(() {
         transferring = false;
@@ -820,6 +841,92 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                             ],
                           ),
                   ),
+                  // 传书记录日志：逐本显示成功/失败及原因，便于分析失败（有记录才显示）
+                  if (transferLog.isNotEmpty)
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 180),
+                      margin: const EdgeInsets.fromLTRB(
+                        AppTokens.pagePadding,
+                        4,
+                        AppTokens.pagePadding,
+                        4,
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: t.colors.card,
+                        border: Border.all(color: t.colors.border),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '传书记录',
+                                  style: t.typography.body.sm.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () {
+                                  Clipboard.setData(
+                                    ClipboardData(
+                                      text: transferLog
+                                          .map((e) => e.line)
+                                          .join('\n'),
+                                    ),
+                                  );
+                                  if (mounted) {
+                                    showFToast(
+                                      context: context,
+                                      title: const Text('已复制传书记录'),
+                                    );
+                                  }
+                                },
+                                child: Text(
+                                  '复制',
+                                  style: t.typography.body.xs.copyWith(
+                                    color: t.colors.primary,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              GestureDetector(
+                                onTap: () => setSt(() => transferLog.clear()),
+                                child: Text(
+                                  '清空',
+                                  style: t.typography.body.xs.copyWith(
+                                    color: t.colors.mutedForeground,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Expanded(
+                            child: ListView(
+                              children: [
+                                for (final e in transferLog)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 2),
+                                    child: Text(
+                                      e.line,
+                                      style: t.typography.body.xs.copyWith(
+                                        color: e.ok
+                                            ? t.colors.mutedForeground
+                                            : t.colors.destructive,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   // 底部：一键批量传输
                   if (peer != null && selCount > 0)
                     Padding(

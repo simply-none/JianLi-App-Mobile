@@ -26,6 +26,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../app/di/app_providers.dart';
+import '../../../core/android/media_scan.dart';
 import '../../../core/db/app_database.dart';
 import '../../../core/sync/sync_discovery.dart';
 import '../../../core/sync/sync_service.dart';
@@ -142,11 +143,18 @@ class TransferServer {
     return d.path;
   }
 
-  /// 公共 Download 可写判定：「所有文件访问」（API 30+）或传统存储权限（≤API 12L）。
-  /// 文件互传页入页会发起申请（ensurePublicDownloadsPermission）。
+  /// 公共 Download 可写判定。
+  /// ⚠️ 关键修正（2026-09-10）：Android 11+(API 30+) 起，普通 READ/WRITE_EXTERNAL_STORAGE
+  /// 已不再授予「写共享 Download 目录」的权限，只有「所有文件访问」(MANAGE_EXTERNAL_STORAGE) 才行。
+  /// 旧代码把 `Permission.storage.isGranted` 当成可写，导致 API 30+ 上写入失败静默回退沙盒。
+  /// 因此：API 30+ 必须 manageExternalStorage；≤29 才允许传统 storage 权限。
   Future<bool> hasPublicDownloadsAccess() async {
+    if (!Platform.isAndroid) return false;
     if (await Permission.manageExternalStorage.isGranted) return true;
-    return Permission.storage.isGranted;
+    if (await getAndroidSdkInt() <= 29) {
+      return Permission.storage.isGranted;
+    }
+    return false;
   }
 
   /// 注册 /file/* 三端点到同步数据面（幂等，全局只注册一次）
@@ -326,6 +334,8 @@ class TransferServer {
     }
     final finalPath = p.join(dir, finalName);
     await part.rename(finalPath);
+    // 落盘后触发 MediaStore 索引，使文件管理器/系统媒体立即可见（静默，失败不影响已写入）
+    await scanFileInMediaStore(finalPath);
     // 双重校验：size + sha256
     final size = await File(finalPath).length();
     final sizeOk = of.size <= 0 || size == of.size;

@@ -9,6 +9,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../core/android/media_scan.dart';
+
 import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
 
@@ -27,18 +29,32 @@ class EbookRepository {
   /// 电子书传书固定保存目录名（公共 Download 子目录，与文件互传同样走系统 Download、可见）
   static const String kEbookTransferDirName = '渐离App传书';
 
-  /// 公共 Download 可写判定：「所有文件访问」（API 30+）或传统存储权限（≤API 12L）。
+  /// 公共 Download 可写判定。
+  /// ⚠️ 关键修正（2026-09-10）：Android 11+(API 30+) 起，普通 READ/WRITE_EXTERNAL_STORAGE
+  /// 已**不再**授予「写共享 Download 目录」的权限，只有「所有文件访问」(MANAGE_EXTERNAL_STORAGE)
+  /// 才行。旧代码把 `Permission.storage.isGranted` 当成可写，导致 API 30+ 上 `createSync`
+  /// 抛 Permission denied → 静默回退沙盒（文件管理器看不到）。
+  /// 因此：API 30+ 必须 manageExternalStorage；≤29 才允许传统 storage 权限。
   static Future<bool> hasPublicDownloadsAccess() async {
+    if (!Platform.isAndroid) return false;
     if (await Permission.manageExternalStorage.isGranted) return true;
-    return Permission.storage.isGranted;
+    if (await getAndroidSdkInt() <= 29) {
+      return Permission.storage.isGranted;
+    }
+    return false;
   }
 
-  /// 申请公共 Download 写权限（与文件互传一致的可见保存目录）：API 30+ 自动跳「所有文件访问」
-  /// 设置页，≤12L 弹传统授权框；拒绝时 [booksDir] 自动回退沙盒。应在传书页打开时调用一次。
+  /// 申请公共 Download 写权限（与文件互传一致的可见保存目录）。
+  /// API 30+ 只有「所有文件访问」才能写共享 Download，申请 storage 无效且误导，故只申请前者；
+  /// ≤29 才弹传统授权框。拒绝时 [booksDir] 自动回退沙盒。应在传书页打开时调用一次。
   static Future<void> ensurePublicDownloadsPermission() async {
     if (!Platform.isAndroid) return;
     if (await hasPublicDownloadsAccess()) return;
-    await [Permission.manageExternalStorage, Permission.storage].request();
+    if (await getAndroidSdkInt() >= 30) {
+      await Permission.manageExternalStorage.request();
+    } else {
+      await [Permission.manageExternalStorage, Permission.storage].request();
+    }
   }
 
   /// 接收目录（不存在则创建）：
@@ -127,17 +143,64 @@ class EbookRepository {
   }) async {
     final hash = sha256.convert(bytes).toString();
 
-    // 同内容已存在（跨路径去重）
+    final dir = await EbookRepository.booksDir;
+    final localPath = p.join(dir.path, _bookFileName(name, format, hash));
+
+    // 同内容去重：仅在「本机文件已位于目标公开路径」时跳过落盘复用；
+    // 若记录存在但本机文件缺失 / 在沙盒 / 路径不符（如同步来的 PC 端记录、旧沙盒路径失效），
+    // 必须重新落盘到 booksDir（公开 Download），否则会「传书成功却文件管理器看不到」。
+    // 文件互传无此去重门故始终可见，本次对齐其行为。
     final existing = await (_db.select(
       _db.ebookBookshelf,
     )..where((t) => t.contentHash.equals(hash))).getSingleOrNull();
-    if (existing != null) return existing;
+    if (existing != null &&
+        existing.filePath == localPath &&
+        File(existing.filePath).existsSync()) {
+      return existing;
+    }
 
-    final dir = await EbookRepository.booksDir;
-    final localPath = p.join(dir.path, _bookFileName(name, format, hash));
     await File(localPath).writeAsBytes(bytes);
+    // 落盘后触发 MediaStore 索引，使文件管理器/系统媒体立即可见（静默，失败不影响已写入）
+    await scanFileInMediaStore(localPath);
 
     final now = DateTime.now().toIso8601String();
+    if (existing != null) {
+      // 命中同内容记录：旧记录可能是「沙盒路径 / id 为 NULL 的异常行 / 已占用目标路径的重复行」。
+      // 直接 UPDATE 会因 id 为 NULL（WHERE id IS NULL 匹配不到）或 UNIQUE(file_path) 冲突而失败/抛错。
+      // 统一按 content_hash 去重重写：删掉所有同 hash 行 + 任何占用目标路径的行，再插入一条规范行，
+      // 既避开可空的 id，又根除重复行导致的 UNIQUE 冲突。书签/批注按 content_hash 关联，不受删行影响。
+      final keptPercent = existing.percent ?? 0.0;
+      final keptAddedAt = existing.addedAt ?? now;
+      await (_db.delete(_db.ebookBookshelf)
+            ..where((t) => t.contentHash.equals(hash)))
+          .go();
+      await (_db.delete(_db.ebookBookshelf)
+            ..where((t) => t.filePath.equals(localPath)))
+          .go();
+      // 清理失效旧副本文件（不在目标路径上的那份）
+      if (existing.filePath != localPath &&
+          File(existing.filePath).existsSync()) {
+        try {
+          File(existing.filePath).delete();
+        } catch (_) {}
+      }
+      final key = await _db.into(_db.ebookBookshelf).insert(
+        EbookBookshelfCompanion.insert(
+          filePath: localPath,
+          name: Value(name),
+          format: Value(format),
+          percent: Value(keptPercent),
+          lastReadAt: Value(now),
+          addedAt: Value(keptAddedAt),
+          title: Value(name),
+          contentHash: Value(hash),
+        ),
+      );
+      return (_db.select(
+        _db.ebookBookshelf,
+      )..where((t) => t.id.equals(key))).getSingleOrNull();
+    }
+
     final companion = EbookBookshelfCompanion.insert(
       filePath: localPath,
       name: Value(name),
