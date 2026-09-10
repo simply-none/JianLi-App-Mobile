@@ -62,31 +62,31 @@ class AppTheme {
       lightPrimary: Color(0xFFEC4899),
       darkPrimary: Color(0xFFF472B6),
     ),
-    // —— 以下 4 套：莫兰迪灰调（低饱和、灰度高，非正色）；2026-09-09 提亮对齐前 5 套，
-    //    霜月灰 → 霜月白（white）——
+    // —— 以下 4 套：正色 vivid（取消莫兰迪灰调回调，2026-09-10）；亮度/饱和度与前 5 套对齐，
+    //    颜色贴合主题名；霜月白用月光银蓝主色（纯白无法做按钮底色，白字不可见）——
     ThemeStyle(
       id: 'red',
       name: '丹枫红',
-      lightPrimary: Color(0xFFC97B82),
-      darkPrimary: Color(0xFFE0A6AC),
+      lightPrimary: Color(0xFFE5484D),
+      darkPrimary: Color(0xFFF26A70),
     ),
     ThemeStyle(
       id: 'yellow',
       name: '秋香黄',
-      lightPrimary: Color(0xFFDDBB66),
-      darkPrimary: Color(0xFFEBD39A),
+      lightPrimary: Color(0xFFF4B400),
+      darkPrimary: Color(0xFFF8C95A),
     ),
     ThemeStyle(
       id: 'cyan',
       name: '远山青',
-      lightPrimary: Color(0xFF93C2BD),
-      darkPrimary: Color(0xFFB2D6D1),
+      lightPrimary: Color(0xFF0EA5A4),
+      darkPrimary: Color(0xFF4FD1C5),
     ),
     ThemeStyle(
       id: 'white',
       name: '霜月白',
-      lightPrimary: Color(0xFFAEB6C6),
-      darkPrimary: Color(0xFFC8CFDC),
+      lightPrimary: Color(0xFF9DB4CC),
+      darkPrimary: Color(0xFFC3D2E2),
     ),
   ];
 

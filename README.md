@@ -153,18 +153,18 @@ set GRADLE_USER_HOME=C:\src\gradle-home
 ### 4.4 一次性设完全部（cmd 直接复制）
 
 ```bat
-set TMP=C:\src\tmp
-set TEMP=C:\src\tmp
-set PUB_HOSTED_URL=https://pub.flutter-io.cn
-set FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
+cd C:/cod/jianli/jianli-mobile-app
+export TMP=C:/src/tmp TEMP=C:/src/tmp
+export PUB_HOSTED_URL=https://pub.flutter-io.cn
+export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 export ANDROID_HOME=C:/apps/Android/AndroidSDK ANDROID_SDK_ROOT=C:/apps/Android/AndroidSDK
-set GRADLE_USER_HOME=C:\src\gradle-home
-export GRADLE_USER_HOME=C:/src/gradle-home            # ← 最关键
-export JAVA_HOME="/c/apps/Android/Android Studio/jbr"  # PATH 的 java 是 1.8，Gradle 9 要 ≥17
+export GRADLE_USER_HOME=C:/src/gradle-home
+export JAVA_HOME="/c/apps/Android/Android Studio/jbr"
 
-
-<!-- 构建apk -->
+flutter clean
+flutter pub get
 flutter build apk --release --split-per-abi
+
 ```
 
 > Gradle 的 Maven 镜像（阿里云）已写死在 `android/settings.gradle.kts`，**不要删**；

@@ -7,6 +7,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -458,6 +459,19 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
     var transferring = false;
     var progressText = '';
 
+    // 申请公共 Download 写权限（系统文件管理器可见的保存目录）；未授权 booksDir 自动回退沙盒
+    await EbookRepository.ensurePublicDownloadsPermission();
+
+    // 固定保存目录：一次性算出，传书页常显，方便用户在文件管理器定位
+    var saveDirPath = '';
+    var saveDirFallback = false;
+    try {
+      saveDirPath = (await EbookRepository.booksDir).path;
+      saveDirFallback = !await EbookRepository.hasPublicDownloadsAccess();
+    } catch (_) {
+      // 取不到目录就隐藏保存目录行（不影响导入）
+    }
+
     Future<void> loadRemote(PeerDevice peer, void Function(void Function()) setSt) async {
       setSt(() => loading = true);
       final books = await ref.read(ebookTransferProvider).fetchRemoteBooks(peer);
@@ -520,6 +534,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
       }
     }
 
+    if (!mounted) return;
     await showFSheet<void>(
       context: context,
       side: FLayout.btt,
@@ -555,6 +570,55 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                     ),
                     child: Text('传书', style: t.typography.body.lg),
                   ),
+                  // 固定保存目录：让用户随时知道导入的书落在哪（文件管理器可定位）
+                  if (saveDirPath.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        AppTokens.pagePadding,
+                        0,
+                        AppTokens.pagePadding,
+                        8,
+                      ),
+                      child: Row(
+                        spacing: 6,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Icon(
+                              FLucideIcons.folderOpen,
+                              size: 14,
+                              color: t.colors.mutedForeground,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              saveDirFallback
+                                  ? '保存目录（未授权，暂存沙盒）：$saveDirPath'
+                                  : '保存目录：$saveDirPath',
+                              style: t.typography.body.xs.copyWith(
+                                color: t.colors.mutedForeground,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          FButton(
+                            variant: FButtonVariant.outline,
+                            onPress: () {
+                              Clipboard.setData(ClipboardData(text: saveDirPath));
+                              if (mounted) {
+                                showFToast(
+                                  context: context,
+                                  title: const Text('已复制保存目录'),
+                                );
+                              }
+                            },
+                            child: const Text('复制'),
+                          ),
+                        ],
+                      ),
+                    ),
                   // 顶部：扫描 + 手动 IP（局域网广播常被 NAT 拦，保留手填入口）
                   Padding(
                     padding: EdgeInsets.symmetric(

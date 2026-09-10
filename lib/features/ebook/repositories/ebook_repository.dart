@@ -1,4 +1,5 @@
 // 电子书仓库 —— 书架 / 进度（content_hash 为跨端稳定键，不依赖桌面路径）
+import 'dart:async';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -6,7 +7,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
@@ -16,10 +17,60 @@ class EbookRepository {
   EbookRepository(this._db);
 
   final AppDatabase _db;
-  static const _uuid = Uuid();
+
+  /// 一次性迁移守卫：旧沙盒 /books 已在启动时搬入固定 jianli-books 目录后不再重复
+  bool _migrated = false;
 
   /// 原始 drift 库句柄（传书服务需要直接查书架表暴露本机书目）
   AppDatabase get db => _db;
+
+  /// 电子书传书固定保存目录名（公共 Download 子目录，与文件互传同样走系统 Download、可见）
+  static const String kEbookTransferDirName = '渐离App传书';
+
+  /// 公共 Download 可写判定：「所有文件访问」（API 30+）或传统存储权限（≤API 12L）。
+  static Future<bool> hasPublicDownloadsAccess() async {
+    if (await Permission.manageExternalStorage.isGranted) return true;
+    return Permission.storage.isGranted;
+  }
+
+  /// 申请公共 Download 写权限（与文件互传一致的可见保存目录）：API 30+ 自动跳「所有文件访问」
+  /// 设置页，≤12L 弹传统授权框；拒绝时 [booksDir] 自动回退沙盒。应在传书页打开时调用一次。
+  static Future<void> ensurePublicDownloadsPermission() async {
+    if (!Platform.isAndroid) return;
+    if (await hasPublicDownloadsAccess()) return;
+    await [Permission.manageExternalStorage, Permission.storage].request();
+  }
+
+  /// 接收目录（不存在则创建）：
+  /// - Android 且已授权 → 系统 `Download/渐离App传书/`，系统文件管理器可直接浏览打开；
+  /// - 未授权或创建失败（权限被收回/ROM 限制）→ 回退沙盒 `Documents/渐离App传书/`。
+  static Future<Directory> get booksDir async {
+    if (Platform.isAndroid && await hasPublicDownloadsAccess()) {
+      try {
+        final d = Directory('/storage/emulated/0/Download/$kEbookTransferDirName');
+        if (!d.existsSync()) d.createSync(recursive: true);
+        return d;
+      } catch (_) {
+        // 公共目录创建失败（运行中权限被收回/ROM 限制）→ 沙盒回退
+      }
+    }
+    final dir = await getApplicationDocumentsDirectory();
+    final d = Directory(p.join(dir.path, kEbookTransferDirName));
+    if (!d.existsSync()) d.createSync(recursive: true);
+    return d;
+  }
+
+  /// 可读文件名：`<书名>_<内容hash前8位>.<ext>`，避免重名冲突且能直接认出内容
+  /// （旧版用随机 uuid 命名，文件管理器里完全无法辨识，已弃用）
+  static String _bookFileName(String name, String format, String hash) {
+    final ext = format == 'epub' ? '.epub' : '.txt';
+    final safe = name
+        .replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '_')
+        .trim();
+    final base = safe.isEmpty ? 'book' : safe;
+    final tail = hash.length >= 8 ? hash.substring(0, 8) : hash;
+    return '${base}_$tail$ext';
+  }
 
   /// 书架流（⚠️ 跨端同步后按 content_hash 去重，见方法内说明）
   Stream<List<EbookBookshelfData>> watchBookshelf() {
@@ -82,11 +133,8 @@ class EbookRepository {
     )..where((t) => t.contentHash.equals(hash))).getSingleOrNull();
     if (existing != null) return existing;
 
-    final dir = await getApplicationDocumentsDirectory();
-    final booksDir = Directory(p.join(dir.path, 'books'));
-    if (!booksDir.existsSync()) booksDir.createSync(recursive: true);
-    final ext = format == 'epub' ? '.epub' : '.txt';
-    final localPath = p.join(booksDir.path, '${_uuid.v4()}$ext');
+    final dir = await EbookRepository.booksDir;
+    final localPath = p.join(dir.path, _bookFileName(name, format, hash));
     await File(localPath).writeAsBytes(bytes);
 
     final now = DateTime.now().toIso8601String();
@@ -111,6 +159,54 @@ class EbookRepository {
     return (_db.select(
       _db.ebookBookshelf,
     )..where((t) => t.filePath.equals(filePath))).getSingleOrNull();
+  }
+
+  /// 一次性迁移：把旧版存于应用私有沙盒 `/books`（随机 uuid 文件名）的书，
+  /// 搬进固定 `jianli-books` 目录并重命名为可读文件名（`<书名>_<hash8>.<ext>`），
+  /// 同步更新书架表 filePath。best-effort：任何单本失败都保留旧路径（旧目录仍在，不丢书），
+  /// 其它本照常迁移。启动即触发一次（见 ebookRepositoryProvider）。
+  Future<void> migrateLegacyBooksDir() async {
+    if (_migrated) return;
+    _migrated = true;
+    try {
+      final legacy = Directory(
+        p.join((await getApplicationDocumentsDirectory()).path, 'books'),
+      );
+      if (!legacy.existsSync()) return;
+      final target = await EbookRepository.booksDir;
+      final rows = await _db.select(_db.ebookBookshelf).get();
+      for (final r in rows) {
+        if (!r.filePath.startsWith(legacy.path) || !File(r.filePath).existsSync()) {
+          continue;
+        }
+        try {
+          final bytes = await File(r.filePath).readAsBytes();
+          final hash = sha256.convert(bytes).toString();
+          final fileName = _bookFileName(
+            r.title ?? r.name ?? 'book',
+            r.format ?? 'epub',
+            hash,
+          );
+          final newPath = p.join(target.path, fileName);
+          if (File(newPath).existsSync()) {
+            await File(r.filePath).delete(); // 新目录已有同名，旧文件冗余
+          } else {
+            await File(r.filePath).copy(newPath);
+            await File(r.filePath).delete();
+          }
+          await (_db.update(_db.ebookBookshelf)
+                ..where((t) => t.filePath.equals(r.filePath)))
+              .write(EbookBookshelfCompanion(filePath: Value(newPath)));
+        } catch (_) {
+          // 保留旧路径，不影响其它本
+        }
+      }
+      try {
+        if (legacy.listSync().isEmpty) legacy.deleteSync(recursive: true);
+      } catch (_) {}
+    } catch (_) {
+      // 迁移整体失败不影响正常导入（新导入仍走 jianli-books）
+    }
   }
 
   /// 移除书籍（沙盒文件与共享进度/标注保留，与桌面端语义一致）
@@ -337,7 +433,12 @@ class EbookRepository {
 /// 仓库 provider
 final Provider<EbookRepository> ebookRepositoryProvider =
     Provider<EbookRepository>(
-      (ref) => EbookRepository(ref.watch(appDatabaseProvider)),
+      (ref) {
+        final repo = EbookRepository(ref.watch(appDatabaseProvider));
+        // 启动即把旧沙盒 /books 书迁移到固定 jianli-books 目录（一次性、best-effort，不阻塞）
+        unawaited(repo.migrateLegacyBooksDir());
+        return repo;
+      },
     );
 
 /// 章节数据
