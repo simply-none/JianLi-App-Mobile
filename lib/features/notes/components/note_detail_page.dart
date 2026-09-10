@@ -3,7 +3,7 @@
 // 说明：flutter-port.md 原计划「flutter_quill 直吃 html」，实测 quill 消费 html
 // 需经 delta 转换且兼容性有限；阅读场景改用 flutter_widget_from_html 保真渲染，
 // 编辑器（flutter_quill）列入 P2。图片（data URL / 网络）由该库自动处理。
-// 编辑/删除入口在顶栏；删除走 showFDialog 二次确认（业务操作与原版一致）。
+// 编辑/删除入口在顶栏；删除走底部抽屉二次确认（全局弹窗规范，业务操作与原版一致）。
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../models/note_item.dart';
 import '../models/note_tag.dart';
@@ -149,36 +150,54 @@ class NoteDetailPage extends ConsumerWidget {
     );
   }
 
-  /// 删除（showFDialog 二次确认，确认后调用仓库删除并返回列表）
+  /// 删除（底部抽屉二次确认——全局弹窗规范，确认后调用仓库删除并返回列表）
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showFDialog<bool>(
+    final confirmed = await showFSheet<bool>(
       context: context,
-      builder: (c, style, _) => FDialog(
-        builder: (c, style) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('确认删除这篇笔记？', style: style.titleTextStyle),
-            const SizedBox(height: 8),
-            Text('删除后不可恢复', style: style.bodyTextStyle),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              spacing: 8,
-              children: [
-                FButton(
-                  variant: FButtonVariant.outline,
-                  onPress: () => Navigator.pop(c),
-                  child: const Text('取消'),
+      side: FLayout.btt,
+      mainAxisMaxRatio: null,
+      builder: (c) => SheetSurface(
+        padding: EdgeInsets.fromLTRB(
+          AppTokens.pagePadding,
+          12,
+          AppTokens.pagePadding,
+          12,
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('确认删除这篇笔记？', style: c.theme.typography.body.lg),
+              const SizedBox(height: 8),
+              Text(
+                '删除后不可恢复',
+                style: c.theme.typography.body.sm.copyWith(
+                  color: c.theme.colors.mutedForeground,
                 ),
-                FButton(
-                  variant: FButtonVariant.destructive,
-                  onPress: () => Navigator.pop(c, true),
-                  child: const Text('删除'),
-                ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                spacing: 8,
+                children: [
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.outline,
+                      onPress: () => Navigator.pop(c, false),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.destructive,
+                      onPress: () => Navigator.pop(c, true),
+                      child: const Text('删除'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

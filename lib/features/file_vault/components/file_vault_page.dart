@@ -4,7 +4,7 @@
 // - 骨架改为 FScaffold + FHeader.nested（返回键 + 锁定头部动作）；
 // - 门禁表单：FTextField.password + FButton，错误提示改用 FAlert（destructive）；
 // - 导入入口由 FAB.extended 移至 SectionHeader.trailing（原子组件）；
-// - 文件行：AppCard + FButton.icon（删除），预览弹窗 AlertDialog → showFDialog + FDialog；
+// - 文件行：AppCard + FButton.icon（删除），预览弹窗 AlertDialog → 底部抽屉 showFSheet + SheetSurface；
 // - SnackBar → showFToast；解密/导入/删除业务逻辑与原来完全一致。
 //
 // 导入走 file_picker；预览：图片直接内存渲染，文本/未知类型仅展示大小信息。

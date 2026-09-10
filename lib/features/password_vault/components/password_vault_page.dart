@@ -3,7 +3,7 @@
 // forui 化改造说明：
 // - 骨架改为 FScaffold + FHeader.nested（返回键 + 新增/锁定头部动作）；
 // - 门禁表单：FTextField.password + FButton，错误提示改用 FAlert（destructive）；
-// - 增改弹窗：AlertDialog → showFDialog + FDialog（内含 FTextField 表单）；
+// - 增改弹窗：AlertDialog → 底部抽屉 showFSheet + SheetSurface（内含 FTextField 表单）；
 // - 条目行：AppCard + FButton.icon（复制/编辑/删除），SnackBar → showFToast；
 // - 业务逻辑（建库/解锁/条目增改删/内存口令策略）与原来完全一致。
 //

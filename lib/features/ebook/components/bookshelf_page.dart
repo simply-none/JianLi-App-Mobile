@@ -2,7 +2,7 @@
 //
 // 数据经顶层 bookshelfStreamProvider（⚠️ 禁止 build 内联 StreamProvider——
 // 每次重建都是新 provider，页面永远 loading，实踩见 ebook_providers.dart 头注释）。
-// 导入入口在顶栏 +；删除 = 长按书格 → showFDialog 二次确认（破坏性规范）。
+// 导入入口在顶栏 +；删除 = 长按书格 → 底部抽屉二次确认（全局弹窗规范）。
 // 分类（2026-09-09）：顶栏「标签」管理分类与给书打标签；顶部 chips 按分类筛选。
 import 'dart:io';
 
@@ -248,43 +248,64 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
     }
   }
 
-  /// 删除确认（破坏性操作规范：showFDialog 二次确认；仅删书架引用不删内容）
+  /// 删除确认（底部抽屉二次确认；仅删书架引用不删内容）
+  ///
+  /// ⚠️ 全局规范：所有弹出窗一律走底部抽屉（showFSheet + SheetSurface），
+  /// 不使用居中 FDialog —— 见项目级技能「弹窗统一底部抽屉」条例。
   Future<void> _confirmRemove(
     BuildContext context,
     WidgetRef ref,
     EbookBookshelfData book,
   ) async {
-    final confirmed = await showFDialog<bool>(
+    final confirmed = await showFSheet<bool>(
       context: context,
-      builder: (c, style, _) => FDialog(
-        builder: (c, style) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '将《${book.title ?? book.name}》移出书架？',
-              style: style.titleTextStyle,
-            ),
-            const SizedBox(height: 8),
-            Text('将同时删除本地文件副本；阅读进度按内容哈希保留，重新导入可恢复', style: style.bodyTextStyle),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              spacing: 8,
-              children: [
-                FButton(
-                  variant: FButtonVariant.outline,
-                  onPress: () => Navigator.pop(c),
-                  child: const Text('取消'),
+      side: FLayout.btt,
+      mainAxisMaxRatio: null,
+      builder: (c) => SheetSurface(
+        padding: EdgeInsets.fromLTRB(
+          AppTokens.pagePadding,
+          12,
+          AppTokens.pagePadding,
+          12,
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '将《${book.title ?? book.name}》移出书架？',
+                style: c.theme.typography.body.lg,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '将同时删除本地文件副本；阅读进度按内容哈希保留，重新导入可恢复',
+                style: c.theme.typography.body.sm.copyWith(
+                  color: c.theme.colors.mutedForeground,
                 ),
-                FButton(
-                  variant: FButtonVariant.destructive,
-                  onPress: () => Navigator.pop(c, true),
-                  child: const Text('移出'),
-                ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                spacing: 8,
+                children: [
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.outline,
+                      onPress: () => Navigator.pop(c, false),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.destructive,
+                      onPress: () => Navigator.pop(c, true),
+                      child: const Text('移出'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -778,7 +799,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
     return names.isEmpty ? '未分类' : names;
   }
 
-  /// 给单本书勾选分类（弹窗内即时切换并落库）
+  /// 给单本书勾选分类（底部抽屉内即时切换并落库）
   Future<void> _editBookCategories(
     EbookBookshelfData book,
     Set<int> assigned,
@@ -786,71 +807,91 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
   ) async {
     final repo = ref.read(ebookRepositoryProvider);
     final current = <int>{...assigned};
-    await showFDialog<bool>(
+    await showFSheet<bool>(
       context: context,
-      builder: (c, style, _) => FDialog(
-        builder: (c, style) => StatefulBuilder(
-          builder: (c, setSt) => Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '为《${book.title ?? book.name}》选择分类',
-                style: style.titleTextStyle,
-              ),
-              const SizedBox(height: 12),
-              if (allCats.isEmpty)
-                Text('还没有分类，先在上方新建', style: style.bodyTextStyle)
-              else
-                Wrap(
+      side: FLayout.btt,
+      mainAxisMaxRatio: null,
+      builder: (c) => SheetSurface(
+        padding: EdgeInsets.fromLTRB(
+          AppTokens.pagePadding,
+          12,
+          AppTokens.pagePadding,
+          12,
+        ),
+        child: SafeArea(
+          // ⚠️ 表单状态（current）必须提到 builder 之外，StatefulBuilder 闭包内的
+          // 局部 var 每次 setSt 重建都会被重置（SKILL 红线）
+          child: StatefulBuilder(
+            builder: (c, setSt) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '为《${book.title ?? book.name}》选择分类',
+                  style: c.theme.typography.body.lg,
+                ),
+                const SizedBox(height: 12),
+                if (allCats.isEmpty)
+                  Text(
+                    '还没有分类，先在分类管理里新建',
+                    style: c.theme.typography.body.sm.copyWith(
+                      color: c.theme.colors.mutedForeground,
+                    ),
+                  )
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final cat in allCats)
+                        FButton(
+                          variant: current.contains(cat.id)
+                              ? FButtonVariant.primary
+                              : FButtonVariant.outline,
+                          onPress: () => setSt(() {
+                            if (current.contains(cat.id)) {
+                              current.remove(cat.id);
+                            } else {
+                              current.add(cat.id);
+                            }
+                          }),
+                          child: Text(cat.name),
+                        ),
+                    ],
+                  ),
+                const SizedBox(height: 16),
+                Row(
                   spacing: 8,
-                  runSpacing: 8,
                   children: [
-                    for (final cat in allCats)
-                      FButton(
-                        variant: current.contains(cat.id)
-                            ? FButtonVariant.primary
-                            : FButtonVariant.outline,
-                        onPress: () => setSt(() {
-                          if (current.contains(cat.id)) {
-                            current.remove(cat.id);
-                          } else {
-                            current.add(cat.id);
-                          }
-                        }),
-                        child: Text(cat.name),
+                    Expanded(
+                      child: FButton(
+                        variant: FButtonVariant.outline,
+                        onPress: () => Navigator.pop(c, false),
+                        child: const Text('取消'),
                       ),
+                    ),
+                    Expanded(
+                      child: FButton(
+                        onPress: () async {
+                          for (final id in current.where(
+                            (id) => !assigned.contains(id),
+                          )) {
+                            await repo.assignCategory(book.filePath, id);
+                          }
+                          for (final id in assigned.where(
+                            (id) => !current.contains(id),
+                          )) {
+                            await repo.unassignCategory(book.filePath, id);
+                          }
+                          if (c.mounted) Navigator.pop(c, true);
+                        },
+                        child: const Text('保存'),
+                      ),
+                    ),
                   ],
                 ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                spacing: 8,
-                children: [
-                  FButton(
-                    variant: FButtonVariant.outline,
-                    onPress: () => Navigator.pop(c),
-                    child: const Text('取消'),
-                  ),
-                  FButton(
-                    onPress: () async {
-                      for (final id in current.where(
-                        (id) => !assigned.contains(id),
-                      )) {
-                        await repo.assignCategory(book.filePath, id);
-                      }
-                      for (final id in assigned.where(
-                        (id) => !current.contains(id),
-                      )) {
-                        await repo.unassignCategory(book.filePath, id);
-                      }
-                      if (c.mounted) Navigator.pop(c);
-                    },
-                    child: const Text('保存'),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

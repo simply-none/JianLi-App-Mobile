@@ -1,7 +1,7 @@
 // 书架单本书格（原子组件）—— 渐变封面 + 标题 + 进度条
 //
 // 按标题 hash 取专属强调色（同一本书颜色稳定）；长按删除入口由调用方定义
-// （删除确认遵循页面规范：showFDialog 二次确认）。
+// （删除确认遵循全局规范：底部抽屉 showFSheet 二次确认，不用居中 FDialog）。
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 

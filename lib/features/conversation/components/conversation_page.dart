@@ -2,9 +2,9 @@
 //
 // 能力对齐（桌面端 references/modules/theme-conversation.md）：
 // - 主题：新建/编辑（标题+备注，底部抽屉 + 底部固定保存条）、删除（子主题禁止 + 级联删消息，
-//   showFDialog 二次确认）、消息数角标、主题标签彩色徽标（conversation_tag 解析）、update_time 排序；
+//   底部抽屉二次确认）、消息数角标、主题标签彩色徽标（conversation_tag 解析）、update_time 排序；
 // - 消息：置顶（pinned='1' 排前 + 图标）、富文本（is_rich='1' 用 HtmlWidget 渲染，'0' 纯文本）、
-//   软删除（长按气泡 → showFDialog 确认，is_deleted='1' 行保留）、底部输入栏追加记录；
+//   软删除（长按气泡 → 底部抽屉确认，is_deleted='1' 行保留）、底部输入栏追加记录；
 // 未做（桌面端有、移动端裁剪，记 SKILL.md 待办）：引用/跨主题引用、标注、多选、搜索、导出 Markdown、标签管理。
 import 'dart:async';
 import 'dart:convert';
@@ -335,40 +335,61 @@ class ConversationPage extends ConsumerWidget {
     );
   }
 
-  /// 删除主题（showFDialog 二次确认——破坏性操作规范；子主题检查在仓储层）
+  /// 删除主题（底部抽屉二次确认——全局弹窗规范；子主题检查在仓储层）
   Future<void> _deleteTheme(
     BuildContext context,
     WidgetRef ref,
     ConversationThemeData theme,
   ) async {
-    final confirmed = await showFDialog<bool>(
+    final confirmed = await showFSheet<bool>(
       context: context,
-      builder: (c, style, _) => FDialog(
-        builder: (c, style) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('确认删除主题「${theme.title ?? ''}」？', style: style.titleTextStyle),
-            const SizedBox(height: 8),
-            Text('将同时删除其下全部对话，且不可恢复', style: style.bodyTextStyle),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              spacing: 8,
-              children: [
-                FButton(
-                  variant: FButtonVariant.outline,
-                  onPress: () => Navigator.pop(c),
-                  child: const Text('取消'),
+      side: FLayout.btt,
+      mainAxisMaxRatio: null,
+      builder: (c) => SheetSurface(
+        padding: EdgeInsets.fromLTRB(
+          AppTokens.pagePadding,
+          12,
+          AppTokens.pagePadding,
+          12,
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '确认删除主题「${theme.title ?? ''}」？',
+                style: c.theme.typography.body.lg,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '将同时删除其下全部对话，且不可恢复',
+                style: c.theme.typography.body.sm.copyWith(
+                  color: c.theme.colors.mutedForeground,
                 ),
-                FButton(
-                  variant: FButtonVariant.destructive,
-                  onPress: () => Navigator.pop(c, true),
-                  child: const Text('删除'),
-                ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                spacing: 8,
+                children: [
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.outline,
+                      onPress: () => Navigator.pop(c, false),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.destructive,
+                      onPress: () => Navigator.pop(c, true),
+                      child: const Text('删除'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1594,36 +1615,54 @@ class _ConversationMessagesPageState
     return text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  /// 长按气泡：软删除确认（破坏性操作规范 showFDialog；行保留对齐桌面追溯语义）
+  /// 长按气泡：软删除确认（底部抽屉——全局弹窗规范；行保留对齐桌面追溯语义）
   Future<void> _confirmSoftDelete(ConversationData msg) async {
-    final confirmed = await showFDialog<bool>(
+    final confirmed = await showFSheet<bool>(
       context: context,
-      builder: (c, style, _) => FDialog(
-        builder: (c, style) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('删除这条记录？', style: style.titleTextStyle),
-            const SizedBox(height: 8),
-            Text('记录将标记为已删除（保留数据以便追溯）', style: style.bodyTextStyle),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              spacing: 8,
-              children: [
-                FButton(
-                  variant: FButtonVariant.outline,
-                  onPress: () => Navigator.pop(c),
-                  child: const Text('取消'),
+      side: FLayout.btt,
+      mainAxisMaxRatio: null,
+      builder: (c) => SheetSurface(
+        padding: EdgeInsets.fromLTRB(
+          AppTokens.pagePadding,
+          12,
+          AppTokens.pagePadding,
+          12,
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('删除这条记录？', style: c.theme.typography.body.lg),
+              const SizedBox(height: 8),
+              Text(
+                '记录将标记为已删除（保留数据以便追溯）',
+                style: c.theme.typography.body.sm.copyWith(
+                  color: c.theme.colors.mutedForeground,
                 ),
-                FButton(
-                  variant: FButtonVariant.destructive,
-                  onPress: () => Navigator.pop(c, true),
-                  child: const Text('删除'),
-                ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                spacing: 8,
+                children: [
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.outline,
+                      onPress: () => Navigator.pop(c, false),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  Expanded(
+                    child: FButton(
+                      variant: FButtonVariant.destructive,
+                      onPress: () => Navigator.pop(c, true),
+                      child: const Text('删除'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

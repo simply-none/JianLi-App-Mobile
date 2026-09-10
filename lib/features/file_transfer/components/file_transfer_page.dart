@@ -873,7 +873,7 @@ class _HistoryTile extends StatelessWidget {
 }
 
 /// 「接收确认」底部抽屉：选择接收 / 拒绝。
-/// 非破坏性操作，按 UI 规范用底部抽屉 + GradientButton（主按钮）；破坏性确认才用 showFDialog。
+/// 非破坏性操作，按 UI 规范用底部抽屉 + GradientButton（主按钮）；破坏性确认同样走底部抽屉（全局弹窗规范）。
 class _AskReceiveSheet extends StatelessWidget {
   final IncomingAsk ask;
   final void Function(bool accept) onAnswer;
