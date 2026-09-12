@@ -26,6 +26,8 @@ class AppCard extends StatelessWidget {
     this.elevation = 1,
     this.radius = AppTokens.radiusMd,
     this.haptic,
+    this.gradient,
+    this.image,
   });
 
   final Widget child;
@@ -46,6 +48,12 @@ class AppCard extends StatelessWidget {
   /// 点击触感（null = 不触发）
   final HapticType? haptic;
 
+  /// 背景渐变（如传入，则替代纯 card 底色；常与 [image] 叠加使用）
+  final Gradient? gradient;
+
+  /// 背景纹理（DecorationImage，自带 opacity；叠在 [gradient] 或 card 底色之上）
+  final DecorationImage? image;
+
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
@@ -53,7 +61,9 @@ class AppCard extends StatelessWidget {
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
-        color: t.colors.card,
+        color: gradient == null ? t.colors.card : null,
+        gradient: gradient,
+        image: image,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: t.colors.border),
         boxShadow: AppTokens.elevation(context, level: elevation),

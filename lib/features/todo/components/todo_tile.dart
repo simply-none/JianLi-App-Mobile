@@ -17,6 +17,7 @@ import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../models/todo.dart';
 import '../models/todo_filter.dart';
+import 'todo_chips.dart';
 
 /// 列表卡片
 class TodoListTile extends StatelessWidget {
@@ -63,7 +64,6 @@ class TodoListTile extends StatelessWidget {
         if (tagMap.containsKey(k)) tagMap[k]!,
     ];
     final dueText = formatTodoDue(item.dueDate);
-
     // 行3：时间 ⇄ 子任务进度（都没有则整行不渲染）
     final hasRow3 = dueText != null || progress != null;
 
@@ -76,6 +76,7 @@ class TodoListTile extends StatelessWidget {
           color: t.colors.card,
           borderRadius: BorderRadius.circular(AppTokens.radiusMd),
           border: Border.all(color: t.colors.border),
+          boxShadow: AppTokens.elevation(context, level: 2),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,7 +148,7 @@ class TodoListTile extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      _StatusChip(label: meta.label, color: meta.color),
+                      TodoStatusChip(label: meta.label, color: meta.color),
                       const SizedBox(width: 6),
                       Text(
                         priorityLabel(item.priority),
@@ -167,7 +168,7 @@ class TodoListTile extends StatelessWidget {
                       runSpacing: 6,
                       children: [
                         for (final tag in tagViews)
-                          _TagChip(name: tag.name, color: _parseColor(tag.color)),
+                          TodoTagChip(name: tag.name, color: parseTodoTagColor(tag.color)),
                       ],
                     ),
                   ],
@@ -219,69 +220,5 @@ class TodoListTile extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-/// 状态 chip（画布：色底 15% · r10 · 内边距 4 · 11/SemiBold）
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        label,
-        style: context.theme.typography.body.xs.copyWith(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
-    );
-  }
-}
-
-/// 标签 chip（画布：各自色底 14% · r10 · 内边距 4 · 11/SemiBold）
-class _TagChip extends StatelessWidget {
-  const _TagChip({required this.name, required this.color});
-
-  final String name;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        name,
-        style: context.theme.typography.body.xs.copyWith(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
-    );
-  }
-}
-
-Color _parseColor(String? hex) {
-  if (hex == null || hex.isEmpty) return const Color(0xFF8b5cf6);
-  try {
-    return Color(int.parse(hex.replaceFirst('#', ''), radix: 16) |
-        (hex.length == 7 ? 0xFF000000 : 0));
-  } catch (_) {
-    return const Color(0xFF8b5cf6);
   }
 }

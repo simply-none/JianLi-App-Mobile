@@ -31,6 +31,25 @@ class HabitRepository {
         .map((rows) => rows.map((r) => r.habitKey ?? '').toSet());
   }
 
+  /// 近 [days] 天每天是否打卡（index 0 = 今天），流式供 7 天记录条展示。
+  /// 单次查询近 N 天记录；返回顺序与 [dates] 一致（index 0 = 今天）。
+  Stream<List<bool>> watchRecentCheckin(String habitKey, int days) {
+    final today = DateTime.now();
+    final dates = List.generate(
+      days,
+      (i) => _formatDate(today.subtract(Duration(days: i))),
+    );
+    return (_db.select(_db.habitCheckin)
+          ..where(
+            (tbl) => tbl.habitKey.equals(habitKey) & tbl.date.isIn(dates),
+          ))
+        .watch()
+        .map((rows) {
+          final checked = rows.map((r) => r.date ?? '').toSet();
+          return List.generate(days, (i) => checked.contains(dates[i]));
+        });
+  }
+
   /// 切换某习惯在指定日期的打卡状态（幂等）
   Future<void> toggleCheckin(String habitKey, DateTime date) async {
     final dateStr = _formatDate(date);
@@ -60,32 +79,6 @@ class HabitRepository {
             time: Value(_formatTime(now)),
           ),
         );
-  }
-
-  /// 近 [days] 天内每天是否打卡（连续天数展示用），key → [bool x days]
-  Future<Map<String, List<bool>>> recentCheckinMap(
-    List<String> habitKeys,
-    int days,
-  ) async {
-    final today = DateTime.now();
-    final dates = List.generate(
-      days,
-      (i) => _formatDate(today.subtract(Duration(days: i))),
-    );
-    final result = <String, List<bool>>{};
-    for (final key in habitKeys) {
-      final checked = <bool>[];
-      for (final date in dates) {
-        final row =
-            await (_db.select(_db.habitCheckin)..where(
-                  (tbl) => tbl.habitKey.equals(key) & tbl.date.equals(date),
-                ))
-                .getSingleOrNull();
-        checked.add(row != null);
-      }
-      result[key] = checked;
-    }
-    return result;
   }
 
   String _formatDate(DateTime d) =>

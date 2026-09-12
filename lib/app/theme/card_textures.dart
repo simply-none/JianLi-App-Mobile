@@ -37,6 +37,14 @@ abstract final class CardTextures {
   static const String texture11 =
       'assets/images/textures/lemoonboots-texture-2351354_1920.jpg';
 
+  /// 序号 02 的纹理资源（待办卡片/列表项背景统一使用）jianli-mobile-app\assets\images\textures\lemoonboots-texture-2351354_1920.jpg
+  static const String texture02 =
+      'assets/images/textures/pexels-tiles-1846980_1920.jpg';
+
+  /// 序号 01 的纹理资源（待办卡片/列表项背景备选）
+  static const String texture01 =
+      'assets/images/textures/8926-background-2654852_1920.jpg';
+
   /// 画布配方：IMAGE 填充不透明度
   static const double fillOpacity = 0.56;
 

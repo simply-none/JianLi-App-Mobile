@@ -25,27 +25,32 @@ import '../providers/todo_providers.dart';
 // 这里把 forui 的 mainAxisMaxRatio 放宽到 0.8，只作为「禁止 100vh」的最后一道保险；
 // 真正的高度由档位算，**不要再在调用点写裸比例**。
 //
-// ⚠️ 键盘与高度（2026-09-12 实测，改前必读）：
+// ⚠️ 键盘与高度（2026-09-12 实测，2026-09-12 下午修订）：
 // forui 的 `ShiftedSheet` 用 `dy = max(0, H − 抽屉高 − 键盘高)` 摆放抽屉 ——
 // 抽屉高一旦超过「H − 键盘高」，dy 就被夹到 0 停止上移，抽屉**不会抬到键盘上方**，
 // 而是被键盘从底下盖住（现象：底部「保存」被键盘压住、点不到）。
-// 所以档位高度一律按**可用高度**算：`(屏幕高 − 键盘高) × 档位`（见 [sheetMaxHeight]），
-// 这样键盘展开时抽屉依旧完整落在键盘上方，多出来的内容由中间滚动区承担。
+// **修订（2026-09-12 下午，全 App 新规）**：「新增/编辑/查看」类抽屉（lg）不再按可用高度算，
+// 改为 `屏幕高 × 档位`（见 [sheetMaxHeightFull]）—— 键盘从底部覆盖时抽屉**不收缩、不折叠**，
+// 输入框获得焦点会自动滚入可视区，底部按钮在键盘收起后可见。内容区本就是可滚动的，承载溢出。
+// 仅 **sm/md**（确认、操作菜单、单选多选、日期时间等小弹层）仍按可用高度算（见 [sheetMaxHeight]），
+// 保证内容少、一眼看完时不被键盘盖住。
+// 选择逻辑：`size == SheetSize.lg ? sheetMaxHeightFull : sheetMaxHeight`（统一在 _sheetScaffold / _sheetPanel 内）。
 Future<T?> _showTodoSheet<T>({
   required BuildContext context,
   required WidgetBuilder builder,
-  bool resizeToAvoidBottomInset = true,
 }) =>
     showFSheet<T>(
       context: context,
       side: FLayout.btt,
+      // 固定档位高度（lg=0.80 不随键盘收缩）：mainAxisMaxRatio=lg 作为「禁止 100vh」保险，
+      // resizeToAvoidBottomInset=false 让键盘从底部覆盖抽屉而不是把它挤小/顶满（设计规范 2026-09-12 下午）。
       mainAxisMaxRatio: AppTokens.sheetHeightLg,
-      resizeToAvoidBottomInset: resizeToAvoidBottomInset,
+      resizeToAvoidBottomInset: false,
       builder: builder,
     );
 
-// 弹窗高度三档（`SheetSize`）、「可用高度」算法（`sheetMaxHeight`）与标题样式
-// （`sheetTitleStyle`）统一收口在 `lib/app/ui/sheet_surface.dart`，本文件只消费。
+// 弹窗高度三档（`SheetSize`）、高度算法（`sheetMaxHeight` 可用高度 / `sheetMaxHeightFull` 全屏高，
+// lg 走后者）与标题样式（`sheetTitleStyle`）统一收口在 `lib/app/ui/sheet_surface.dart`，本文件只消费。
 
 // ===================== 通用抽屉骨架 =====================
 
@@ -57,7 +62,11 @@ Widget _sheetScaffold({
   required SheetSize size,
 }) {
   final t = context.theme;
-  final h = sheetMaxHeight(context, size);
+  // 设计规范 2026-09-12 下午：新增/编辑/查看（lg）走全屏高（不扣键盘，键盘覆盖不折叠）；
+  // sm/md（确认/操作菜单/单选多选）仍走可用高度，防被键盘盖住。
+  final h = size == SheetSize.lg
+      ? sheetMaxHeightFull(context, size)
+      : sheetMaxHeight(context, size);
   // 左右内边距 = AppTokens.pagePadding（**与页面正文同一个值**，2026-09-12 收口到 16），
   // 且**只在这里应用一次**。
   // ⚠️ 历史坑（2026-09-12 用户实指「弹窗左右 padding 应该和全局保持一致」）：
@@ -72,6 +81,11 @@ Widget _sheetScaffold({
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 顶部把手（36×4 · 居中 · 距顶 10）
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: _sheetHandle(context),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(hpad, 14, hpad, 0),
             child: Row(
@@ -199,20 +213,58 @@ Future<List<String>?> showTodoTagSheet(
     builder: (c) => _sheetScaffold(
       context: c,
       title: '标签',
-      size: SheetSize.md,
+      size: SheetSize.lg,
       body: StatefulBuilder(
         builder: (c, setInner) {
+          final t = c.theme;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: FTextField(
-                      control: FTextFieldControl.managed(controller: controller),
-                      hint: '新建标签',
-                      autofocus: false,
-                      onSubmit: (_) async {
+              // 新建标签输入行：对齐搜索栏/习惯输入框样式（h40 · r10 · 1px 描边 · 卡色底）
+              Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: t.colors.card,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: t.colors.border),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: TextField(
+                          controller: controller,
+                          style: t.typography.body.sm.copyWith(
+                            fontSize: 14,
+                            color: t.colors.foreground,
+                          ),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                            border: InputBorder.none,
+                            hintText: '新建标签',
+                            hintStyle: t.typography.body.sm.copyWith(
+                              fontSize: 14,
+                              color: t.colors.mutedForeground,
+                            ),
+                          ),
+                          onSubmitted: (_) async {
+                            final name = controller.text.trim();
+                            if (name.isEmpty) return;
+                            final tag = await ref
+                                .read(todoRepositoryProvider)
+                                .addTag(name);
+                            if (!draft.contains(tag.key)) draft.add(tag.key);
+                            controller.clear();
+                            setInner(() {});
+                          },
+                        ),
+                      ),
+                    ),
+                    FTappable(
+                      onPress: () async {
                         final name = controller.text.trim();
                         if (name.isEmpty) return;
                         final tag = await ref
@@ -222,24 +274,14 @@ Future<List<String>?> showTodoTagSheet(
                         controller.clear();
                         setInner(() {});
                       },
+                      child: Icon(
+                        FLucideIcons.plus,
+                        size: 18,
+                        color: t.colors.mutedForeground,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  FButton(
-                    variant: FButtonVariant.outline,
-                    onPress: () async {
-                      final name = controller.text.trim();
-                      if (name.isEmpty) return;
-                      final tag = await ref
-                          .read(todoRepositoryProvider)
-                          .addTag(name);
-                      if (!draft.contains(tag.key)) draft.add(tag.key);
-                      controller.clear();
-                      setInner(() {});
-                    },
-                    child: const Icon(FLucideIcons.plus),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -639,7 +681,6 @@ Future<void> showRecordProgressSheet(
                 hint: '本次进展…',
                 minLines: 3,
                 maxLines: 6,
-                autofocus: true,
               ),
             ],
           );
@@ -1119,14 +1160,18 @@ Widget _sheetPanel({
   required List<Widget> children,
   SheetSize size = SheetSize.lg,
 }) {
-  // 画布 09/10 两屏都标注了 `hug_contents`（内容自适应），故本弹层把档位当**上限**：
-  // 内容少就 hug，超出档位才滚动。其余待办弹窗走 _sheetScaffold 的定高档位。
-  final maxH = sheetMaxHeight(context, size);
+  // 设计规范 2026-09-12 下午：lg（新增/编辑/查看）固定 80% 全屏高；
+  // sm/md（确认/菜单/单选多选）仍当上限、内容少则 hug。
+  final maxH = size == SheetSize.lg
+      ? sheetMaxHeightFull(context, size)
+      : sheetMaxHeight(context, size);
   return SheetSurface(
     color: context.theme.colors.card,
     borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
     child: ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: maxH),
+      constraints: size == SheetSize.lg
+          ? BoxConstraints.tightFor(height: maxH)
+          : BoxConstraints(maxHeight: maxH),
       child: Padding(
         // 统一到全局边距（用户规则：弹窗左右 padding 与全局一致；2026-09-12 由 20 收口到 16）
         padding: const EdgeInsets.all(AppTokens.pagePadding),
@@ -1143,10 +1188,10 @@ Widget _sheetPanel({
   );
 }
 
-/// 顶部把手（画布 8:16 / 8:92：36×4 · #D9DDE4 · r2 · 左对齐）
+/// 顶部把手（画布 8:16 / 8:92：36×4 · #D9DDE4 · r2 · 居中）
 /// 底色走 [_stepUp]：`t.colors.border` 与白卡同系，直接用会淡到看不见。
 Widget _sheetHandle(BuildContext c) => Align(
-  alignment: Alignment.centerLeft,
+  alignment: Alignment.center,
   child: Container(
     width: 36,
     height: 4,
@@ -1417,36 +1462,101 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 标题输入 —— **必须显示边框**（2026-09-12 用户实指「输入框没显示边框」）。
-          // 原来写了 `border: InputBorder.none`，把主题给的描边整个抹掉了。
-          // 删掉即可：`FThemeData.toApproximateMaterialTheme()` 会用 forui 的
-          // `textFieldStyles` 生成 Material 的 `inputDecorationTheme`（含默认描边与
-          // focused 变体），所以「不写 border」反而自动拿到全 App 一致的
-          // 「常态可见描边 + 聚焦主题色描边」。
-          TextField(
-            controller: _titleC,
-            autofocus: true,
-            style: t.typography.body.lg.copyWith(
-              // 弹窗内条目标题字号（比弹窗标题小 2 号 = 15）
-              fontSize: AppTokens.sheetFieldTitleFontSize,
-              fontWeight: FontWeight.w700,
-            ),
-            decoration: InputDecoration(
-              hintText: '标题',
-              hintStyle: t.typography.body.lg
-                  .copyWith(color: t.colors.mutedForeground),
-            ),
+          // 标题：label + 输入框（与习惯弹窗同构：label/value 同 14，间距 6）
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 6,
+            children: [
+              Text(
+                '标题',
+                style: t.typography.body.sm.copyWith(
+                  fontSize: 14,
+                  color: t.colors.mutedForeground,
+                ),
+              ),
+              Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: t.colors.card,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: t.colors.border),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: TextField(
+                          controller: _titleC,
+                          style: t.typography.body.sm.copyWith(
+                            fontSize: 14,
+                            color: t.colors.foreground,
+                          ),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                            border: InputBorder.none,
+                            hintText: '输入标题',
+                            hintStyle: t.typography.body.sm.copyWith(
+                              fontSize: 14,
+                              color: t.colors.mutedForeground,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          // 描述 —— **容器高度随输入内容增长**（2026-09-12 用户要求）。
-          // forui 的 maxLines 只限制「同时可见的行数」、不限制可输入行数：
-          // 给 null → 每多一行容器就长高一行；超出抽屉档位的部分由 `_sheetScaffold`
-          // 中间滚动区的 SingleChildScrollView 承担，不会把抽屉撑破。
-          FTextField(
-            control: FTextFieldControl.managed(controller: _descC),
-            hint: '描述（可选）',
-            minLines: 2,
-            maxLines: null,
+          const SizedBox(height: 12),
+          // 描述（可选）：label + 多行输入框
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 6,
+            children: [
+              Text(
+                '描述（可选）',
+                style: t.typography.body.sm.copyWith(
+                  fontSize: 14,
+                  color: t.colors.mutedForeground,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: t.colors.card,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: t.colors.border),
+                ),
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: TextField(
+                    controller: _descC,
+                    maxLines: null,
+                    minLines: 2,
+                    style: t.typography.body.sm.copyWith(
+                      fontSize: 14,
+                      color: t.colors.foreground,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      border: InputBorder.none,
+                      hintText: '请输入描述',
+                      hintStyle: t.typography.body.sm.copyWith(
+                        fontSize: 14,
+                        color: t.colors.mutedForeground,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           // 优先级

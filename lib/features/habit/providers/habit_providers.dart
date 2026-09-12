@@ -30,3 +30,9 @@ final StreamProvider<Set<String>> todayCheckedProvider =
           .watch(habitRepositoryProvider)
           .watchCheckedKeys(ref.watch(todayProvider)),
     );
+
+/// 近 7 天打卡（index 0 = 今天），按 habitKey 取，供卡片底部 7 天记录条。
+final last7CheckedProvider =
+    StreamProvider.family<List<bool>, String>((ref, key) {
+  return ref.watch(habitRepositoryProvider).watchRecentCheckin(key, 7);
+});
