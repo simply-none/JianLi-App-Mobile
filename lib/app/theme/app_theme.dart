@@ -11,6 +11,8 @@
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'jianli_palette.dart';
+
 /// 主题样式（9 套配色）——主色 + 暗色提亮主色
 class ThemeStyle {
   const ThemeStyle({
@@ -35,8 +37,8 @@ class AppTheme {
     ThemeStyle(
       id: 'zi',
       name: '渐离紫',
-      lightPrimary: Color(0xFF6C5CE7),
-      darkPrimary: Color(0xFF8B7CF7),
+      lightPrimary: Color(0xFF9D5CFF),
+      darkPrimary: Color(0xFF5B3FD6),
     ),
     ThemeStyle(
       id: 'blue',
@@ -148,46 +150,67 @@ class AppTheme {
     final base = isLight
         ? FTheme.neutral.light.touch
         : FTheme.neutral.dark.touch;
+    final isZi = style.id == 'zi';
+    // 外观色系：每套主题都有自己的「渐离紫同构」调色板（亮/暗各一），由主题主色
+    // 派生；渐离紫用画布手工微调的精确值。切外观 + 切深浅时分层与氛围都跟着走。
+    final pal = isLight
+        ? JianliPalette.light(style.lightPrimary, zi: isZi)
+        : JianliPalette.dark(style.darkPrimary, zi: isZi);
     final primary = isLight ? style.lightPrimary : style.darkPrimary;
     // 基准缩放：目标 md 像素 / forui 默认 md 像素（运行时取默认值，不硬编码版本号）
     final defaultMd = base.typography.body.md.fontSize ?? 14;
     final k = baseFontSize / defaultMd;
-    // 页面底色：background 叠 4%/6% 主色冷调（原 AppTokens.pageTint 逻辑上移至此）
-    final tint = Color.lerp(
-      base.colors.background,
-      primary,
-      isLight ? 0.04 : 0.06,
-    )!;
+    // 页面底色：统一走当前外观色系的 pageBg（单一事实来源）。
+    final tint = pal.pageBg;
     // 外框内边距随字号等比缩放：先在 base 样式实例上 copyWith 出缩放后的
     // FScaffoldStyle，再传入 FThemeData（构造器的 scaffoldStyle 参数是样式实例，
     // 不是回调；childPadding 的 delta 用官方 EdgeInsetsGeometryDelta.scale）。
     // backgroundColor 透明：全局渐变背板（渐变 + 简单图案）由 app.dart 根容器绘制，
     // scaffold/头部（decoration 默认透明）/页面全部透出背板 → 无任何色差分割与白边。
+    // footerDecoration 置空：forui 默认给 footer 加一条通栏顶边线，会横穿悬浮胶囊
+    // 底部导航（画布 navPill 无此线），故显式去掉。
     final scaledScaffold = base.scaffoldStyle.copyWith(
       backgroundColor: Colors.transparent,
+      footerDecoration: DecorationDelta.value(const BoxDecoration()),
       childPadding: EdgeInsetsGeometryDelta.scale(k),
     );
     // 统一 FHeader 左右内边距为全局 AppTokens.pagePadding（12，固定、不随字号缩放），
     // 与所有页面正文左右边距一致；其余标题样式（字重/动作样式）沿用 base 派生。
+    // 统一表面层 / 文字色：卡片、次级底、边界、主/次文字全部取自当前外观的调色板
+    // （每套外观一套色系），禁止页面硬编码。
     final scaledColors = base.colors.copyWith(
       primary: primary,
       primaryForeground: Colors.white,
       background: tint,
+      foreground: pal.onSurfaceTitle,
+      card: pal.surface,
+      muted: pal.surfaceElevated,
+      mutedForeground: pal.onSurfaceSub,
+      border: pal.surfaceElevated,
     );
     final scaledType = base.typography.scale(sizeScalar: k);
-    final _baseStyle = FStyle.inherit(colors: scaledColors, typography: scaledType, touch: true);
-    final _headerFStyle = FStyle(
-      formFieldStyle: _baseStyle.formFieldStyle,
-      focusedOutlineStyle: _baseStyle.focusedOutlineStyle,
-      iconStyle: _baseStyle.iconStyle,
-      sizes: _baseStyle.sizes,
-      tappableStyle: _baseStyle.tappableStyle,
+    final baseStyle = FStyle.inherit(colors: scaledColors, typography: scaledType, touch: true);
+    // 输入框边框色（**可见**）—— 只换给文字输入框用的颜色副本，不动全局 colors.border
+    // （卡片/chip/分割线仍用浅边界，避免整套 UI 变重）。
+    // ⚠️ 为什么必须单独提亮：forui 的 FTextField 默认边框取 colors.border = 调色板
+    // surfaceElevated（#F1F2F5），压在 #F7F9FA 的抽屉底上几乎看不出边框
+    //（2026-09-12 用户实指「新增待办输入框没显示边框」）；聚焦态 forui 自带
+    // 切成 colors.primary 的变体，提亮默认色后「聚焦高亮主题色」自动成立。
+    final fieldColors = scaledColors.copyWith(
+      border: AppTokens.inputBorderColor(scaledColors),
+    );
+    final headerFStyle = FStyle(
+      formFieldStyle: baseStyle.formFieldStyle,
+      focusedOutlineStyle: baseStyle.focusedOutlineStyle,
+      iconStyle: baseStyle.iconStyle,
+      sizes: baseStyle.sizes,
+      tappableStyle: baseStyle.tappableStyle,
       pagePadding: EdgeInsets.symmetric(horizontal: AppTokens.pagePadding, vertical: 8),
     );
-    final _headerStyles = FHeaderStyles.inherit(
+    final headerStyles = FHeaderStyles.inherit(
       colors: scaledColors,
       typography: scaledType,
-      style: _headerFStyle,
+      style: headerFStyle,
       touch: true,
     );
     return FThemeData(
@@ -196,7 +219,14 @@ class AppTheme {
       colors: scaledColors,
       typography: scaledType,
       scaffoldStyle: scaledScaffold,
-      headerStyles: _headerStyles,
+      headerStyles: headerStyles,
+      // 输入框：可见边框 + 聚焦主题色（forui 的 focused 变体本就是 colors.primary）
+      textFieldStyles: FTextFieldSizeStyles.inherit(
+        colors: fieldColors,
+        typography: scaledType,
+        style: baseStyle,
+        touch: true,
+      ),
     );
   }
 }
@@ -216,8 +246,36 @@ class AppTokens {
   static const double baseFontSizeNormal = 12;
   static const double baseFontSizeLarge = 18;
 
-  /// 页面左右边距（全局唯一边距变量，固定 12px，不随字号缩放；改这里全 App 生效）
-  static const double pagePadding = 12;
+  /// 页面左右边距（**全局唯一边距变量**，固定 16px，不随字号缩放；改这里全 App 生效）。
+  ///
+  /// 2026-09-12 由 12 收口到 16：原先 `FHeader`（标题）用 12、各页正文硬编码 16，
+  /// 同一屏里标题比正文更靠边、左边缘对不齐；画布列表页正文标注也是 16，故统一 16。
+  ///
+  /// 弹窗（底部抽屉）的左右内边距**也引用本常量**（= 页面正文，天然一致）——
+  /// 用户规则：「弹窗的左右 padding 应该和全局保持一致」。
+  /// ⚠️ 弹窗内只允许**应用一次**：`SheetSurface` 曾给键盘型弹窗再叠一层 16，
+  /// 骨架内部又写一层 16 → 实际 32（2026-09-12 实踩）。
+  static const double pagePadding = 16;
+
+  // —— 弹窗（底部抽屉）规格（2026-09-12 定，全 App 弹窗必须遵循） ——
+  //
+  // ⚠️ 弹窗标题字号 = 画布 09/10 规格的绝对像素值（17/Bold）。
+  // **规则：弹窗内任何字段的字号都不得大于它**（详情/编辑里的「条目标题」同用此值）。
+  // 为什么用绝对值：主题把 forui 字型整体按 baseFontSizeNormal 缩放过（body.lg ≈ 13.7），
+  // 若标题直接用 body.lg 会比正文还小 —— 这正是「待办详情比待办标题【xxx】小」的成因。
+  static const double sheetTitleFontSize = 17;
+
+  /// 弹窗内「条目标题」字号（详情标题 / 编辑标题输入框）。
+  /// 比弹窗标题 [sheetTitleFontSize] 小 2 号，保证「弹窗标题字号 > 弹窗任何内容字号」。
+  /// 2026-09-12 由「与弹窗标题同 17」改为 15。
+  static const double sheetFieldTitleFontSize = 15;
+
+  /// 弹窗高度规格：只有三档，**禁止第四种**。比例相对「可用高度」＝屏幕高 − 键盘高
+  /// （键盘弹起时不改档、按可用高度收缩，保证弹窗完整落在键盘上方）。
+  /// 消费方：`SheetSize` / `sheetMaxHeight()`（`lib/app/ui/sheet_surface.dart`）。
+  static const double sheetHeightSm = 0.30;
+  static const double sheetHeightMd = 0.50;
+  static const double sheetHeightLg = 0.80;
 
   /// 列表页顶部缝隙（贴横幅/首元素）
   static const double listTopGap = 4;
@@ -322,4 +380,75 @@ class AppTokens {
   /// 页面保持透明即可透出背板——头部/外框/内容同源，无分割无白边。
   /// 保留函数兼容既有调用，返回透明色；新代码不要再包不透明底色。
   static Color pageTint(BuildContext context) => Colors.transparent;
+
+  // —— 页面渐变背板（画布「02 导航重设计」的 `背景装饰` 层，全 App 唯一实现） ——
+  //
+  // 画布规格是三段渐变：顶部 7% → 中段(50%) 2% → 底部 0（暗色 8% / 5.5% / 0），
+  // 底色为当前外观的 pageBg。根容器画它；**任何「要盖住滚动内容」的吸顶条也必须由它派生**
+  // —— 早期吸顶条直接刷 `colors.background` 纯色，结果上半屏是渐变紫、吸顶条是一块灰白，
+  // 背景被硬生生切断（2026-09-12 用户实指「背景下部分被内容区遮盖」）。
+  static LinearGradient pageGradientOf(FThemeData data, Brightness brightness) {
+    Color at(double alpha) =>
+        Color.lerp(data.colors.background, data.colors.primary, alpha)!;
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        at(JianliPalette.gradientTopAlphaOf(brightness)),
+        at(JianliPalette.gradientMidAlphaOf(brightness)),
+        data.colors.background,
+      ],
+      stops: const [0, 0.5, 1],
+    );
+  }
+
+  /// 当前主题的页面渐变背板（等同根容器画的那一层）
+  static LinearGradient pageGradient(BuildContext context) =>
+      pageGradientOf(context.theme, Theme.brightnessOf(context));
+
+  /// 背板顶部色 —— 也是吸顶条「盖住滚过内容」时的取色起点（同源 → 看不到接缝）
+  static Color pageGradientTop(BuildContext context) =>
+      pageGradient(context).colors.first;
+
+  /// 吸顶条覆盖层：背板同源渐变。
+  ///
+  /// [extent] = 吸顶条高度。用它把背板的**衰减率**按比例映射到吸顶条自身高度上：
+  /// 条内从「背板顶部色」按同一速率衰减到对应位置，所以条内渐变不会比背板更陡/更平，
+  /// 吸顶条顶边与其上方的页面头部同色 → 接缝不可见。
+  static BoxDecoration pinnedCover(BuildContext context, double extent) {
+    final t = context.theme;
+    final brightness = Theme.brightnessOf(context);
+    final top = pageGradientTop(context);
+    final mid = Color.lerp(
+      t.colors.background,
+      t.colors.primary,
+      JianliPalette.gradientMidAlphaOf(brightness),
+    )!;
+    // 背板在 50% 处到达 mid；条内衰减到 mid 的比例 = 2 × 条高 / 屏高
+    final f = (2 * extent / MediaQuery.sizeOf(context).height).clamp(0.0, 1.0);
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [top, Color.lerp(top, mid, f)!],
+      ),
+    );
+  }
+
+  /// 输入框边框色（**必须可见**）
+  ///
+  /// ⚠️ 不要直接用 `colors.border`：它 = 调色板 surfaceElevated（#F1F2F5），
+  /// 与抽屉底/页面底（#F7F9FA）几乎同色，等于「没有边框」（2026-09-12 实踩）。
+  /// 这里往次字色方向压一档：既轻，又能一眼看出输入框的边界。
+  /// 聚焦态不在这里——统一用 `colors.primary`（forui 输入框自带该变体）。
+  static Color inputBorderColor(FColors colors) =>
+      Color.lerp(colors.border, colors.mutedForeground, 0.28)!;
+
+  /// 输入框边框色（按当前主题取）
+  static Color inputBorder(BuildContext context) =>
+      inputBorderColor(context.theme.colors);
+
+  /// 输入框聚焦边框色 = 主题主色
+  static Color inputBorderFocused(BuildContext context) =>
+      context.theme.colors.primary;
 }

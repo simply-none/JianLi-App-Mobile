@@ -109,6 +109,11 @@ flutter:
   assets:
     - assets/qyferry/
     - assets/qyferry/webassets/
+    # 首页英雄卡背景纹理（导出自画布「01 首页·浅色」节点 8:160）
+    - assets/images/
+    # 卡片纹理集（21 张，与画布「13 卡片纹理选型」01–21 序号一一对应）
+    # 同样注意：目录声明不递归，子目录必须单独再声明一次
+    - assets/images/textures/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

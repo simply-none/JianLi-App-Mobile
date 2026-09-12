@@ -13,6 +13,7 @@ import 'package:material_ui/material_ui.dart';
 import 'providers/theme_providers.dart';
 import 'security/vault_auto_lock.dart';
 import 'theme/app_theme.dart';
+import 'theme/jianli_palette.dart';
 import 'router/app_router.dart';
 
 /// 渐离App移动端根组件
@@ -73,37 +74,59 @@ class _JianliAppState extends ConsumerState<JianliApp>
       themeMode: toMaterialMode(mode),
       routerConfig: appRouter,
       builder: (context, child) {
-        final isDark = Theme.brightnessOf(context) == Brightness.dark;
+        final brightness = Theme.brightnessOf(context);
+        final isDark = brightness == Brightness.dark;
+        // 当前外观色系（每套主题一套，亮/暗各一）：背板渐变浓度 + 三枚光晕透明度同源。
+        final isZi = style.id == 'zi';
+        final pal = isDark
+            ? JianliPalette.dark(style.darkPrimary, zi: isZi)
+            : JianliPalette.light(style.lightPrimary, zi: isZi);
         final data = AppTheme.build(
           style: style,
-          brightness: Theme.brightnessOf(context),
+          brightness: brightness,
           baseFontSize: baseFontSize,
         );
         // 全局渐变背板 + 简单图案（大圆/圆环）：所有页面透明（pageTint/FScaffold
         // 均不画底色），背板统一透出——头部/外框/内容无色差、无白边；
         // 主题切换经 AnimatedContainer 平滑过渡（Decoration 渐变可 lerp）。
-        final strongTint = Color.lerp(
-          data.colors.background,
-          data.colors.primary,
-          isDark ? 0.10 : 0.07,
-        )!;
+        //
+        // 渐变规格 = 画布「02 导航重设计」的 `背景装饰` 层（三段：顶浓 → 中淡 → 底透明），
+        // 统一由 `AppTokens.pageGradientOf` 产出，**列表页吸顶条的覆盖色也从它派生**
+        // —— 两处共用一份定义，吸顶条才不会把背板切断（2026-09-12 实踩）。
         return FTheme(
           data: data,
           child: AnimatedContainer(
             duration: AppTokens.base,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [strongTint, data.colors.background],
-              ),
+              gradient: AppTokens.pageGradientOf(data, brightness),
             ),
             child: CustomPaint(
               painter: _BackdropPainter(
                 primary: data.colors.primary,
                 isDark: isDark,
+                pal: pal,
               ),
-              child: FToaster(child: FTooltipGroup(child: child!)),
+              // 全局输入行为（单一来源）：**移动端点输入框以外任何地方 → 立刻失焦、收键盘**。
+              //
+              // 为什么需要这一层：Flutter 自带的默认实现 `_EditableTextTapOutsideAction`
+              // 只在桌面端失焦 —— 移动端（android/iOS）遇到 touch 事件**什么都不做**
+              //（见 flutter/lib/src/widgets/editable_text.dart，官方注释：desktop platforms only）。
+              // 而 EditableText 是用 `Action.overridable` 注册这个 intent 的（官方预留扩展点），
+              // 所以只要在祖先挂一个同名 `Actions` 即可覆盖默认行为 —— 一处生效，
+              // 覆盖全 App 的输入框（原生 TextField 与 forui FTextField 都走同一条链路）。
+              // 「滑动收键盘」另见 `SheetSurface` 里的滚动监听（惯性滚动没有 pointer-down）。
+              child: Actions(
+                actions: <Type, Action<Intent>>{
+                  EditableTextTapOutsideIntent:
+                      CallbackAction<EditableTextTapOutsideIntent>(
+                    onInvoke: (intent) {
+                      intent.focusNode.unfocus();
+                      return null;
+                    },
+                  ),
+                },
+                child: FToaster(child: FTooltipGroup(child: child!)),
+              ),
             ),
           ),
         );
@@ -115,25 +138,31 @@ class _JianliAppState extends ConsumerState<JianliApp>
 /// 全局背板的简单图案：右上探出大圆 + 左侧中圆 + 右下圆环（极低透明度，
 /// 只做氛围不做视觉焦点）。painter 在 child 之下，随主题色/亮暗重绘。
 class _BackdropPainter extends CustomPainter {
-  const _BackdropPainter({required this.primary, required this.isDark});
+  const _BackdropPainter({
+    required this.primary,
+    required this.isDark,
+    required this.pal,
+  });
 
   final Color primary;
   final bool isDark;
 
+  /// 当前外观色系（提供三枚光晕的透明度）
+  final Scheme pal;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final alpha = isDark ? 0.06 : 0.05;
     // 右上探出大圆
     canvas.drawCircle(
       Offset(size.width - 36, -48),
       150,
-      Paint()..color = primary.withValues(alpha: alpha),
+      Paint()..color = primary.withValues(alpha: pal.glowAlpha),
     );
     // 左侧中圆
     canvas.drawCircle(
       Offset(-40, size.height * 0.42),
       90,
-      Paint()..color = primary.withValues(alpha: alpha * 0.7),
+      Paint()..color = primary.withValues(alpha: pal.glowLeftAlpha),
     );
     // 右下圆环
     canvas.drawCircle(
@@ -142,7 +171,7 @@ class _BackdropPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 22
-        ..color = primary.withValues(alpha: alpha * 0.5),
+        ..color = primary.withValues(alpha: pal.glowRingAlpha),
     );
   }
 

@@ -7,7 +7,6 @@ import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../models/todo.dart';
 import '../models/todo_filter.dart';
-import '../providers/todo_providers.dart';
 import 'todo_sheets.dart';
 
 /// 月历视图
@@ -166,20 +165,15 @@ Future<void> showTodoDaySheet(
           '${day.month} 月 ${day.day} 日 · 共 ${dayItems.length} 项';
       return SheetSurface(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(c).size.height * 0.7,
-          ),
+        // 弹窗三档制：按天列表属「需要滚动」档（md = 50%），定高不撑满
+        child: SizedBox(
+          height: sheetMaxHeight(c, SheetSize.md),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
-                  Expanded(
-                    child: Text(label,
-                        style: t.typography.body.lg
-                            .copyWith(fontWeight: FontWeight.w700)),
-                  ),
+                  Expanded(child: Text(label, style: sheetTitleStyle(c))),
                   GestureDetector(
                     onTap: () => Navigator.pop(c),
                     behavior: HitTestBehavior.opaque,
@@ -205,18 +199,14 @@ Future<void> showTodoDaySheet(
                           return FTappable(
                             onPress: () async {
                               Navigator.pop(c);
-                              final edited = await showTodoEditSheet(
+                              // 与列表/卡片一致：先看详情，再决定是否编辑
+                              await openTodoDetail(
                                 context,
                                 ref,
-                                initial: it,
+                                it,
                                 allTodos: allTodos,
                                 tags: tags,
                               );
-                              if (edited != null) {
-                                await ref
-                                    .read(todoRepositoryProvider)
-                                    .upsertTodo(edited);
-                              }
                             },
                             child: Container(
                               padding: const EdgeInsets.symmetric(

@@ -40,12 +40,12 @@ Shimmer / Confetti **均自实现，未新增任何依赖**（比引 `shimmer`�
 > 后续其他页面（习惯 / 待办 / 番茄 / 笔记 / 电子书 / 2FA 等）沿用同一语言：`pageTint` 打底 + `EntryCard`/`SquircleBox` 专属色 + `StaggerList` 入场 + `AnimatedCheck` 反馈。
 
 - **页面底色与白边（2026-09-05，三修：全局渐变背板）**：背景绘制权收归 app.dart 根容器——`builder` 里 `AnimatedContainer(gradient: 顶部强冷调→background)` + `CustomPaint(_BackdropPainter: 右上大圆/左中圆/右下圆环，primary 极低透明度)`；`FScaffoldStyle.backgroundColor` 透明、`FHeaderStyle.decoration`（forui 默认即透明）不画底色，`AppTokens.pageTint(context)` 返回**透明色**（保留兼容旧调用）。**任何页面/组件禁止再自绘不透明整页底色**，透出背板即可——头部/外框/边缘/内容同源，无色差无白边。抽屉 `SheetSurface` 保持不透明（弹层需与背板分离）。
-- **间距随字号联动（仅垂直缝隙）**：页面**左右边距固定 `AppTokens.pagePadding = 12`，不随字号缩放**，全 App 统一引用该静态常量；`FScaffold` 全屏页设 `childPad: false`，水平边距交给 ListView 的 `AppTokens.pagePadding` 提供（避免与默认 `childPadding` 叠加成 24）。垂直缝隙 `listTopGap`/`pageBottomGap` 仍走 `*Of(context)` 随字号缩放。
+- **间距随字号联动（仅垂直缝隙）**：页面**左右边距固定 `AppTokens.pagePadding = 16`，不随字号缩放**，全 App 统一引用该静态常量；`FScaffold` 全屏页设 `childPad: false`，水平边距交给 ListView 的 `AppTokens.pagePadding` 提供（避免与默认 `childPadding` 叠加成 24）。垂直缝隙 `listTopGap`/`pageBottomGap` 仍走 `*Of(context)` 随字号缩放。
 
 **全局排版/布局配置 + 阅览模式（2026-09-05，二次修订为基准字号体系）**
 - **统一调参入口在 `AppTokens`**（app_theme.dart 顶部「全局排版与布局配置」区，改一处全 App 生效）：
   - **基准字号体系**：`baseFontSizeNormal = 12` / `baseFontSizeLarge = 18`（普通文本 md 的目标像素）。阅览模式切换基准档，其他字型等比缩放；接线链路 = `app.dart` watch `readingModeProvider` → 算出 baseFontSize → 传给 `materialLight/materialDark`（MaterialApp.theme）与 `AppTheme.build`（builder 内 FTheme）→ 全树重渲必然生效。
-  - **边距 token（横向边距固定 12，不随字号缩放）**：`pagePadding = 12`（**静态常量 `AppTokens.pagePadding`，直接引用；`pagePaddingOf` 已删除，严禁再调用**）；左右边距全 App 统一引用 `AppTokens.pagePadding`——`FScaffold` 全屏页设 `childPad: false`，水平边距由 ListView 的 `AppTokens.pagePadding` 提供，避免与默认 `childPadding` 叠加成 24。垂直缝隙 `listTopGap = 4` / `pageBottomGap = 24` 仍走随字号缩放的 `AppTokens.listTopGapOf(context)` / `AppTokens.pageBottomGapOf(context)`。**新增页面横向边距严禁硬编码数字，一律用 `AppTokens.pagePadding`**。含 viewInsets 的抽屉 padding 例外（键盘避让值不缩放）。根页（dashboard/editor）底部 32 为滚动尾部特例。
+  - **边距 token（横向边距固定 16，不随字号缩放）**：`pagePadding = 16`（**静态常量 `AppTokens.pagePadding`，直接引用；`pagePaddingOf` 已删除，严禁再调用**）；左右边距全 App 统一引用 `AppTokens.pagePadding`——`FScaffold` 全屏页设 `childPad: false`，水平边距由 ListView 的 `AppTokens.pagePadding` 提供，避免与默认 `childPadding` 叠加成 24。垂直缝隙 `listTopGap = 4` / `pageBottomGap = 24` 仍走随字号缩放的 `AppTokens.listTopGapOf(context)` / `AppTokens.pageBottomGapOf(context)`。**新增页面横向边距严禁硬编码数字，一律用 `AppTokens.pagePadding`**。含 viewInsets 的抽屉 padding 例外（键盘避让值不缩放）。根页（dashboard/editor）底部 32 为滚动尾部特例。
 - **阅览模式**（需求演进：v1 页内 1.15 缩放视觉无感＝「切换无效」→ v2 基准字号体系全局驱动）：
   - `ReadingMode{normal,large}` + `readingModeProvider`（key `jianli.readingMode`，默认 normal），见「主题体系」；**不要在页面内做阅览模式缩放**——主题已全局缩放，页面只需直接用 `context.theme.typography`。
   - 生效面 = 全 App（forui 组件内部样式 + 页面排版）；笔记详情 `NoteHtmlView` / 阅读器正文额外给了 `height: 1.7/1.8` 阅读行高，fontSize 直接取 `md.fontSize`（已被主题缩放）。

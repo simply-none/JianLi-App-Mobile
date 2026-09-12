@@ -16,12 +16,16 @@ class TapScale extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.scale = 0.97,
     this.haptic,
   });
 
   final Widget child;
   final VoidCallback? onTap;
+
+  /// 长按（可选；与 [onTap] 互不冲突，长按优先）
+  final VoidCallback? onLongPress;
 
   /// 按下缩放比（默认 0.97）
   final double scale;
@@ -39,18 +43,25 @@ class _TapScaleState extends State<TapScale> {
   @override
   Widget build(BuildContext context) {
     final dur = JianliMotion.duration(context, AppTokens.fast);
-    final tappable = widget.onTap != null;
+    final tappable = widget.onTap != null || widget.onLongPress != null;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: tappable ? (_) => setState(() => _pressed = true) : null,
-      onTapUp: tappable
+      onTapUp: widget.onTap != null
           ? (_) {
               setState(() => _pressed = false);
               widget.onTap?.call();
               if (widget.haptic != null) haptic(widget.haptic!, context);
             }
-          : null,
+          : (_) => setState(() => _pressed = false),
       onTapCancel: tappable ? () => setState(() => _pressed = false) : null,
+      onLongPress: widget.onLongPress == null
+          ? null
+          : () {
+              setState(() => _pressed = false);
+              widget.onLongPress?.call();
+              if (widget.haptic != null) haptic(widget.haptic!, context);
+            },
       child: AnimatedScale(
         scale: _pressed ? widget.scale : 1.0,
         duration: dur,

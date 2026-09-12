@@ -9,6 +9,7 @@ import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/card_textures.dart';
 import 'animated_stat.dart';
 import 'squircle_box.dart';
 
@@ -22,13 +23,19 @@ class PageBanner extends StatelessWidget {
     this.accentIndex = 0,
     this.stats = const [],
     this.margin,
+    this.gradient,
+    this.cornerRadius,
+    this.textureAsset,
+    this.ringDecor = false,
+    this.shadow = true,
   });
 
   final IconData icon;
   final String title;
   final String? subtitle;
 
-  /// 页面专属强调色索引（AppTokens.accents，与 Hub 入口色对齐）
+  /// 页面专属强调色索引（AppTokens.accents，与 Hub 入口色对齐）；
+  /// 传了 [gradient] 时本项失效
   final int accentIndex;
 
   /// 统计行：(数值, 标签)；纯数值自动数字滚动（AnimatedStat）
@@ -37,10 +44,27 @@ class PageBanner extends StatelessWidget {
   /// 外边距（null = 默认：水平随字号缩放的 pagePadding + 上下 12/4）
   final EdgeInsetsGeometry? margin;
 
+  /// 渐变底覆盖（null = 用 [accentIndex] 对应的强调色渐变）
+  final Gradient? gradient;
+
+  /// 圆角覆盖（null = AppTokens.radiusLg）
+  final double? cornerRadius;
+
+  /// 背景纹理资源（null = 不叠纹理）；按画布配方铺满：
+  /// 尺寸 600×600、锚点 (-100,-100)、不透明度 = 填充 0.56 × 节点 0.35
+  final String? textureAsset;
+
+  /// 装饰件换成画布 07/08 的「同心圆环 + 内圆」（默认两个填充圆）
+  final bool ringDecor;
+
+  /// 是否带投影（画布部分横幅节点无 effects，传 false 保持 1:1）
+  final bool shadow;
+
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
     final accent = AppTokens.accent(accentIndex);
+    final radius = cornerRadius ?? AppTokens.radiusLg;
     return Padding(
       padding:
           margin ??
@@ -52,16 +76,31 @@ class PageBanner extends StatelessWidget {
           ),
       child: Container(
         decoration: BoxDecoration(
-          gradient: AppTokens.accentGradient(accent),
-          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
-          boxShadow: AppTokens.elevation(context, level: 3),
+          gradient: gradient ?? AppTokens.accentGradient(accent),
+          borderRadius: BorderRadius.circular(radius),
+          boxShadow: shadow ? AppTokens.elevation(context, level: 3) : null,
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppTokens.radiusLg),
+          borderRadius: BorderRadius.circular(radius),
           child: Stack(
             children: [
-              Positioned(right: -28, top: -28, child: _decoCircle(96, 0.12)),
-              Positioned(right: 44, bottom: -34, child: _decoCircle(76, 0.10)),
+              // 背景纹理（画布：600×600 @ (-100,-100)，fill 0.56 × node 0.35）
+              if (textureAsset != null)
+                Positioned(
+                  left: -100,
+                  top: -100,
+                  width: 600,
+                  height: 600,
+                  child: Opacity(
+                    opacity: CardTextures.composedOpacity,
+                    child: Image.asset(
+                      textureAsset!,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                    ),
+                  ),
+                ),
+              if (ringDecor) ..._ringDecor() else ..._softDeco(),
               Padding(
                 padding: const EdgeInsets.all(18),
                 child: Column(
@@ -127,6 +166,37 @@ class PageBanner extends StatelessWidget {
       ),
     );
   }
+
+  /// 默认装饰：两个填充白圆
+  List<Widget> _softDeco() => [
+        Positioned(right: -28, top: -28, child: _decoCircle(96, 0.12)),
+        Positioned(right: 44, bottom: -34, child: _decoCircle(76, 0.10)),
+      ];
+
+  /// 画布装饰：同心「描边圆环 96Ø 白.18」+「填充内圆 34Ø 白.12」，
+  /// 共同圆心位于横幅内 (340, -15)（即右边缘内 18、上边缘外 15）。
+  List<Widget> _ringDecor() => [
+        Positioned(
+          right: -30,
+          top: -63,
+          child: Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.18),
+                width: 1.5,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          right: 1,
+          top: -32,
+          child: _decoCircle(34, 0.12),
+        ),
+      ];
 
   /// 白色装饰圆（渐变底上的氛围件）
   Widget _decoCircle(double size, double alpha) => Container(

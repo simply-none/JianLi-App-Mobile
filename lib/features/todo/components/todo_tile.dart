@@ -1,16 +1,24 @@
-// 待办列表行（forui 化）—— 勾选完成 + 状态/优先级/到期/标签/子任务进度/父任务 + 操作入口
+// 待办列表卡片 —— 1:1 对齐画布「07 待办·列表页 主态」卡片节点（5:456 / 5:473 / 5:491）
 //
-// 列表视图与（按父任务分组时的）子项复用同一行。selectable 模式下点击整行=选择，
-// 不再弹出操作菜单；非选择模式点击行=打开编辑，行尾「⋯」=操作菜单（编辑/记录/删除）。
+// 画布结构（白卡：底 t.colors.card · 描边 t.colors.border · 圆角 16 · 内边距 14 · 子项间距 10）：
+//   勾选(20×20 · r6 · 描边) → 内容(纵向 · 间距 6) → ⋯(16)
+//   内容三行：
+//     行1  标题(15/SemiBold) + 状态 chip(11/SemiBold · 色底 15%) + 优先级(11/SemiBold · 红/琥珀/绿)
+//     行2  标签 chips（11/SemiBold · 各自色底 14% · r10）
+//     行3  时间(11/次要) ⇄ 子任务进度(11/次要) —— SPACE_BETWEEN
+// 时间/子任务都没有时整行不渲染；标签为空时行2不渲染。
+//
+// 颜色一律走主题 token / 数据色 + alpha（画布给的 #D1D5DB / #6B7280 / #9CA3AF 等中性色，
+// 取值与主题 mutedForeground / border 基本一致），暗色主题下自动跟随，不硬编码。
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/ui/ui_atoms.dart';
+import '../../../app/ui/tap_scale.dart';
 import '../models/todo.dart';
 import '../models/todo_filter.dart';
 
-/// 列表行
+/// 列表卡片
 class TodoListTile extends StatelessWidget {
   const TodoListTile({
     super.key,
@@ -23,6 +31,7 @@ class TodoListTile extends StatelessWidget {
     this.onMore,
     this.onSelect,
     this.onTap,
+    this.onLongPress,
     this.indent = false,
   });
 
@@ -35,200 +44,236 @@ class TodoListTile extends StatelessWidget {
   final VoidCallback? onMore;
   final VoidCallback? onSelect;
   final VoidCallback? onTap;
+
+  /// 长按（页面用它进入多选模式）
+  final VoidCallback? onLongPress;
+
+  /// 是否为「按父任务」分组下的子项（标题前加一个缩进箭头）
   final bool indent;
 
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    final done = effectiveStatus(item) == 'completed';
     final meta = statusMeta(effectiveStatus(item));
-    final overdue = dueGroupOf(item) == 'overdue' && effectiveStatus(item) != 'completed';
     final progress = subtaskProgress(allTodos, item.key);
     final tagMap = {for (final tg in tags) tg.key: tg};
+    final tagViews = [
+      for (final k in item.tags)
+        if (tagMap.containsKey(k)) tagMap[k]!,
+    ];
+    final dueText = formatTodoDue(item.dueDate);
 
-    final checkbox = FCheckbox(
-      value: effectiveStatus(item) == 'completed',
-      onChange: (_) => onToggle?.call(),
-    );
+    // 行3：时间 ⇄ 子任务进度（都没有则整行不渲染）
+    final hasRow3 = dueText != null || progress != null;
 
-    final metaRow = Wrap(
-      spacing: 8,
-      runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        // 状态 chip
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(
-            color: meta.bg,
-            borderRadius: BorderRadius.circular(AppTokens.radiusSm),
-          ),
-          child: Text(
-            meta.label,
-            style: t.typography.body.xs.copyWith(
-              color: meta.color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+    return TapScale(
+      onTap: selectable ? onSelect : onTap,
+      onLongPress: onLongPress,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: t.colors.card,
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          border: Border.all(color: t.colors.border),
         ),
-        // 优先级旗标
-        Row(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(FLucideIcons.flag, size: 13, color: priorityColor(item.priority)),
-            const SizedBox(width: 2),
-            Text(
-              priorityLabel(item.priority),
-              style: t.typography.body.xs
-                  .copyWith(color: priorityColor(item.priority)),
-            ),
-          ],
-        ),
-        // 到期
-        if (item.dueDate != null)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(FLucideIcons.clock, size: 13, color: overdue ? t.colors.destructive : t.colors.mutedForeground),
-              const SizedBox(width: 2),
-              Text(
-                _fmtDue(item.dueDate!),
-                style: t.typography.body.xs.copyWith(
-                  color: overdue ? t.colors.destructive : t.colors.mutedForeground,
-                ),
-              ),
-            ],
-          ),
-        // 子任务进度
-        if (progress != null)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(FLucideIcons.listChecks, size: 13, color: t.colors.mutedForeground),
-              const SizedBox(width: 2),
-              Text(
-                '${progress.done}/${progress.total}',
-                style: t.typography.body.xs
-                    .copyWith(color: t.colors.mutedForeground),
-              ),
-            ],
-          ),
-        // 父任务
-        if (item.isChild)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(FLucideIcons.cornerDownRight, size: 13, color: t.colors.mutedForeground),
-              const SizedBox(width: 2),
-              Text(
-                item.parentIds
-                    .map((k) => allTodos.firstWhere((e) => e.key == k,
-                        orElse: () => item).title)
-                    .join('、'),
-                style: t.typography.body.xs
-                    .copyWith(color: t.colors.mutedForeground),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        // 标签色点
-        for (final k in item.tags)
-          if (tagMap.containsKey(k))
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: _parseColor(tagMap[k]!.color),
-                shape: BoxShape.circle,
-              ),
-            ),
-      ],
-    );
-
-    final content = AppCard(
-      onTap: selectable
-          ? onSelect
-          : onTap,
-      margin: const EdgeInsets.symmetric(vertical: 5),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (selectable)
-            Padding(
-              padding: const EdgeInsets.only(right: 10, top: 2),
-              child: Icon(
-                selected ? FLucideIcons.circleDot : FLucideIcons.circle,
-                size: 20,
-                color: selected ? t.colors.primary : t.colors.mutedForeground,
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(right: 10, top: 2),
-              child: checkbox,
-            ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    if (indent)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: Icon(FLucideIcons.cornerDownRight,
-                            size: 14, color: t.colors.mutedForeground),
-                      ),
-                    Expanded(
-                      child: Text(
-                        item.title,
-                        style: t.typography.body.md.copyWith(
-                          fontWeight: FontWeight.w600,
-                          decoration: effectiveStatus(item) == 'completed'
-                              ? TextDecoration.lineThrough
-                              : null,
-                          color: effectiveStatus(item) == 'completed'
-                              ? t.colors.mutedForeground
-                              : t.colors.foreground,
+            // 勾选（20×20 · r6）：完成态主色实底 + 白勾
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: selectable
+                  ? Icon(
+                      selected ? FLucideIcons.circleDot : FLucideIcons.circle,
+                      size: 20,
+                      color: selected
+                          ? t.colors.primary
+                          : t.colors.mutedForeground,
+                    )
+                  : GestureDetector(
+                      onTap: onToggle,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: done ? t.colors.primary : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                          border: done
+                              ? null
+                              : Border.all(color: t.colors.border, width: 1.5),
                         ),
+                        child: done
+                            ? Icon(
+                                FLucideIcons.check,
+                                size: 13,
+                                color: t.colors.primaryForeground,
+                              )
+                            : null,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                metaRow,
-              ],
             ),
-          ),
-          if (!selectable && onMore != null)
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 行1：标题 + 状态 + 优先级
+                  Row(
+                    children: [
+                      if (indent)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: Icon(
+                            FLucideIcons.cornerDownRight,
+                            size: 14,
+                            color: t.colors.mutedForeground,
+                          ),
+                        ),
+                      Expanded(
+                        child: Text(
+                          item.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.typography.body.md.copyWith(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            decoration: done ? TextDecoration.lineThrough : null,
+                            color: done
+                                ? t.colors.mutedForeground
+                                : t.colors.foreground,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      _StatusChip(label: meta.label, color: meta.color),
+                      const SizedBox(width: 6),
+                      Text(
+                        priorityLabel(item.priority),
+                        style: t.typography.body.xs.copyWith(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: priorityColor(item.priority),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // 行2：标签
+                  if (tagViews.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final tag in tagViews)
+                          _TagChip(name: tag.name, color: _parseColor(tag.color)),
+                      ],
+                    ),
+                  ],
+                  // 行3：时间 ⇄ 子任务
+                  if (hasRow3) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            dueText ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.typography.body.xs.copyWith(
+                              fontSize: 11,
+                              color: t.colors.mutedForeground,
+                            ),
+                          ),
+                        ),
+                        if (progress != null)
+                          Text(
+                            '子任务 ${progress.done}/${progress.total}',
+                            style: t.typography.body.xs.copyWith(
+                              fontSize: 11,
+                              color: t.colors.mutedForeground,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            // 行尾操作（画布 ⋯ 16）
             GestureDetector(
               onTap: onMore,
               behavior: HitTestBehavior.opaque,
               child: Padding(
-                padding: const EdgeInsets.only(left: 6, top: 2),
-                child: Icon(FLucideIcons.ellipsis,
-                    size: 18, color: t.colors.mutedForeground),
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Icon(
+                  FLucideIcons.ellipsis,
+                  size: 16,
+                  color: t.colors.mutedForeground,
+                ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
-
-    return content;
   }
+}
 
-  String _fmtDue(String s) {
-    final d = parseTodoDateTime(s);
-    if (d == null) return s;
-    final now = DateTime.now();
-    final sameDay = d.year == now.year && d.month == now.month && d.day == now.day;
-    if (sameDay) {
-      return '今天 ${_pad(d.hour)}:${_pad(d.minute)}';
-    }
-    return '${_pad(d.month)}-${_pad(d.day)} ${_pad(d.hour)}:${_pad(d.minute)}';
+/// 状态 chip（画布：色底 15% · r10 · 内边距 4 · 11/SemiBold）
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        style: context.theme.typography.body.xs.copyWith(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
   }
+}
 
-  String _pad(int n) => n.toString().padLeft(2, '0');
+/// 标签 chip（画布：各自色底 14% · r10 · 内边距 4 · 11/SemiBold）
+class _TagChip extends StatelessWidget {
+  const _TagChip({required this.name, required this.color});
+
+  final String name;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        name,
+        style: context.theme.typography.body.xs.copyWith(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
+  }
 }
 
 Color _parseColor(String? hex) {

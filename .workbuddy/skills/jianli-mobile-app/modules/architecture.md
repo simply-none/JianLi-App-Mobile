@@ -72,9 +72,37 @@ test/
 7. **FThemeData 构造期定制样式：先实例 copyWith 再传实例**（2026-09-05 实踩，两连报）：构造器的 `scaffoldStyle:`（等 style 参数）收 **`FScaffoldStyle` 实例**，传 `(s) => ...` 回调报 Function→FScaffoldStyle 类型错；正确姿势 = `base.scaffoldStyle.copyWith(...)` 先造出新实例再传入。而**样式实例自身 copyWith 的 delta 参数**（如 `childPadding: EdgeInsetsGeometryDelta?`）是 **Delta 类**（官方工厂 `EdgeInsetsGeometryDelta.add/.scale/.value`，`scale(k)` 即全边等比缩放），**不是 lambda**——传函数同样类型错。变量名先定义再用（`isDark ? 0.06 : 0.04` 写在只有 `isLight` 的作用域直接 Undefined name）。
 8. **forui typography 是两级结构**（2026-09-05 实踩）：`typography.body.{xs,sm,md,lg,xl}` / `typography.display.*`，**不存在 `typography.xs` 这类直取**——写错报「The getter 'xs' isn't defined for the type 'FTypography'」。
 9. **provider 必须顶层声明，严禁 build 内联**（2026-09-05 实踩，电子书页空白转圈）：在 build 里 `ref.watch(StreamProvider(...))` 内联构造，每次重建都是**全新 provider**（初始态 loading）→「订阅→重建→再新建」死循环，页面永远加载。修复：抽到 `features/<module>/providers/` 顶层变量。
+10. **`FScaffold` 和 forui 的 Sheet 路由都不提供 `Material` 祖先**（2026-09-12 实踩两次，`debugCheckHasMaterial` 崩）：forui 自家输入控件（`FTextField` 等）是在内部自建 `Material` 才没事，但 `material_ui` 的原生 `TextField`/`Chip`/`Switch`/`InkWell` 等**必须有 Material 祖先**，否则抛「No Material widget found」。
+    - 页面主体（`FScaffold.child` 里）：外面包一层 `Material(type: MaterialType.transparency)`。先例 `todo_page.dart` 搜索行（40 高 · r10 的自绘框里塞原生 `TextField`；别改用 `FTextField`——它自带 label/内边距/最小高度，塞进自绘小框要大量覆写，破坏 1:1）。
+    - 底部抽屉：**`SheetSurface` 已统一提供 `Material(type: MaterialType.transparency)`**（2026-09-12 加在 `lib/app/ui/sheet_surface.dart`），所以**只要抽屉走 SheetSurface 就自动安全**——本次一次修好全 App（todo/笔记/密码库/提醒/习惯/阅读器/文件互传…的抽屉都走它）。
+    - ⚠️ **原判断有误已修正**：第一轮我断定「抽屉里能用是因为抽屉路由自带 Material」——错。抽屉里的原生 `TextField` 一样会崩（待办「新增/编辑」抽屉的标题输入框、高级搜索关键词框），只是当时没走到那一步。结论：**没有任何一处会白送 Material，自绘容器里的原生 Material 控件一律显式补**。
+11. **画布的 `fill_container` 在 Flutter 里不会自动发生**（2026-09-12 实踩，Tab 药丸显矮）：`Row`/`Column` 默认 `crossAxisAlignment: center`，子项只 hug 内容高度，不会填满交叉轴。画布写 `height: fill_container` 的选中态分段/药丸（如待办 Tab 栏选中白底 = 填满 34-3-3=28 的内轨）必须显式 `crossAxisAlignment: CrossAxisAlignment.stretch`。
+12. **反过来：不自绘约束的 `Container(alignment:)` 会「撑满」，反而毁掉 hug 宽**（2026-09-12 实踩，高级搜索弹层 chip 全竖排）：`Container(width:, height:, alignment:)` 在**两轴都给死**时是安全的（居中生效）；但只给一种约束 + `alignment` 时，它会包一层 `Align`，而 `Align` 在拿到**有界松约束**时会**撑满可用宽高**。`Wrap` 给子项的正是「width 有界（=行宽）、height 无界」的约束 → 每个 chip 被拉成整行宽，一行只放得下一个（现象：优先级/标签/到期时间三组 chip 全部竖着排了一整屏）。
+    - 要「宽度 hug + 高度定死且文字垂直居中」：**用 `Row(mainAxisSize: MainAxisSize.min)` 当 child**（高度由外层 Container 的 `height` 传下来是 tight，Row 撑满该高度并在交叉轴居中；宽度仍是内容宽）。或 `Center(widthFactor: 1)`。
+    - 判断口诀：**`alignment` 只在「尺寸已定」的盒子（圆形图标盘、固定宽高按钮）里安全；任何希望「被内容撑开」的 chip/tag/pill 都不要写 `alignment`**。
+    - 同类排查：`grep -rn "alignment: Alignment" lib` 后逐个看那个 Container 有没有同时给死 width/height。
+13. **token 收口会导致「描边/底盘与底同色」而消失**（2026-09-12 实踩）：本主题把 `muted` 与 `border` 都映射到 `pal.surfaceElevated`（`app_theme.dart`），于是画布那几级灰（#F6F7F9 底 / #E5E7EB 描边 / #D8DDE5 开关轨 / #D9DDE4 把手）在 token 里**是同一个值**。直接 `Border.all(color: t.colors.border)` 画在 `color: t.colors.muted` 的盒子上 → 描边看不见；把手 / 未选中图标盘贴在白卡或同色底上 → 淡到几乎不存在。
+    - 修法：本模块用 `todo_sheets.dart` 的 `_stepUp(c, {alpha})`——`Color.alphaBlend(次字色 α, 抬升面)`，按画布需要压深一档（把手/开关轨 0.26、描边/图标盘 0.14）。亮色偏灰、暗色偏亮，跟随 9 套外观 + 深浅。
+    - ⚠️ 别为了「对齐画布 hex」去硬编码颜色（红线：取色一律走 token / AppTokens）；也别忘了检查「底与描边用了同一个 token」这种**同色陷阱**——它在白卡上是好的（灰描边 vs 白底），只在同色底上失效。
+14. **抽屉/弹窗里的 `TextEditingController`：绝不能在「await 抽屉 Future 之后」dispose**（2026-09-12 实踩，高级搜索点「取消」整屏红）：
+    现象是 `'_dependents.isEmpty': is not true`（`framework.dart` → `InheritedElement.debugDeactivated`，`_InactiveElements._deactivateRecursively` 调用栈）。
+    - **根因**：`showFSheet` / `showFDialog` / `Navigator.push` 返回的 Future **在 `Navigator.pop()` 那一刻就 complete 了**（`Route.didPop` → `didComplete` → `_popCompleter.complete`，见 `flutter/src/widgets/routes.dart`），但抽屉此时**还在播退场动画、widget 树仍活着**，里面的 `TextField` 仍挂在 controller 上。此时 `dispose()` 就是在「仍被依赖」时销毁它 → 断言炸。
+    - ❌ 错误写法：`try { return await _showTodoSheet(...); } finally { ctrl.dispose(); }`，以及 `showFDialog(...).then((_) => ctrl.dispose())`。
+    - ✅ 正确写法：controller 交给一个**持有它的 `State`**，由 `State.dispose()` 释放（框架在元素 deactivate 之后的 unmount 阶段才调它，那时子树早拆干净）。本模块先例：`todo_sheets.dart` 的 `_ControllerHost`（`late final controller` + `dispose()` 覆写），用法 `builder: (c) => _ControllerHost(initialText: x, builder: (c, ctrl) => ...)`。
+    - ⚠️ 反向的坑**不会崩，只会漏**：`showXxxSheet` 里 `final c = TextEditingController();` 而**从不** dispose（先例：`habit_page.dart` 新建习惯、`password_vault_page.dart` 解锁/编辑条目、`note_editor_page.dart` 的 `_promptText`）——不崩但泄漏。新增时按 `_ControllerHost` 写；存量待统一（建议把它提到 `lib/app/ui/` 供全 App 复用）。
+    - 判断口诀：**controller 的生死只跟「持有它的 State」绑定，永远不跟「抽屉的 Future」绑定。**
+    - 同类排查：`grep -rn "finally" -A4 lib --include=*.dart | grep -B1 "dispose()"`。
+
+15. **输入框「常态可见描边 + 点空白/滚动失焦收键盘 + 多行随内容增长」（2026-09-12 定，全 App 适用）**：
+    - **描边**：主题用 `FThemeData.toApproximateMaterialTheme()` 从 `textFieldStyles` 生成 `inputDecorationTheme`（含默认描边 + focused 主题色变体）。因此**原生 `TextField` 不写 `border:` 即可自动拿到全 App 一致的「常态描边 + 聚焦高亮」**；**写 `border: InputBorder.none` 会把描边整个抹掉**（实踩：新增待办标题框「看不到边框」即此因）。forui `FTextField` 同理继承主题描边。仅「外层已是带描边容器、内嵌搜索框」这类特例（如 `todo_sheets.dart` 的标签搜索框）才允许 `InputBorder.none`。
+    - **失焦收键盘**：移动端 Flutter 默认 `_EditableTextTapOutsideAction` 只在 desktop 解焦、touch 不解焦（源码 `editable_text.dart`）。本工程**单一收口点**：① `app.dart` 根 `Actions` 覆盖 `EditableTextTapOutsideIntent`（`CallbackAction` 直接 `intent.focusNode.unfocus()`），覆盖全 App 所有输入框（原生 + forui 都走 `EditableText` → 该 intent）；② `sheet_surface.dart` 另加 `NotificationListener<ScrollNotification>`，抽屉内任意滚动开始（`ScrollStartNotification`）即 `unfocus()`，兜底惯性滚动（无 pointer-down）。**新增输入框不用各自写 `onTapOutside`**，统一由这两处兜底。
+    - **多行增长**：`FTextField(maxLines: null, minLines: N)` —— `maxLines` 只限制同时可见行数、不限制可输入行数；给 null 则每多一行容器长高一行，超出抽屉档位由 `_sheetScaffold` 中间滚动区承担。新增「描述/备注」类多行输入照此写，不要写死固定行高。
+    - 关联红线见 `SKILL.md` #14；完整交互规格见 `interaction-patterns.md` §5。
 
 ## 页面操作规范（共有交互，2026-09-05 起：新功能必须遵循，旧功能逐步对齐）
 > 目的：让同类操作在全 App 有同一心智。每新增一种共有交互先在此登记模式与组件，再实现；改先例时同步本节。
+> 📌 **弹窗高度（三档制 30/50/80%）、弹窗标题字号（17/Bold，字段禁止更大）、键盘扣减** 统一见
+> `interaction-patterns.md` §1，本节不重复；共有交互模式总目录与**待办设计总结**也在那份文档。
 
 1. **查询/筛选规范**：类型、标签、状态等**筛选条件一律收进底部「查询抽屉」**，用通用骨架 `showFilterSheet`（`lib/app/ui/filter_sheet.dart`）：
    - 抽屉结构固定：顶部 = 左侧「查询」标题 + 右侧**关闭裸图标（无背景色）**（关闭 = 不应用更改）；中部 = 选项区可滚动；底部 = **「重置 / 查询」两按钮恒贴抽屉底部**（选项区吸收剩余空间，Column 填充分配不用 min；`FButton.outline` 重置 + `GradientButton` 查询，等宽各半）。
@@ -83,6 +111,16 @@ test/
    - 交互语义：打开时**草稿从已生效条件初始化**；「重置」= 清空草稿（`refresh()` 刷新，不关闭）；「查询」= 应用草稿并关闭（草稿经 pop 值返回，record 传递）。
    - 列表页形态：关键词搜索保留页内输入框（实时过滤，不走抽屉）；筛选入口 = 搜索框右侧的筛选按钮（激活时主题强调色软底 + 生效条件数角标），**高度写死 40 对齐 forui sm 输入框 touch 规格高度**（`FTappable` 不上报固有高度，IntrinsicHeight 方案会把按钮压小——实踩勿回退）；已生效条件在搜索框下方以**可点掉的摘要 chip** 呈现。先例：`note_list_page.dart`（分类单选 + 标签多选）。
 2. **新增/编辑保存规范**：保存/提交按钮**统一固定底部**——页面结构 = `Column[ Expanded(内容滚动区), 底部固定操作条(SafeArea + GradientButton，页面水平边距) ]`，按钮不随内容滚动、头部不放重复的保存入口（编辑态头部仅保留返回/删除等非保存动作）。先例：`note_editor_page.dart`（底部「保存笔记」渐变条，保存中变字+禁用）。
-3. 既有相关约定（见「UI 体系」）：小功能新增/编辑/展示一律底部抽屉 `SheetSurface` + `GradientButton`；破坏性确认才用 `showFDialog`。
+3. 既有相关约定（见「UI 体系」）：小功能新增/编辑/展示一律底部抽屉 `SheetSurface` + `GradientButton`；**破坏性确认也走底部抽屉**（`showFDialog` 已全量废弃，见 SKILL.md 红线 #10；待办先例 `showTodoConfirmSheet`）。弹窗**高度档位与标题字号**规则见 `interaction-patterns.md` §1。
+4. **单击条目 = 查看详情（只读），不是直接进编辑**（2026-09-12 用户定）：列表卡片/卡片视图/日历里点一条记录，先出**只读详情抽屉**，要改再点详情底部的「编辑」进表单。
+   - 先例：待办 `todo_sheets.dart` 的 `showTodoDetailSheet` + `openTodoDetail`（三处入口共用同一函数，避免「某处点开是查看、某处点开是编辑」的漂移）。
+   - 出口动作用**枚举 + 目标条目**回传给调用方（`TodoDetailResult(action, item)`），抽屉本身不直接开表单；带 item 是必需的——详情里点父任务能**再开一层个详情**下钻，里层点「编辑」时动作逐层上抛，要编辑的是里层那一条。
+   - ⚠️ PC 桌面端列表单击是**直接进编辑表单**（`TodoDetailDialog` 的 readOnly 只用于看父任务）；移动端按上面的约定改为查看优先，**这是有意的不一致，别照 PC 改回去**。
+   - 详情页字段口径以 PC 只读态为准：标题/描述/优先级/截止时间/截止提醒/重复/关联父任务/标签/状态/完成时间。
+5. **列表页滚动吸顶以「搜索框」为锚点**（2026-09-12 用户定，全局强制）：完整规格见 `interaction-patterns.md` §4。
+   - 搜索行**常驻视口顶部**（滚动中随时可改关键词），统计横幅 / 条件 chip / **Tab 栏**都随滚动移出。
+   - ❌ **禁止**做成「Tab 栏吸顶」——待办旧实现即如此，2026-09-12 用户明确纠正。
+   - 先例（全 App 唯一）：`todo_page.dart` 的 `_PinnedHeader`（`SliverPersistentHeader(pinned: true)`）+ `_kSearchRowExtent`（吸顶高度与搜索行边距**同源常量**推导，禁止两处各写一套数值）。
+   - 吸顶行底色用 `AppTokens.pinnedCover(context, extent)`（背板同源渐变），**只在 `shrinkOffset > 0`（已滚动吸顶）时铺**，静止时完全透明透出页面背板；⚠️ 不要用 `AppTokens.pageTint`（透明色，会把滚过的内容透出来），也别直接刷 `colors.background` 纯色（静止时灰白挡板切断背景）。判断吸顶覆盖**不能**用 delegate 的 `overlapsContent`（pinned 头恒 false）或给 `SliverPersistentHeader` 传 `overlapsContent:`（该 widget 无此参数，编译报错）。
 
 

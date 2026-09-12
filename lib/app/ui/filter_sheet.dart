@@ -65,10 +65,10 @@ class _FilterSheetState<R> extends State<_FilterSheet<R>> {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
-    // 页面规范：查询抽屉**固定高度 50vh**——「重置 / 查询」绝对贴底不浮动，
-    // 选项超出时中部滚动（minHeight 方案在 forui Sheet 的松约束下按钮会随
-    // 内容收起，实踩后改为定高）。要调抽屉高度改这里的 0.5。
-    final sheetHeight = MediaQuery.of(context).size.height * 0.5;
+    // 弹窗三档制：查询抽屉 = md（50%）**定高**——「重置 / 查询」绝对贴底不浮动，
+    // 选项超出时中部滚动（minHeight 方案在 forui Sheet 的松约束下按钮会随内容收起，
+    // 实踩后改为定高）。高度不再手写比例，统一走共享规则（含键盘扣减）。
+    final sheetHeight = sheetMaxHeight(context, SheetSize.md);
     return SheetSurface(
       child: SizedBox(
         height: sheetHeight,
@@ -90,9 +90,7 @@ class _FilterSheetState<R> extends State<_FilterSheet<R>> {
                     Expanded(
                       child: Text(
                         widget.title,
-                        style: t.typography.body.lg.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                        style: sheetTitleStyle(context),
                       ),
                     ),
                     GestureDetector(

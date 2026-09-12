@@ -1,8 +1,10 @@
 // 待办模块底部抽屉集合（页面操作规范：弹窗一律使用底部抽屉 showFSheet + SheetSurface）
 //
 // 覆盖 PC 待办的全部交互：状态选择、标签多选+新建、父任务多选、自定义日期时间选择、
-// 记录进展（写入主题对话）、筛选条件、新增/编辑表单。所有抽屉统一走 _sheetScaffold
-// （顶部标题+关闭、中部滚动、底部按钮），高度按内容自适应（高表单 0.92vh）。
+// 记录进展（写入主题对话）、显示风格（画布 09）、高级搜索（画布 10）、详情查看（只读）、
+// 新增/编辑表单、操作菜单与确认。常规抽屉统一走 _sheetScaffold（顶部标题+关闭、中部滚动、
+// 底部按钮），高度按内容自适应（高表单 0.92vh）；画布 09/10 两个弹层改走 _sheetPanel
+// （把手 + 白卡 r24 + 内边距 20 + 平铺 gap，逐项对齐画布间距）。
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
@@ -13,15 +15,22 @@ import '../../../app/ui/sheet_surface.dart';
 import '../../conversation/repositories/conversation_repository.dart';
 import '../models/todo.dart';
 import '../models/todo_filter.dart';
+import '../models/todo_view_mode.dart';
 import '../providers/todo_providers.dart';
 
 // ===================== 统一抽屉入口（键盘兼容） =====================
 //
-// ⚠️ 关键修复：forui 的 showFSheet 默认 mainAxisMaxRatio = 9/16。键盘弹起时，
-// 路由可用高度变为「屏幕高 - 键盘高」，抽屉最大高度被压成剩余高度的 56% → 极小、看不到内容。
-// 这里把 mainAxisMaxRatio 置空，改由 _sheetScaffold 的 maxRatio(0.9) 决定高度；配合
-// resizeToAvoidBottomInset:true（默认），键盘弹起时整个抽屉抬到键盘上方，内容在
-// SingleChildScrollView 内可滚动，不再被压扁。
+// ⚠️ 高度三档制（2026-09-12 定）：抽屉高度**只允许三档**——sm 30% / md 50% / lg 80%
+// （见 [SheetSize]），由 `_sheetScaffold(size:)` / `_sheetPanel(size:)` 声明。
+// 这里把 forui 的 mainAxisMaxRatio 放宽到 0.8，只作为「禁止 100vh」的最后一道保险；
+// 真正的高度由档位算，**不要再在调用点写裸比例**。
+//
+// ⚠️ 键盘与高度（2026-09-12 实测，改前必读）：
+// forui 的 `ShiftedSheet` 用 `dy = max(0, H − 抽屉高 − 键盘高)` 摆放抽屉 ——
+// 抽屉高一旦超过「H − 键盘高」，dy 就被夹到 0 停止上移，抽屉**不会抬到键盘上方**，
+// 而是被键盘从底下盖住（现象：底部「保存」被键盘压住、点不到）。
+// 所以档位高度一律按**可用高度**算：`(屏幕高 − 键盘高) × 档位`（见 [sheetMaxHeight]），
+// 这样键盘展开时抽屉依旧完整落在键盘上方，多出来的内容由中间滚动区承担。
 Future<T?> _showTodoSheet<T>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -30,10 +39,13 @@ Future<T?> _showTodoSheet<T>({
     showFSheet<T>(
       context: context,
       side: FLayout.btt,
-      mainAxisMaxRatio: null,
+      mainAxisMaxRatio: AppTokens.sheetHeightLg,
       resizeToAvoidBottomInset: resizeToAvoidBottomInset,
       builder: builder,
     );
+
+// 弹窗高度三档（`SheetSize`）、「可用高度」算法（`sheetMaxHeight`）与标题样式
+// （`sheetTitleStyle`）统一收口在 `lib/app/ui/sheet_surface.dart`，本文件只消费。
 
 // ===================== 通用抽屉骨架 =====================
 
@@ -42,31 +54,32 @@ Widget _sheetScaffold({
   required String title,
   required Widget body,
   List<Widget>? bottomBar,
-  double maxRatio = 0.9,
-  bool keyboard = false,
+  required SheetSize size,
 }) {
   final t = context.theme;
-  final h = MediaQuery.of(context).size.height * maxRatio;
-  // 键盘抽屉改为「整张抬到键盘上方」（见 _showTodoSheet），无需在内部塞入
-  // viewInsets.bottom 的额外底部留白（那会把内容高度再吃掉一截→压扁）。
-  // 这里仅给表单类抽屉一点点底部呼吸距离。
+  final h = sheetMaxHeight(context, size);
+  // 左右内边距 = AppTokens.pagePadding（**与页面正文同一个值**，2026-09-12 收口到 16），
+  // 且**只在这里应用一次**。
+  // ⚠️ 历史坑（2026-09-12 用户实指「弹窗左右 padding 应该和全局保持一致」）：
+  // 键盘型弹窗曾给 SheetSurface 传 `padding: fromLTRB(16,16,16,16)`，而下面标题行 /
+  // 滚动区 / 底部条又各写 16 → 左右实际 32，比页面正文多一倍。现在统一由骨架内部提供。
+  const hpad = AppTokens.pagePadding;
   return SheetSurface(
-    padding: keyboard ? const EdgeInsets.fromLTRB(16, 16, 16, 16) : null,
-    child: ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: h),
+    // 定高（不是上限）：档位 = 弹窗规格，同档弹窗高度必然一致（详情/编辑要求对齐）；
+    // 内容超出时由中间 Expanded 里的 SingleChildScrollView 滚动，绝不撑高抽屉。
+    child: SizedBox(
+      height: h,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            padding: const EdgeInsets.fromLTRB(hpad, 14, hpad, 0),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
                     title,
-                    style: t.typography.body.lg.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: sheetTitleStyle(context),
                   ),
                 ),
                 GestureDetector(
@@ -82,13 +95,13 @@ Widget _sheetScaffold({
           ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              padding: const EdgeInsets.fromLTRB(hpad, 14, hpad, 8),
               child: body,
             ),
           ),
           if (bottomBar != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: const EdgeInsets.fromLTRB(hpad, 8, hpad, 16),
               child: Row(spacing: 10, children: bottomBar),
             ),
         ],
@@ -148,6 +161,7 @@ Future<String?> showTodoStatusSheet(
     builder: (c) => _sheetScaffold(
       context: c,
       title: '状态',
+      size: SheetSize.sm,
       body: StatefulBuilder(
         builder: (c, setInner) {
           return Wrap(
@@ -185,7 +199,7 @@ Future<List<String>?> showTodoTagSheet(
     builder: (c) => _sheetScaffold(
       context: c,
       title: '标签',
-      keyboard: true,
+      size: SheetSize.md,
       body: StatefulBuilder(
         builder: (c, setInner) {
           return Column(
@@ -299,6 +313,7 @@ Future<List<String>?> showTodoParentSheet(
     builder: (c) => _sheetScaffold(
       context: c,
       title: '父任务',
+      size: SheetSize.md,
       body: StatefulBuilder(
         builder: (c, setInner) {
           if (pool.isEmpty) {
@@ -364,6 +379,7 @@ Future<DateTime?> showTodoDateTimeSheet(
     builder: (c) => _sheetScaffold(
       context: c,
       title: dateOnly ? '结束日期' : '日期与时间',
+      size: SheetSize.md,
       body: StatefulBuilder(
         builder: (c, setInner) {
           Widget buildGrid() {
@@ -598,7 +614,7 @@ Future<void> showRecordProgressSheet(
     builder: (c) => _sheetScaffold(
       context: c,
       title: '记录进展',
-      keyboard: true,
+      size: SheetSize.md,
       body: StatefulBuilder(
         builder: (c, setInner) {
           final t = c.theme;
@@ -665,57 +681,261 @@ Future<void> showRecordProgressSheet(
   );
 }
 
-// ===================== 6. 筛选条件 =====================
+// ===================== 6. 显示风格（画布 09） =====================
 
+/// 显示风格三选一（画布「09 待办·设置 显示风格」）。
+/// 点击某一项立即返回该风格并关闭 —— 画布文案「切换后立即生效」。
+Future<TodoViewMode?> showTodoViewModeSheet(
+  BuildContext context, {
+  required TodoViewMode current,
+}) => _showTodoSheet<TodoViewMode?>(
+  context: context,
+  builder: (c) {
+    final t = c.theme;
+    return _sheetPanel(
+      context: c,
+      gap: 12,
+      children: [
+        _sheetHandle(c),
+        Text(
+          '显示风格',
+          style: t.typography.body.lg.copyWith(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: t.colors.foreground,
+          ),
+        ),
+        Text(
+          '选择待办的展示方式，切换后立即生效',
+          style: t.typography.body.xs.copyWith(
+            fontSize: 12,
+            color: t.colors.mutedForeground,
+          ),
+        ),
+        for (final opt in kTodoViewModeOptions)
+          _viewModeOption(
+            c,
+            mode: opt.$1,
+            title: opt.$2,
+            desc: opt.$3,
+            selected: current == opt.$1,
+            onTap: () => Navigator.pop(c, opt.$1),
+          ),
+      ],
+    );
+  },
+);
+
+IconData _viewModeIcon(TodoViewMode m) => switch (m) {
+  TodoViewMode.list => FLucideIcons.list,
+  TodoViewMode.card => FLucideIcons.grid2x2,
+  TodoViewMode.calendar => FLucideIcons.calendarDays,
+};
+
+/// 显示风格选项（画布 8:19 / 8:20 / 8:21）：
+/// 选中 = 底 主色12% + 描边 主色35% + 图标盘 主色16% + 图标/状态符 主色；
+/// 未选中 = 底 #F6F7F9 + 图标盘 #E5E7EB + 图标 #6B7280 + 状态符 #C7CDD6。
+/// ⚠️ 画布中标题文字两种状态都是 #1C1C1E（不是主色），不要「顺手」染紫。
+Widget _viewModeOption(
+  BuildContext c, {
+  required TodoViewMode mode,
+  required String title,
+  required String desc,
+  required bool selected,
+  required VoidCallback onTap,
+}) {
+  final t = c.theme;
+  final p = t.colors.primary;
+  return FTappable(
+    onPress: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: selected ? p.withValues(alpha: 0.12) : t.colors.muted,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: selected ? p.withValues(alpha: 0.35) : Colors.transparent,
+        ),
+      ),
+      child: Row(
+        spacing: 12,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              // 未选中图标盘（画布 8:20 = #E5E7EB）要**比行底 #F6F7F9 深一档**才看得见；
+              // 直接用 `t.colors.border` 会与行底同色（同为 surfaceElevated）→ 盘子消失。
+              color: selected ? p.withValues(alpha: 0.16) : _stepUp(c, alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              _viewModeIcon(mode),
+              size: 16,
+              color: selected ? p : t.colors.mutedForeground,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 2,
+              children: [
+                Text(
+                  title,
+                  style: t.typography.body.sm.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: t.colors.foreground,
+                  ),
+                ),
+                Text(
+                  desc,
+                  style: t.typography.body.xs.copyWith(
+                    fontSize: 11,
+                    color: t.colors.mutedForeground,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            selected ? FLucideIcons.circleDot : FLucideIcons.circle,
+            size: 18,
+            color: selected
+                ? p
+                : t.colors.mutedForeground.withValues(alpha: 0.45),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// ===================== 7. 高级搜索（画布 10） =====================
+
+/// 高级搜索弹层（画布「10 待办·高级搜索弹窗」）。
+/// 分组顺序与画布一致：优先级 / 标签 / 到期时间 / 其他 / 分组方式。
+/// 状态（进行中/已完成/已取消/全部）由列表页 Tab 栏承担，本弹层不再重复提供。
 Future<TodoFilterState?> showTodoFilterSheet(
   BuildContext context, {
   required TodoFilterState current,
   required List<TodoTagView> tags,
-}) async {
+}) {
   // TodoFilterState 字段为 final，草稿用本地可变变量承载，确认时再构造新状态
   var draftPriority = current.priority;
-  var draftStatus = current.status;
   final draftTags = {...current.tagKeys};
+  var draftDue = current.dueGroup;
   var draftShowCompleted = current.showCompleted;
   var draftShowTemplates = current.showTemplates;
   var draftGroup = current.groupBy;
+  var draftSearch = current.search;
+
   return _showTodoSheet<TodoFilterState?>(
     context: context,
-    builder: (c) => StatefulBuilder(
-      builder: (c, setInner) {
-        final t = c.theme;
-        Widget section(String title, List<Widget> chips) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: t.typography.body.sm.copyWith(
-                          color: t.colors.mutedForeground)),
-                  const SizedBox(height: 8),
-                  Wrap(spacing: 8, runSpacing: 8, children: chips),
-                  const SizedBox(height: 16),
-                ],
-              );
-
-          final groupLabels = {
-            TodoGroupBy.none: '无',
-            TodoGroupBy.status: '按状态',
-            TodoGroupBy.due: '按到期',
-            TodoGroupBy.parent: '按父任务',
-          };
-
-          return _sheetScaffold(
+    // 关键词框的 controller 交给 _ControllerHost 持有，**不能**在本函数里
+    // `try { await ... } finally { ctrl.dispose(); }`——见该类注释（点「取消」必崩）。
+    builder: (c) => _ControllerHost(
+      initialText: current.search,
+      builder: (c, kwCtrl) => StatefulBuilder(
+        builder: (c, setInner) {
+          final t = c.theme;
+          return _sheetPanel(
             context: c,
-            title: '筛选',
-            body: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                section(
-                  '优先级',
-                [
-                  _choiceChip(c, label: '全部', selected: draftPriority == null,
-                      onTap: () => setInner(() => draftPriority = null)),
+            gap: 14,
+            children: [
+              _sheetHandle(c),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '高级搜索',
+                      style: t.typography.body.lg.copyWith(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: t.colors.foreground,
+                      ),
+                    ),
+                  ),
+                  FTappable(
+                    onPress: () => Navigator.pop(c),
+                    child: Text(
+                      '取消',
+                      style: t.typography.body.sm.copyWith(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: t.colors.mutedForeground,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // 关键词框（画布 8:96，高 44 · r12 · 底 #F6F7F9 · 描边 #E5E7EB）
+              // 描边走 _stepUp：底与描边若都取同一个 surfaceElevated，描边等于看不见。
+              Container(
+                height: 44,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: t.colors.muted,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _stepUp(c, alpha: 0.14)),
+                ),
+                child: Row(
+                  spacing: 8,
+                  children: [
+                    Icon(
+                      FLucideIcons.search,
+                      size: 15,
+                      color: t.colors.mutedForeground,
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: kwCtrl,
+                        onChanged: (v) => setInner(() => draftSearch = v),
+                        style: t.typography.body.sm.copyWith(
+                          fontSize: 14,
+                          color: t.colors.foreground,
+                        ),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                          border: InputBorder.none,
+                          hintText: '搜索标题或描述',
+                          hintStyle: t.typography.body.sm.copyWith(
+                            fontSize: 14,
+                            color: t.colors.mutedForeground,
+                          ),
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        kwCtrl.clear();
+                        setInner(() => draftSearch = '');
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Icon(
+                        FLucideIcons.x,
+                        size: 13,
+                        color: t.colors.mutedForeground,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _groupLabel(c, '优先级'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _pill(
+                    c,
+                    label: '不限',
+                    selected: draftPriority == null,
+                    onTap: () => setInner(() => draftPriority = null),
+                  ),
                   for (final p in kTodoPriorityOptions)
-                    _choiceChip(
+                    _pill(
                       c,
                       label: p.$2,
                       selected: draftPriority == p.$1,
@@ -724,27 +944,14 @@ Future<TodoFilterState?> showTodoFilterSheet(
                     ),
                 ],
               ),
-              section(
-                '状态',
-                [
-                  _choiceChip(c, label: '全部', selected: draftStatus == null,
-                      onTap: () => setInner(() => draftStatus = null)),
-                  for (final s in kTodoStatusOptions)
-                    _choiceChip(
-                      c,
-                      label: s.$2,
-                      selected: draftStatus == s.$1,
-                      color: statusMeta(s.$1).color,
-                      onTap: () => setInner(() => draftStatus = s.$1),
-                    ),
-                ],
-              ),
-              if (tags.isNotEmpty)
-                section(
-                  '标签（任一命中）',
-                  [
+              if (tags.isNotEmpty) ...[
+                _groupLabel(c, '标签'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
                     for (final tag in tags)
-                      _choiceChip(
+                      _pill(
                         c,
                         label: tag.name,
                         selected: draftTags.contains(tag.key),
@@ -759,89 +966,364 @@ Future<TodoFilterState?> showTodoFilterSheet(
                       ),
                   ],
                 ),
-              section(
-                '显示',
-                [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('显示已完成'),
-                      FSwitch(
-                        value: draftShowCompleted,
-                        onChange: (v) =>
-                            setInner(() => draftShowCompleted = v),
-                      ),
-                    ],
+              ],
+              _groupLabel(c, '到期时间'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _pill(
+                    c,
+                    label: '不限',
+                    selected: draftDue == null,
+                    onTap: () => setInner(() => draftDue = null),
                   ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('显示重复模板'),
-                      FSwitch(
-                        value: draftShowTemplates,
-                        onChange: (v) =>
-                            setInner(() => draftShowTemplates = v),
-                      ),
-                    ],
-                  ),
+                  for (final g in kDueRangeOptions)
+                    _pill(
+                      c,
+                      label: kDueRangeLabels[g]!,
+                      selected: draftDue == g,
+                      onTap: () => setInner(() => draftDue = g),
+                    ),
                 ],
               ),
-              section(
-                '分组方式',
-                [
+              _groupLabel(c, '其他'),
+              _switchRow(
+                c,
+                label: '包含已完成',
+                value: draftShowCompleted,
+                onChanged: (v) => setInner(() => draftShowCompleted = v),
+              ),
+              _switchRow(
+                c,
+                label: '包含重复模板',
+                value: draftShowTemplates,
+                onChanged: (v) => setInner(() => draftShowTemplates = v),
+              ),
+              _groupLabel(c, '分组方式'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
                   for (final g in TodoGroupBy.values)
-                    _choiceChip(
+                    _pill(
                       c,
-                      label: groupLabels[g]!,
+                      label: _groupLabelOf(g),
                       selected: draftGroup == g,
                       onTap: () => setInner(() => draftGroup = g),
                     ),
                 ],
               ),
-            ],
-          ),
-          bottomBar: [
-            Expanded(
-              child: FButton(
-                variant: FButtonVariant.outline,
-                onPress: () => setInner(() {
-                  draftPriority = null;
-                  draftStatus = null;
-                  draftTags.clear();
-                  draftShowCompleted = true;
-                  draftShowTemplates = false;
-                  draftGroup = TodoGroupBy.none;
-                }),
-                child: const Text('重置'),
-              ),
-            ),
-            Expanded(
-              child: GradientButton(
-                label: '应用',
-                icon: FLucideIcons.check,
-                onPress: () => Navigator.pop(
-                  c,
-                  TodoFilterState(
-                    search: current.search,
-                    priority: draftPriority,
-                    status: draftStatus,
-                    tagKeys: draftTags,
-                    showCompleted: draftShowCompleted,
-                    showTemplates: draftShowTemplates,
-                    groupBy: draftGroup,
+              Row(
+                spacing: 10,
+                children: [
+                  Expanded(
+                    child: FTappable(
+                      onPress: () => setInner(() {
+                        draftPriority = null;
+                        draftTags.clear();
+                        draftDue = null;
+                        draftShowCompleted = true;
+                        draftShowTemplates = false;
+                        draftSearch = '';
+                        kwCtrl.clear();
+                      }),
+                      child: _sheetButton(
+                        c,
+                        label: '重置',
+                        bg: t.colors.muted,
+                        fg: t.colors.mutedForeground,
+                      ),
+                    ),
                   ),
-                ),
+                  Expanded(
+                    child: FTappable(
+                      onPress: () => Navigator.pop(
+                        c,
+                        TodoFilterState(
+                          search: draftSearch,
+                          priority: draftPriority,
+                          status: current.status,
+                          tagKeys: draftTags,
+                          dueGroup: draftDue,
+                          showCompleted: draftShowCompleted,
+                          showTemplates: draftShowTemplates,
+                          groupBy: draftGroup,
+                        ),
+                      ),
+                      child: _sheetButton(
+                        c,
+                        label: '查看结果',
+                        bg: t.colors.primary,
+                        fg: t.colors.primaryForeground,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        );
-      },
+            ],
+          );
+        },
+      ),
     ),
   );
 }
 
-// ===================== 7. 新增 / 编辑表单 =====================
+/// 只负责「创建 + 在正确时机释放」一个 `TextEditingController` 的壳。
+///
+/// ⚠️ **为什么需要它（2026-09-12 实踩，点「取消」整屏红）**：
+/// `showFSheet` / `Navigator.push` 返回的 Future **在 `Navigator.pop()` 那一刻就 complete 了**
+/// （`Route.didPop` → `didComplete` → `_popCompleter.complete`，见 flutter/src/widgets/routes.dart），
+/// 而抽屉此时还在播退场动画、widget 树仍然活着、里面的 `TextField` 仍然依赖这个 controller。
+/// 若在 `await` 之后（例如 `try/finally`）立刻 `dispose()`，就是在「仍被依赖」时把它销毁，
+/// 触发框架断言 `'_dependents.isEmpty': is not true`
+/// （framework.dart → `InheritedElement.debugDeactivated`）。
+///
+/// 交给 `State.dispose()` 时机才对：框架在元素 **deactivate 之后** 的 unmount 阶段才调用它，
+/// 那时整棵抽屉子树早已拆干净。⚠️ 新增任何「抽屉里用 controller」的地方都照这个壳写，
+/// 别再用「await 之后 dispose」的写法。
+class _ControllerHost extends StatefulWidget {
+  const _ControllerHost({required this.initialText, required this.builder});
+
+  final String initialText;
+  final Widget Function(BuildContext context, TextEditingController controller)
+  builder;
+
+  @override
+  State<_ControllerHost> createState() => _ControllerHostState();
+}
+
+class _ControllerHostState extends State<_ControllerHost> {
+  late final TextEditingController controller = TextEditingController(
+    text: widget.initialText,
+  );
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, controller);
+}
+
+// ===================== 8. 弹层公共件（画布 09/10 共用） =====================
+
+/// 底部弹层外壳：白底 + 顶部 24 圆角 + 20 内边距，子项统一 [gap] 间距。
+/// 画布两个弹层的间距都是**平铺 14/12**（把手与标题之间也是），所以这里用扁平
+/// Column(spacing:) 而不是分组小标题自带缩进，才能与画布逐像素对上。
+Widget _sheetPanel({
+  required BuildContext context,
+  required double gap,
+  required List<Widget> children,
+  SheetSize size = SheetSize.lg,
+}) {
+  // 画布 09/10 两屏都标注了 `hug_contents`（内容自适应），故本弹层把档位当**上限**：
+  // 内容少就 hug，超出档位才滚动。其余待办弹窗走 _sheetScaffold 的定高档位。
+  final maxH = sheetMaxHeight(context, size);
+  return SheetSurface(
+    color: context.theme.colors.card,
+    borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+    child: ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxH),
+      child: Padding(
+        // 统一到全局边距（用户规则：弹窗左右 padding 与全局一致；2026-09-12 由 20 收口到 16）
+        padding: const EdgeInsets.all(AppTokens.pagePadding),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: gap,
+            children: children,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// 顶部把手（画布 8:16 / 8:92：36×4 · #D9DDE4 · r2 · 左对齐）
+/// 底色走 [_stepUp]：`t.colors.border` 与白卡同系，直接用会淡到看不见。
+Widget _sheetHandle(BuildContext c) => Align(
+  alignment: Alignment.centerLeft,
+  child: Container(
+    width: 36,
+    height: 4,
+    decoration: BoxDecoration(
+      color: _stepUp(c),
+      borderRadius: BorderRadius.circular(2),
+    ),
+  ),
+);
+
+/// 分组小标题（画布 8:100 等：12/Bold #6B7280）
+Widget _groupLabel(BuildContext c, String text) => Text(
+  text,
+  style: c.theme.typography.body.xs.copyWith(
+    fontSize: 12,
+    fontWeight: FontWeight.w700,
+    color: c.theme.colors.mutedForeground,
+  ),
+);
+
+/// 胶囊 chip（画布 8:102 等：h30 · r999 · 左右 12 / 上下 7）
+/// 胶囊 chip（画布 8:102 等：宽度 hug · 高 30 · r999 · 左右 12 · 文字 13）
+///
+/// ⚠️ **不要**用 `Container(alignment: Alignment.center)` 做居中（2026-09-12 实踩）：
+/// 带 `alignment` 的 Container 会包一层 `Align`，而 `Align` 在拿到「有界 maxWidth」的
+/// 松约束时会**撑满整行**——`Wrap` 恰好给子项这种约束，于是每个 chip 都被拉成整行宽，
+/// 一行只放得下一个，优先级/标签/到期时间三组全部竖着排（高级搜索弹层就是这么崩观的）。
+/// 正确写法：`Row(mainAxisSize: min)`——宽度自适应，高度吃到 Container 的 tight 30
+/// 并在交叉轴居中，视觉与画布一致。
+Widget _pill(
+  BuildContext c, {
+  required String label,
+  required bool selected,
+  Color? color,
+  VoidCallback? onTap,
+}) {
+  final t = c.theme;
+  final col = color ?? t.colors.primary;
+  return FTappable(
+    onPress: onTap,
+    child: Container(
+      height: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: selected ? col.withValues(alpha: 0.14) : t.colors.muted,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: t.typography.body.sm.copyWith(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected ? col : t.colors.mutedForeground,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// 开关行（画布 8:137 / 8:141：#F6F7F9 · r14 · 左右 12 / 上下 10 · 标签 14 + 右侧 44×26 开关）
+Widget _switchRow(
+  BuildContext c, {
+  required String label,
+  required bool value,
+  required ValueChanged<bool> onChanged,
+}) {
+  final t = c.theme;
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: t.colors.muted,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Row(
+      spacing: 10,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: t.typography.body.sm.copyWith(
+              fontSize: 14,
+              color: t.colors.foreground,
+            ),
+          ),
+        ),
+        _CanvasSwitch(value: value, onChanged: onChanged),
+      ],
+    ),
+  );
+}
+
+/// 画布规格开关（8:139 开 / 8:143 关）：44×26 · r13 · 内边距 2 · 22Ø 圆形滑块 ·
+/// 开 = 主色实底（滑块靠右）/ 关 = 灰轨（滑块靠左）。
+/// 不用 forui 的 `FSwitch`：它的尺寸与描边跟画布这枚对不上，塞进 26 高的行里也不齐。
+class _CanvasSwitch extends StatelessWidget {
+  const _CanvasSwitch({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return FTappable(
+      onPress: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: AppTokens.fast,
+        curve: AppTokens.standard,
+        width: 44,
+        height: 26,
+        padding: const EdgeInsets.all(2),
+        alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+        decoration: BoxDecoration(
+          color: value ? t.colors.primary : _stepUp(context, alpha: 0.26),
+          borderRadius: BorderRadius.circular(13),
+        ),
+        child: Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: t.colors.primaryForeground,
+            shape: BoxShape.circle,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 「抬升面再压一档」的灰（画布 #D9DDE4 把手 / #D8DDE5 开关轨 / #E5E7EB 描边这一档）。
+///
+/// 本主题把 `muted` 与 `border` 收口成同一个 `surfaceElevated`，画布那几级灰在 token 里
+/// 无从直取——若直接用 `t.colors.border`，在**同为抬升面底色**的盒子（关键词框、开关轨）
+/// 上会「描边与底同色 = 看不见」，把手贴在白卡上也会淡到几乎不存在。
+/// 故按当前主题的次字色叠一层派生：亮色偏灰、暗色偏亮，跟随 9 套外观 + 深浅自动适配。
+Color _stepUp(BuildContext c, {double alpha = 0.26}) => Color.alphaBlend(
+  c.theme.colors.mutedForeground.withValues(alpha: alpha),
+  c.theme.colors.muted,
+);
+
+/// 弹层底部按钮（画布 8:156 / 8:158：h46 · r14 · 15/SemiBold）
+Widget _sheetButton(
+  BuildContext c, {
+  required String label,
+  required Color bg,
+  required Color fg,
+}) => Container(
+  height: 46,
+  alignment: Alignment.center,
+  decoration: BoxDecoration(
+    color: bg,
+    borderRadius: BorderRadius.circular(14),
+  ),
+  child: Text(
+    label,
+    style: c.theme.typography.body.sm.copyWith(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+      color: fg,
+    ),
+  ),
+);
+
+/// 分组方式的中文名（弹层 chip 与列表页 chip 共用同一套字面量）
+String _groupLabelOf(TodoGroupBy g) => switch (g) {
+  TodoGroupBy.none => '不分组',
+  TodoGroupBy.status => '按状态',
+  TodoGroupBy.due => '按到期',
+  TodoGroupBy.parent => '按父任务',
+};
+
+// ===================== 9. 新增 / 编辑表单 =====================
 
 class _TodoEditSheet extends StatefulWidget {
   const _TodoEditSheet({
@@ -931,29 +1413,40 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
     return _sheetScaffold(
       context: context,
       title: widget.initial.createTime == null ? '新增待办' : '编辑待办',
-      keyboard: true,
-      maxRatio: 0.94,
+      size: SheetSize.lg,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 标题输入 —— **必须显示边框**（2026-09-12 用户实指「输入框没显示边框」）。
+          // 原来写了 `border: InputBorder.none`，把主题给的描边整个抹掉了。
+          // 删掉即可：`FThemeData.toApproximateMaterialTheme()` 会用 forui 的
+          // `textFieldStyles` 生成 Material 的 `inputDecorationTheme`（含默认描边与
+          // focused 变体），所以「不写 border」反而自动拿到全 App 一致的
+          // 「常态可见描边 + 聚焦主题色描边」。
           TextField(
             controller: _titleC,
             autofocus: true,
+            style: t.typography.body.lg.copyWith(
+              // 弹窗内条目标题字号（比弹窗标题小 2 号 = 15）
+              fontSize: AppTokens.sheetFieldTitleFontSize,
+              fontWeight: FontWeight.w700,
+            ),
             decoration: InputDecoration(
               hintText: '标题',
-              border: InputBorder.none,
               hintStyle: t.typography.body.lg
                   .copyWith(color: t.colors.mutedForeground),
             ),
-            style: t.typography.body.lg
-                .copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
+          // 描述 —— **容器高度随输入内容增长**（2026-09-12 用户要求）。
+          // forui 的 maxLines 只限制「同时可见的行数」、不限制可输入行数：
+          // 给 null → 每多一行容器就长高一行；超出抽屉档位的部分由 `_sheetScaffold`
+          // 中间滚动区的 SingleChildScrollView 承担，不会把抽屉撑破。
           FTextField(
             control: FTextFieldControl.managed(controller: _descC),
             hint: '描述（可选）',
             minLines: 2,
-            maxLines: 4,
+            maxLines: null,
           ),
           const SizedBox(height: 16),
           // 优先级
@@ -1359,6 +1852,364 @@ Future<TodoItem?> showTodoEditSheet(
   );
 }
 
+// ===================== 10. 待办详情（只读查看） =====================
+
+/// 详情抽屉的出口动作（查看态本身不写数据，只把「接下来去哪」交回调用方）
+enum TodoDetailAction { edit, record }
+
+/// 详情抽屉的返回结果：动作 + 目标条目。
+///
+/// 为什么要带 item：详情里点父任务 chip 会**再开一层详情**（和 PC 一样可层层往下看），
+/// 在里层点「编辑」时结果会逐层上抛，此时要编辑的是里层那一条，不是外层传进去的那条。
+class TodoDetailResult {
+  const TodoDetailResult(this.action, this.item);
+
+  final TodoDetailAction action;
+  final TodoItem item;
+}
+
+/// 待办详情（只读）。
+///
+/// 入口：列表卡片 / 卡片视图 / 日历当天抽屉 —— 单击待办**先看，再决定改不改**，
+/// 要修改时点底部「编辑」进表单（PC 列表单击是直接进编辑表单，移动端按交互约定
+/// 改为查看优先，避免误触即改）。删除 / 记录进展在列表卡片的 ⋯ 菜单里，本抽屉只
+/// 提供「记录进展」和「编辑」两个出口。
+///
+/// 展示字段对齐 PC TodoDetailDialog 只读态：标题 / 描述 / 优先级 / 截止时间 /
+/// 截止提醒 / 重复 / 关联父任务（可点进父任务详情）/ 标签 / 状态 / 完成时间，
+/// 另补「子任务进度」「创建时间」（列表卡片上已有这两项，详情里给全）。
+Future<TodoDetailResult?> showTodoDetailSheet(
+  BuildContext context,
+  WidgetRef ref,
+  TodoItem item, {
+  required List<TodoItem> allTodos,
+  required List<TodoTagView> tags,
+}) {
+  return _showTodoSheet<TodoDetailResult>(
+    context: context,
+    builder: (c) {
+      final t = c.theme;
+      final status = effectiveStatus(item);
+      final meta = statusMeta(status);
+      final done = status == 'completed';
+      final tagMap = {for (final tg in tags) tg.key: tg};
+      final tagViews = [
+        for (final k in item.tags)
+          if (tagMap.containsKey(k)) tagMap[k]!,
+      ];
+      final parents = parentItemsOf(allTodos, item);
+      final progress = subtaskProgress(allTodos, item.key);
+      final due = formatTodoDue(item.dueDate);
+      final recur = formatRecurrence(
+        item.recurrenceRule,
+        item.recurrenceInterval,
+        item.recurrenceWeekdays,
+      );
+      final remind = item.deadlineReminder == 1
+          ? '提前 ${item.remindCount} 次 · 每 ${item.remindInterval} '
+                '${item.remindIntervalUnit == 'hour' ? '小时' : '分钟'}'
+          : '关闭';
+
+      return _sheetScaffold(
+        context: c,
+        title: '待办详情',
+        size: SheetSize.lg,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 标题：弹窗内条目标题字号（比弹窗标题小 2 号 = 15）
+            Text(
+              item.title,
+              style: t.typography.body.lg.copyWith(
+                fontSize: AppTokens.sheetFieldTitleFontSize,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+                decoration: done ? TextDecoration.lineThrough : null,
+                color: done ? t.colors.mutedForeground : t.colors.foreground,
+              ),
+            ),
+            const SizedBox(height: 10),
+            // 状态 / 优先级（+ 重复模板/实例标记）
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _softChip(c, meta.label, meta.color, 0.15),
+                _softChip(
+                  c,
+                  '优先级 ${priorityLabel(item.priority)}',
+                  priorityColor(item.priority),
+                  0.14,
+                ),
+                if (item.isTemplate)
+                  _softChip(c, '重复模板', t.colors.primary, 0.12),
+                if (item.isRecurrenceInstance == 1)
+                  _softChip(c, '重复实例', t.colors.primary, 0.12),
+              ],
+            ),
+            if (item.description.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                item.description,
+                style: t.typography.body.md.copyWith(
+                  fontSize: 14,
+                  height: 1.55,
+                  color: t.colors.mutedForeground,
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Divider(height: 1, thickness: 1, color: t.colors.border),
+            const SizedBox(height: 4),
+            _detailRow(
+              c,
+              FLucideIcons.calendarClock,
+              '到期时间',
+              _detailText(c, due ?? '未设置', primary: due != null),
+            ),
+            _detailRow(c, FLucideIcons.bell, '截止提醒', _detailText(c, remind)),
+            _detailRow(
+              c,
+              FLucideIcons.repeat,
+              '重复',
+              _detailText(
+                c,
+                recur.isEmpty
+                    ? '不重复'
+                    : (item.recurrenceEnd == null
+                          ? recur
+                          : '$recur · 至 ${item.recurrenceEnd}'),
+              ),
+            ),
+            _detailRow(
+              c,
+              FLucideIcons.link,
+              '关联父任务',
+              parents.isEmpty
+                  ? _detailText(c, '无')
+                  : Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final p in parents)
+                          _parentChip(c, ref, p, allTodos: allTodos, tags: tags),
+                      ],
+                    ),
+            ),
+            _detailRow(
+              c,
+              FLucideIcons.tag,
+              '标签',
+              tagViews.isEmpty
+                  ? _detailText(c, '无')
+                  : Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final tag in tagViews)
+                          _softChip(
+                            c,
+                            tag.name,
+                            _parseColor(tag.color),
+                            0.14,
+                          ),
+                      ],
+                    ),
+            ),
+            if (progress != null)
+              _detailRow(
+                c,
+                FLucideIcons.listChecks,
+                '子任务',
+                _detailText(c, '已完成 ${progress.done}/${progress.total} 项'),
+              ),
+            _detailRow(
+              c,
+              FLucideIcons.clock,
+              '创建时间',
+              _detailText(c, item.createTime ?? '—'),
+            ),
+            if ((item.completedTime ?? '').isNotEmpty)
+              _detailRow(
+                c,
+                FLucideIcons.check,
+                '完成时间',
+                _detailText(c, item.completedTime!, primary: true),
+              ),
+          ],
+        ),
+        bottomBar: [
+          Expanded(
+            child: FTappable(
+              onPress: () => Navigator.pop(
+                c,
+                TodoDetailResult(TodoDetailAction.record, item),
+              ),
+              child: _sheetButton(
+                c,
+                label: '记录进展',
+                bg: t.colors.muted,
+                fg: t.colors.foreground,
+              ),
+            ),
+          ),
+          Expanded(
+            child: GradientButton(
+              label: '编辑',
+              icon: FLucideIcons.pencil,
+              height: 46,
+              onPress: () => Navigator.pop(
+                c,
+                TodoDetailResult(TodoDetailAction.edit, item),
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+/// 打开待办详情抽屉，并按出口动作继续（编辑 → 表单；记录进展 → 记录抽屉）。
+///
+/// 列表卡片 / 卡片视图 / 日历当天抽屉三处入口**共用本函数**，保证单击行为一致、
+/// 不出现「某处点开是查看、某处点开是编辑」的漂移。
+Future<void> openTodoDetail(
+  BuildContext context,
+  WidgetRef ref,
+  TodoItem item, {
+  required List<TodoItem> allTodos,
+  required List<TodoTagView> tags,
+}) async {
+  final result = await showTodoDetailSheet(
+    context,
+    ref,
+    item,
+    allTodos: allTodos,
+    tags: tags,
+  );
+  if (result == null || !context.mounted) return;
+  switch (result.action) {
+    case TodoDetailAction.edit:
+      final saved = await showTodoEditSheet(
+        context,
+        ref,
+        initial: result.item,
+        allTodos: allTodos,
+        tags: tags,
+      );
+      if (saved != null) {
+        await ref.read(todoRepositoryProvider).upsertTodo(saved);
+      }
+    case TodoDetailAction.record:
+      await showRecordProgressSheet(context, ref, result.item);
+  }
+}
+
+/// 父任务 chip：点击进入该父任务的只读详情；在里层产生的动作逐层上抛给最外层入口。
+Widget _parentChip(
+  BuildContext c,
+  WidgetRef ref,
+  TodoItem parent, {
+  required List<TodoItem> allTodos,
+  required List<TodoTagView> tags,
+}) {
+  final t = c.theme;
+  return FTappable(
+    onPress: () async {
+      final r = await showTodoDetailSheet(
+        c,
+        ref,
+        parent,
+        allTodos: allTodos,
+        tags: tags,
+      );
+      // 内层抽屉已关闭，此时栈顶是当前这一层 → 原样带出去，交给上层（或页面）处理
+      if (r != null && c.mounted) Navigator.pop(c, r);
+    },
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: t.colors.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(FLucideIcons.cornerDownRight, size: 12, color: t.colors.primary),
+          const SizedBox(width: 4),
+          Text(
+            parent.title,
+            style: t.typography.body.xs.copyWith(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: t.colors.primary,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// 详情里的软底 chip（状态 / 优先级 / 标签 / 重复标记；同色底 alpha · r10 · 11/SemiBold）
+Widget _softChip(BuildContext c, String label, Color color, double alpha) =>
+    Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: alpha),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        style: c.theme.typography.body.xs.copyWith(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
+
+/// 详情信息行：左「图标 + 固定宽标签」，右值自适应（值可能是文本，也可能是 chip 组）
+Widget _detailRow(BuildContext c, IconData icon, String label, Widget value) {
+  final t = c.theme;
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 7),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 15, color: t.colors.mutedForeground),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 62,
+          child: Text(
+            label,
+            style: t.typography.body.sm.copyWith(
+              fontSize: 13,
+              color: t.colors.mutedForeground,
+            ),
+          ),
+        ),
+        Expanded(child: value),
+      ],
+    ),
+  );
+}
+
+/// 详情里的文本型值（primary = 主色强调，用于「到期时间」「完成时间」）
+Widget _detailText(BuildContext c, String text, {bool primary = false}) {
+  final t = c.theme;
+  return Text(
+    text,
+    style: t.typography.body.md.copyWith(
+      fontSize: 14,
+      height: 1.4,
+      fontWeight: primary ? FontWeight.w600 : FontWeight.w400,
+      color: primary ? t.colors.primary : t.colors.foreground,
+    ),
+  );
+}
+
 // ===================== 8. 操作菜单 + 删除确认 =====================
 
 /// 单条待办的操作项
@@ -1377,6 +2228,7 @@ Future<void> showTodoActionSheet(
     builder: (c) => _sheetScaffold(
       context: c,
       title: '操作',
+      size: SheetSize.sm,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1466,6 +2318,7 @@ Future<bool?> showTodoConfirmSheet(
     builder: (c) => _sheetScaffold(
       context: c,
       title: title,
+      size: SheetSize.sm,
       body: Text(
         message,
         style: c.theme.typography.body.md,
