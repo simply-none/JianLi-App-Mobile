@@ -1,9 +1,11 @@
-// 首页 Dashboard —— 1:1 对齐画布「01 首页·浅色」（390×844，ardot 文件 724742991017068 节点 5:26）
+// 首页 Dashboard —— 对齐画布「01b 首页·内容区改版」（390×844，ardot 文件 725406574448005 节点 3:1）
 //
 // 结构（画布规格）：状态栏 → 问候(22/Bold) + 日期(13/次要) → 英雄卡
 //   (168 高 · 圆角 22 · 品牌渐变 + 背景纹理 · 「今日专注」时长 34/Bold + 习惯进度条 318×6)
-//   → 区块标题(色条 3×16 + 16/Bold) + 三宫格磁贴（效率概览 / 快捷入口 / 更多功能 同一套样式）。
-// 内容区 itemSpacing 统一 20、左右边距 16；背景装饰（渐隐波浪 + 极淡圆/环）由 app.dart
+//   → 效率概览 = 「今日节奏」整卡（三列指标 + 主色渐变迷你进度条 + 1px 竖分隔）
+//   → 快捷入口 = 4 张白卡（语义强调色渐变瓷片 30×30 + 白图标 + 主/辅双行）
+//   → 更多功能 = 单卡列表（主色渐变瓷片 34×34 + 白图标 + 标题/副标 + chevron + 行分隔线）。
+// 内容区区块间距统一 20、卡头间距 12、左右边距 16；背景装饰（渐隐波浪 + 极淡圆/环）由 app.dart
 // 根背板统一绘制，页面保持透明透出，无白边。底部导航由 main_shell 的 footer 预留高度。
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,20 +20,22 @@ import '../../../app/ui/tap_scale.dart';
 import '../../../core/sync/device_nickname.dart';
 import '../providers/dashboard_providers.dart';
 
-/// 快捷入口磁贴（图标 / 标签 / 副标 / 路由）—— 与改动前的首页 4 个入口一致，
-/// 样式改套「效率概览」同款磁贴；4 列窄格放不下副标，此处副标留空（dense 模式不渲染）。
-const _quickEntries = <(IconData, String, String, String)>[
-  (FLucideIcons.keyRound, '2FA', '', '/twofactor'),
-  (FLucideIcons.qrCode, '扫码', '', '/qr'),
-  (FLucideIcons.listTodo, '记待办', '', '/todo'),
-  (FLucideIcons.refreshCw, '同步', '', '/sync'),
+/// 快捷入口磁贴（图标 / 语义强调色索引 / 标签 / 副标 / 路由）——
+/// 图标底盘 = 实色语义渐变瓷片 + 白色图标（对齐工具页视觉语言），
+/// 语义色取 AppTokens.accents 强调色板（换肤安全：固定语义色不随 hue 平移）。
+const _quickEntries = <(IconData, int, String, String, String)>[
+  (FLucideIcons.keyRound, 1, '2FA', '动态口令', '/twofactor'),
+  (FLucideIcons.qrCode, 3, '扫码', '识别记录', '/qr'),
+  (FLucideIcons.listTodo, 2, '记待办', '快速记录', '/todo'),
+  (FLucideIcons.refreshCw, 5, '同步', '数据同步', '/sync'),
 ];
 
-/// 更多功能磁贴（图标 / 标题 / 副标 / 路由）
+/// 更多功能条目（图标 / 标题 / 副标 / 路由）—— 单卡列表化，
+/// 图标 = 主色渐变瓷片 + 白色图标（跟随主题主色派生）。
 const _moreEntries = <(IconData, String, String, String)>[
-  (FLucideIcons.zap, '效率中心', '打卡 · 专注', '/efficiency'),
-  (FLucideIcons.bookOpen, '内容库', '笔记 · 对话', '/content'),
-  (FLucideIcons.wrench, '工具箱', '密保 · 保险箱', '/tools'),
+  (FLucideIcons.zap, '效率中心', '打卡 · 专注 · 统计报告', '/efficiency'),
+  (FLucideIcons.bookOpen, '内容库', '笔记 · 对话 · 收藏', '/content'),
+  (FLucideIcons.wrench, '工具箱', '密保 · 保险箱 · 2FA', '/tools'),
 ];
 
 /// 首页
@@ -71,24 +75,24 @@ class DashboardPage extends ConsumerWidget {
                   ),
                   orElse: () => const _HeroPlaceholder(),
                 ),
-                // —— 效率概览（画布原区块） ——
+                // —— 效率概览（改版：整卡「今日节奏」，三列指标 + 主色渐变迷你进度条） ——
                 const SizedBox(height: 20),
                 const _SectionHeader(title: '效率概览'),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
                 statsAsync.maybeWhen(
-                  data: (s) => _TileRow(entries: _overviewEntries(s)),
-                  orElse: () => const _TilesPlaceholder(),
+                  data: (s) => _PaceCard(stats: s),
+                  orElse: () => const _PaceCardPlaceholder(),
                 ),
-                // —— 快捷入口（原 4 个快捷磁贴，套用与效率概览一致的样式） ——
+                // —— 快捷入口（改版：语义渐变瓷片 + 白图标 + 主/辅双行文字） ——
                 const SizedBox(height: 20),
                 const _SectionHeader(title: '快捷入口'),
-                const SizedBox(height: 20),
-                const _TileRow.dense(entries: _quickEntries),
-                // —— 更多功能（原「效率 / 内容与工具」入口，套用与效率概览一致的样式） ——
+                const SizedBox(height: 12),
+                const _QuickRow(entries: _quickEntries),
+                // —— 更多功能（改版：单卡列表，主色瓷片行 + chevron + 行分隔线） ——
                 const SizedBox(height: 20),
                 const _SectionHeader(title: '更多功能'),
-                const SizedBox(height: 20),
-                const _TileRow(entries: _moreEntries),
+                const SizedBox(height: 12),
+                const _MoreCard(entries: _moreEntries),
               ],
             ),
           ),
@@ -98,22 +102,381 @@ class DashboardPage extends ConsumerWidget {
   }
 }
 
-/// 效率概览磁贴（数据驱动）
-List<(IconData, String, String, String)> _overviewEntries(DashboardStats s) => [
-  (
-    FLucideIcons.calendarCheck,
-    '习惯',
-    '今日 ${s.habitsDoneToday} / ${s.habitsTotal}',
-    '/habit',
-  ),
-  (
-    FLucideIcons.timer,
-    '番茄钟',
-    '${s.pomodoroToday} 轮 · ${s.pomodoroTodayMinutes}m',
-    '/pomodoro',
-  ),
-  (FLucideIcons.listTodo, '待办', '${s.todosActive} 项待处理', '/todo'),
-];
+/// 「今日节奏」整卡（效率概览改版）：卡头标题 + 三列指标
+/// （标签 11/次要 · 数值 17/Bold · 主色渐变迷你进度条），列间 1px 分隔线。
+class _PaceCard extends StatelessWidget {
+  const _PaceCard({required this.stats});
+
+  final DashboardStats stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    final habitProgress = stats.habitsTotal == 0
+        ? 0.0
+        : (stats.habitsDoneToday / stats.habitsTotal).clamp(0.0, 1.0);
+    // 番茄钟条形比例的参考目标：8 轮/日（展示用启发值，仅驱动进度条比例）
+    const pomoGoal = 8;
+    final pomoProgress = (stats.pomodoroToday / pomoGoal).clamp(0.0, 1.0);
+    final todoDone = (stats.todosTotal - stats.todosActive).clamp(
+      0,
+      stats.todosTotal,
+    );
+    final todoProgress = stats.todosTotal == 0
+        ? 0.0
+        : (todoDone / stats.todosTotal).clamp(0.0, 1.0);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+      decoration: BoxDecoration(
+        color: t.colors.card,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(color: t.colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '今日节奏',
+            style: t.typography.body.md.copyWith(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: t.colors.foreground,
+            ),
+          ),
+          const SizedBox(height: 12),
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _metric(
+                    context,
+                    label: '习惯',
+                    value: '${stats.habitsDoneToday} / ${stats.habitsTotal}',
+                    progress: habitProgress,
+                  ),
+                ),
+                _vDivider(context),
+                Expanded(
+                  child: _metric(
+                    context,
+                    label: '番茄钟',
+                    value: '${stats.pomodoroToday} 轮',
+                    progress: pomoProgress,
+                  ),
+                ),
+                _vDivider(context),
+                Expanded(
+                  child: _metric(
+                    context,
+                    label: '待办',
+                    value: '${stats.todosActive} 项',
+                    progress: todoProgress,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 单列指标：标签 / 数值 / 迷你进度条（轨道 border 色，填充 = 主色渐变）
+  Widget _metric(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required double progress,
+  }) {
+    final t = context.theme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: t.typography.body.xs.copyWith(
+            fontSize: 11,
+            color: t.colors.mutedForeground,
+          ),
+        ),
+        const SizedBox(height: 7),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: t.typography.body.md.copyWith(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: t.colors.foreground,
+          ),
+        ),
+        const SizedBox(height: 7),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: SizedBox(
+            height: 4,
+            child: Stack(
+              children: [
+                Container(color: t.colors.border),
+                FractionallySizedBox(
+                  widthFactor: progress,
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: AppTokens.accentGradient(t.colors.primary),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _vDivider(BuildContext context) => Container(
+    width: 1,
+    margin: const EdgeInsets.symmetric(horizontal: 12),
+    color: context.theme.colors.border,
+  );
+}
+
+/// 「今日节奏」加载占位（同形态卡片 + 转圈）
+class _PaceCardPlaceholder extends StatelessWidget {
+  const _PaceCardPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return Container(
+      height: 96,
+      decoration: BoxDecoration(
+        color: t.colors.card,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(color: t.colors.border),
+      ),
+      child: const Center(child: FCircularProgress()),
+    );
+  }
+}
+
+/// 一排快捷入口磁贴（4 列等分、等高，外层 IntrinsicHeight + stretch）。
+class _QuickRow extends StatelessWidget {
+  const _QuickRow({required this.entries});
+
+  final List<(IconData, int, String, String, String)> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < entries.length; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            Expanded(
+              child: _QuickTile(
+                icon: entries[i].$1,
+                accent: AppTokens.accent(entries[i].$2),
+                title: entries[i].$3,
+                subtitle: entries[i].$4,
+                route: entries[i].$5,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 单个快捷入口磁贴：实色语义渐变瓷片（30×30 · r10）+ 白色图标，
+/// 下方主标签 13/SemiBold + 副标 10/次要。
+class _QuickTile extends StatelessWidget {
+  const _QuickTile({
+    required this.icon,
+    required this.accent,
+    required this.title,
+    required this.subtitle,
+    required this.route,
+  });
+
+  final IconData icon;
+  final Color accent;
+  final String title;
+  final String subtitle;
+  final String route;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return TapScale(
+      onTap: () => context.push(route),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(11, 11, 11, 10),
+        decoration: BoxDecoration(
+          color: t.colors.card,
+          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+          border: Border.all(color: t.colors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                gradient: AppTokens.accentGradient(accent),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 16, color: Colors.white),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t.typography.body.sm.copyWith(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: t.colors.foreground,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t.typography.body.xs.copyWith(
+                fontSize: 10,
+                color: t.colors.mutedForeground,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 「更多功能」单卡列表：每行 = 主色渐变瓷片（34×34 · r11）+ 白图标
+/// + 标题 13.5/SemiBold + 副标 11/次要 + 右侧 chevron，行间 1px 分隔线。
+class _MoreCard extends StatelessWidget {
+  const _MoreCard({required this.entries});
+
+  final List<(IconData, String, String, String)> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 4, 12, 4),
+      decoration: BoxDecoration(
+        color: t.colors.card,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(color: t.colors.border),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < entries.length; i++) ...[
+            if (i > 0) Container(height: 1, color: t.colors.border),
+            _MoreRow(
+              icon: entries[i].$1,
+              title: entries[i].$2,
+              subtitle: entries[i].$3,
+              route: entries[i].$4,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 「更多功能」单行条目（整行可点）
+class _MoreRow extends StatelessWidget {
+  const _MoreRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.route,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String route;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return TapScale(
+      // ⚠️ 三个 hub（效率中心/内容库/工具箱）是底部导航的分支根路由：
+      // 必须用 go 切换分支（底部 tab 同步高亮、indexedStack 保状态），
+      // 不能 push —— push 会把 hub 页压进首页分支的栈，导航还停在「首页」。
+      onTap: () => context.go(route),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                gradient: AppTokens.accentGradient(t.colors.primary),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 17, color: Colors.white),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.typography.body.sm.copyWith(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: t.colors.foreground,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.typography.body.xs.copyWith(
+                      fontSize: 11,
+                      color: t.colors.mutedForeground,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              FLucideIcons.chevronRight,
+              size: 16,
+              color: t.colors.mutedForeground,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// 问候 + 日期（画布：greeting 22/Bold，date 13/次要）
 class _Header extends StatelessWidget {
@@ -411,136 +774,6 @@ class _CountdownBanner extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// 一排磁贴（等分撑满；3 列间距 12 / 4 列（dense）间距 8）。
-/// 外层 IntrinsicHeight + stretch 保证同一行磁贴等高（副标换行也不会参差）。
-class _TileRow extends StatelessWidget {
-  const _TileRow({required this.entries}) : dense = false;
-
-  const _TileRow.dense({required this.entries}) : dense = true;
-
-  final List<(IconData, String, String, String)> entries;
-  final bool dense;
-
-  @override
-  Widget build(BuildContext context) {
-    final gap = dense ? 8.0 : 12.0;
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < entries.length; i++) ...[
-            if (i > 0) SizedBox(width: gap),
-            Expanded(
-              child: _Tile(
-                icon: entries[i].$1,
-                title: entries[i].$2,
-                subtitle: entries[i].$3,
-                route: entries[i].$4,
-                dense: dense,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// 单个磁贴（画布：fill · r16 · 卡底 · pad14 · itemSpacing6；图标 22 主色，标题 15/Bold，副标 12/次要）
-/// dense（4 列）时改为居中、收紧内边距与字号，避免窄格挤压换行。
-class _Tile extends StatelessWidget {
-  const _Tile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.route,
-    this.dense = false,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String route;
-  final bool dense;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.theme;
-    return TapScale(
-      onTap: () => context.push(route),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: dense ? 8 : 14,
-          vertical: 14,
-        ),
-        decoration: BoxDecoration(
-          color: t.colors.card,
-          borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-        ),
-        child: Column(
-          crossAxisAlignment: dense
-              ? CrossAxisAlignment.center
-              : CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: dense ? 20 : 22, color: t.colors.primary),
-            SizedBox(height: dense ? 8 : 6),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: dense ? TextAlign.center : TextAlign.left,
-              style: t.typography.body.md.copyWith(
-                fontSize: dense ? 13 : 15,
-                fontWeight: FontWeight.w700,
-                color: t.colors.foreground,
-              ),
-            ),
-            if (!dense) ...[
-              const SizedBox(height: 6),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: t.typography.body.xs.copyWith(
-                  fontSize: 12,
-                  color: t.colors.mutedForeground,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 磁贴加载占位（3 个等高空卡）
-class _TilesPlaceholder extends StatelessWidget {
-  const _TilesPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.theme;
-    return Row(
-      children: [
-        for (var i = 0; i < 3; i++) ...[
-          if (i > 0) const SizedBox(width: 12),
-          Expanded(
-            child: Container(
-              height: 100,
-              decoration: BoxDecoration(
-                color: t.colors.card,
-                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-              ),
-            ),
-          ),
-        ],
-      ],
     );
   }
 }

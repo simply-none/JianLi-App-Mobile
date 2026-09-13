@@ -84,7 +84,8 @@ class TodoCardView extends StatelessWidget {
     FThemeData t,
   ) {
     final done = effectiveStatus(item) == 'completed';
-    final meta = statusMeta(effectiveStatus(item));
+    // 用主题感知版：进行中取 t.colors.primary（换肤联动），与列表瓦片口径一致
+    final meta = statusMetaOf(context, effectiveStatus(item));
     final progress = subtaskProgress(allTodos, item.key);
     final selected = selectedKeys.contains(item.key);
     final tagViews = [

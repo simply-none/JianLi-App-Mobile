@@ -17,7 +17,6 @@ import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/sheet_form.dart';
-import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -155,10 +154,6 @@ class _HabitPageState extends ConsumerState<HabitPage> {
       );
     }
     final filtered = _filterHabits(habits);
-    // 卡片色盘按「全部习惯」中的位置取 → 筛选时同一习惯颜色不跳
-    final orderByKey = {
-      for (var i = 0; i < habits.length; i++) habits[i].key: i,
-    };
     return CustomScrollView(
       slivers: [
         // 头部横幅（随滚动移出）
@@ -220,7 +215,6 @@ class _HabitPageState extends ConsumerState<HabitPage> {
                     for (final habit in filtered)
                       _HabitCard(
                         habit: habit,
-                        accentIndex: orderByKey[habit.key] ?? 0,
                         checked: checked.contains(habit.key),
                         onToggle: () async {
                           await ref
@@ -859,7 +853,6 @@ class _HabitPageState extends ConsumerState<HabitPage> {
 class _HabitCard extends ConsumerWidget {
   const _HabitCard({
     required this.habit,
-    required this.accentIndex,
     required this.checked,
     required this.onToggle,
     required this.onTapDetails,
@@ -867,7 +860,6 @@ class _HabitCard extends ConsumerWidget {
   });
 
   final HabitItem habit;
-  final int accentIndex;
   final bool checked;
   final Future<void> Function() onToggle;
   final VoidCallback onTapDetails;
@@ -888,72 +880,112 @@ class _HabitCard extends ConsumerWidget {
         ref.watch(last7CheckedProvider(habit.key)).value ??
         List.filled(7, false);
 
+    // 方案 C：左侧图标用习惯名称首字代替日历图标（首字为空时回退 '?'）。
+    final initial = habit.name.isNotEmpty ? habit.name[0] : '?';
+
     return AppCard(
       elevation: 2,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       onTap: onTapDetails,
       onLongPress: onLongPress,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              SquircleBox(
-                size: 42,
-                radius: 13,
-                gradient: AppTokens.accentGradient(
-                  AppTokens.accent(accentIndex),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  FLucideIcons.calendarCheck,
-                  color: Colors.white,
-                  size: 20,
-                ),
+          // 名称首字渐变瓷片：参考 2FA 列表卡左侧图标，
+          // 40×40 · r13 普通圆角 · 主题主色渐变（跟随换肤）· 白字首字。
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              gradient: AppTokens.accentGradient(t.colors.primary),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              initial,
+              style: t.typography.body.lg.copyWith(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 中部：上排 名称 + 状态 chip；下排 7 点记录 + 频次
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      habit.name,
-                      style: t.typography.body.md.copyWith(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        decoration:
-                            checked ? TextDecoration.lineThrough : null,
-                        color: checked
-                            ? t.colors.mutedForeground
-                            : t.colors.foreground,
+                    // Flexible(loose) 让标题只占自身宽度 → 状态 chip 紧贴标题后（按设计图）；
+                    // 标题过长时在自身可用宽度内省略号截断，chip 始终有位置。
+                    Flexible(
+                      child: Text(
+                        habit.name,
+                        style: t.typography.body.md.copyWith(
+                          fontSize: 15,
+                          height: 1,
+                          fontWeight: FontWeight.w600,
+                          decoration:
+                              checked ? TextDecoration.lineThrough : null,
+                          color: checked
+                              ? t.colors.mutedForeground
+                              : t.colors.foreground,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '频次 ${habit.freqLabel}${habit.reminderTimes.isEmpty ? '' : ' · 提醒 ${habit.reminderTimes.join('/')}'}',
-                      style: t.typography.body.sm.copyWith(
-                        color: t.colors.mutedForeground,
+                    const SizedBox(width: 8),
+                    // height:1 让 chip 盒子紧贴字形，与 15 号标题(同样 height:1)
+                    // 在 CrossAxisAlignment.center 下精确垂直居中对齐（避行高比例错位）。
+                    TodoStatusChip(
+                      label: statusLabel,
+                      color: statusColor,
+                      fontSize: 10,
+                      height: 1,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    _MiniWeekDots(
+                      habit: habit,
+                      last7: last7,
+                      today: today,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${habit.freqLabel}${habit.reminderTimes.isEmpty ? '' : ' · ${habit.reminderTimes.join('/')}'}',
+                        style: t.typography.body.sm.copyWith(
+                          color: t.colors.mutedForeground,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
-              ),
-              // 右侧打卡圆点：点它才切换打卡（独立手势，不触发卡片详情）。
-              // 卡片内不再放删除入口（2026-09-13 用户定），删除统一走详情弹层底栏。
-              GestureDetector(
-                onTap: onToggle,
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: AnimatedCheck(checked: checked, size: 24),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          _WeekStrip(habit: habit, last7: last7, today: today),
-          const SizedBox(height: 10),
-          TodoStatusChip(label: statusLabel, color: statusColor),
+          const SizedBox(width: 10),
+          // 右侧打卡圆点：点它才切换打卡（独立手势，不触发卡片详情）。
+          // 卡片内不再放删除入口（2026-09-13 用户定），删除统一走详情弹层底栏。
+          GestureDetector(
+            onTap: onToggle,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: AnimatedCheck(checked: checked, size: 24),
+            ),
+          ),
         ],
       ),
     );
@@ -1017,6 +1049,49 @@ class _WeekStrip extends StatelessWidget {
               ),
             ),
           ],
+        );
+      }),
+    );
+  }
+}
+
+/// 极简 7 点记录（方案 C 卡片用，今天在最右）：
+/// 实心=已打卡 / 浅主色=未打卡(当天排程) / 灰=休息日；今日点略大并加主色环以强调。
+class _MiniWeekDots extends StatelessWidget {
+  const _MiniWeekDots({
+    required this.habit,
+    required this.last7,
+    required this.today,
+  });
+
+  final HabitItem habit;
+  final List<bool> last7; // index 0 = 今天
+  final DateTime today;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    final primary = AppTokens.accent(2);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(7, (j) {
+        final daysAgo = 6 - j; // j=6 → 今天（最右）
+        final date = today.subtract(Duration(days: daysAgo));
+        final idx = daysAgo; // last7 已按 0=今天 排列
+        final scheduled = habit.isScheduledOn(date);
+        final done = idx < last7.length && last7[idx];
+        final isToday = daysAgo == 0;
+        return Container(
+          width: isToday ? 8 : 6,
+          height: isToday ? 8 : 6,
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: scheduled
+                ? (done ? primary : primary.withValues(alpha: 0.3))
+                : t.colors.border,
+            border: isToday ? Border.all(color: primary, width: 1.5) : null,
+          ),
         );
       }),
     );

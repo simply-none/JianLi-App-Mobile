@@ -21,6 +21,7 @@ class RingProgress extends StatefulWidget {
     this.strokeWidth = 10,
     this.color,
     this.trackColor,
+    this.gradient,
   });
 
   /// 0.0 ~ 1.0
@@ -34,6 +35,9 @@ class RingProgress extends StatefulWidget {
 
   /// 轨道颜色（缺省 muted；放彩色底上时传半透明白）
   final Color? trackColor;
+
+  /// 进度弧渐变（可选；≥2 色时以顶部为起点顺时针扫掠渐变，覆盖 [color]）
+  final List<Color>? gradient;
 
   @override
   State<RingProgress> createState() => _RingProgressState();
@@ -101,6 +105,7 @@ class _RingProgressState extends State<RingProgress>
                 trackColor: widget.trackColor ?? t.colors.muted,
                 progressColor: widget.color ?? t.colors.primary,
                 strokeWidth: widget.strokeWidth,
+                gradientColors: widget.gradient,
               ),
             ),
             Center(child: widget.child),
@@ -117,12 +122,16 @@ class _RingPainter extends CustomPainter {
     required this.trackColor,
     required this.progressColor,
     required this.strokeWidth,
+    this.gradientColors,
   });
 
   final double progress;
   final Color trackColor;
   final Color progressColor;
   final double strokeWidth;
+
+  /// ≥2 色时进度弧用扫掠渐变（起点顶部，顺时针），覆盖 [progressColor]
+  final List<Color>? gradientColors;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -138,6 +147,18 @@ class _RingPainter extends CustomPainter {
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
       ..color = progressColor;
+    final colors = gradientColors;
+    if (colors != null && colors.length > 1) {
+      // 渐变映射到**可见弧长**：起点固定顶部，终点随进度推进 —— 短弧也能看到完整色阶
+      //（若固定铺满 360°，只画了一小段弧时取到的几乎同一个色 → 看起来像纯色）
+      final endAngle = -pi / 2 + 2 * pi * progress.clamp(0.02, 1.0);
+      arc.shader = SweepGradient(
+        startAngle: -pi / 2,
+        endAngle: endAngle,
+        colors: colors,
+        tileMode: TileMode.clamp,
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+    }
 
     canvas.drawCircle(center, radius, track);
     final rect = Rect.fromCircle(center: center, radius: radius);
@@ -147,5 +168,6 @@ class _RingPainter extends CustomPainter {
   @override
   bool shouldRepaint(_RingPainter oldDelegate) =>
       oldDelegate.progress != progress ||
-      oldDelegate.progressColor != progressColor;
+      oldDelegate.progressColor != progressColor ||
+      oldDelegate.gradientColors?.join(',') != gradientColors?.join(',');
 }

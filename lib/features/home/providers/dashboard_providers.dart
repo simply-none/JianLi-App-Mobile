@@ -12,6 +12,7 @@ class DashboardStats {
   const DashboardStats({
     required this.habitsTotal,
     required this.habitsDoneToday,
+    required this.todosTotal,
     required this.todosActive,
     required this.pomodoroToday,
     required this.pomodoroWorkMinutes,
@@ -22,6 +23,9 @@ class DashboardStats {
 
   final int habitsTotal;
   final int habitsDoneToday;
+
+  /// 待办总数（含已完成）——首页「今日节奏」卡待办进度条 = (total - active) / total
+  final int todosTotal;
   final int todosActive;
   final int pomodoroToday;
 
@@ -120,6 +124,7 @@ dashboardStatsProvider = FutureProvider<DashboardStats>((ref) async {
   return DashboardStats(
     habitsTotal: habitItems.length,
     habitsDoneToday: habitItems.where((h) => doneKeys.contains(h.key)).length,
+    todosTotal: todos.length,
     todosActive: activeTodos,
     pomodoroToday: pomodoroToday,
     pomodoroWorkMinutes: pomodoroWorkMinutes,

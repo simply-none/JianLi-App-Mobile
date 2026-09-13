@@ -207,14 +207,18 @@ class TodoStatusMeta {
 
 const Map<String, TodoStatusMeta> _kStatusMeta = {
   'not_started': TodoStatusMeta('未开始', Color(0xFF6b7280), Color(0x266b7280)),
-  'in_progress': TodoStatusMeta('进行中', Color(0xFF3b82f6), Color(0x263b82f6)),
+  // 进行中 = 主题色（默认「渐离紫」#9d5cff）。⚠️ 这里是**默认皮肤下的兜底色**：
+  // UI 渲染一律走 `statusMetaOf(context, s)`（取 t.colors.primary），
+  // 用户切到「远峰蓝 / 森野绿」等皮肤后才能跟着变。
+  'in_progress': TodoStatusMeta('进行中', Color(0xFF9d5cff), Color(0x269d5cff)),
   'blocked': TodoStatusMeta('阻塞', Color(0xFFef4444), Color(0x26ef4444)),
   'completed': TodoStatusMeta('已完成', Color(0xFF22c55e), Color(0x2622c55e)),
   'cancelled': TodoStatusMeta('已取消', Color(0xFF9ca3af), Color(0x269ca3af)),
-  'restart': TodoStatusMeta('重新开始', Color(0xFF8b5cf6), Color(0x268b5cf6)),
+  // 重新开始：原 #8b5cf6 与进行中的主题紫太近，两张卡并排分不出谁是谁 → 改青。
+  'restart': TodoStatusMeta('重新开始', Color(0xFF06b6d4), Color(0x2606b6d4)),
 };
 
-/// 取状态元信息，未命中回退「未开始」
+/// 取状态元信息（常量配色，无 context 场景用），未命中回退「未开始」
 TodoStatusMeta statusMeta(String? s) => _kStatusMeta[s] ?? _kStatusMeta['not_started']!;
 
 /// 优先级 → 文字色（对齐 PC 优先级配色）

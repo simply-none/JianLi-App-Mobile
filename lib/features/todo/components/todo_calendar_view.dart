@@ -7,6 +7,7 @@ import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../models/todo.dart';
 import '../models/todo_filter.dart';
+import 'todo_chips.dart';
 import 'todo_sheets.dart';
 
 /// 月历视图
@@ -77,7 +78,7 @@ class TodoCalendarView extends StatelessWidget {
                           height: 5,
                           margin: const EdgeInsets.symmetric(horizontal: 1),
                           decoration: BoxDecoration(
-                            color: statusMeta(effectiveStatus(it)).color,
+                            color: statusMetaFor(t, effectiveStatus(it)).color,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -195,7 +196,7 @@ Future<void> showTodoDaySheet(
                     : ListView.separated(
                         itemBuilder: (cx, i) {
                           final it = dayItems[i];
-                          final meta = statusMeta(effectiveStatus(it));
+                          final meta = statusMetaFor(t, effectiveStatus(it));
                           return FTappable(
                             onPress: () async {
                               Navigator.pop(c);

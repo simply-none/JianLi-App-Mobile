@@ -77,8 +77,20 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
     // ⚠️ 用 deactivate 而非 dispose：dispose 时 widget 已卸载，Riverpod 3.x 禁止再读 ref
     // （抛 "Using ref when ... unmounted is unsafe"）；deactivate 时 widget 仍 mounted，
     // 且打开子 sheet（showFSheet 是覆盖式 ModalRoute，不触发本页 deactivate）不受影响。
-    ref.read(twoFactorAccountsProvider.notifier).lock();
-    ref.read(twoFactorUnlockedProvider.notifier).lock();
+    //
+    // ⚠️⚠️ 不能在 deactivate 里直接写 provider 状态（lock() 内部 state = ...）：
+    // deactivate 恰好发生在导航重建帧（widget tree building）内，Riverpod 3 会抛
+    // "Tried to modify a provider while the widget tree was building"（2026-09-13 实踩）。
+    // 按 Riverpod 官方建议「延迟修改」：趁 mounted 捕获 notifier，帧末回调里
+    // 若元素确已移除（!mounted）才真正锁定；若只是树内搬移（reparent）则跳过。
+    final accounts = ref.read(twoFactorAccountsProvider.notifier);
+    final unlocked = ref.read(twoFactorUnlockedProvider.notifier);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        accounts.lock();
+        unlocked.lock();
+      }
+    });
     super.deactivate();
   }
 

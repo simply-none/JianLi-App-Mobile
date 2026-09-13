@@ -16,6 +16,8 @@ class SoftChip extends StatelessWidget {
     required this.color,
     this.alpha = 0.14,
     this.padding = const EdgeInsets.all(4),
+    this.fontSize = 11,
+    this.height,
     this.leading,
     this.onRemove,
     this.onTap,
@@ -29,6 +31,13 @@ class SoftChip extends StatelessWidget {
 
   final EdgeInsetsGeometry padding;
 
+  /// 字号（默认 11；卡片内高密度场景可传入更小字号）
+  final double fontSize;
+
+  /// 行高倍数（null = 沿用主题 typography 默认；高密度卡片传 1 让盒子紧贴字形，
+  /// 与同行标题精确垂直居中对齐）。
+  final double? height;
+
   /// 左侧前置件（小图标 / 色点）
   final Widget? leading;
 
@@ -41,6 +50,11 @@ class SoftChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    final labelStyle = t.typography.body.xs.copyWith(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w600,
+      color: color,
+    );
     final chip = Container(
       padding: padding,
       decoration: BoxDecoration(
@@ -53,11 +67,7 @@ class SoftChip extends StatelessWidget {
           if (leading != null) ...[leading!, const SizedBox(width: 4)],
           Text(
             label,
-            style: t.typography.body.xs.copyWith(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
+            style: labelStyle.copyWith(height: height),
           ),
           if (onRemove != null) ...[
             const SizedBox(width: 4),

@@ -18,6 +18,7 @@ import '../models/todo.dart';
 import '../models/todo_filter.dart';
 import '../models/todo_view_mode.dart';
 import '../providers/todo_providers.dart';
+import 'todo_chips.dart';
 
 // ===================== 统一抽屉入口（键盘兼容） =====================
 //
@@ -189,7 +190,7 @@ Future<String?> showTodoStatusSheet(
                   c,
                   label: opt.$2,
                   selected: current == opt.$1,
-                  color: statusMeta(opt.$1).color,
+                  color: statusMetaOf(c, opt.$1).color,
                   onTap: () => Navigator.pop(c, opt.$1),
                 ),
             ],
@@ -1533,7 +1534,7 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                   context,
                   label: s.$2,
                   selected: _status == s.$1,
-                  color: statusMeta(s.$1).color,
+                  color: statusMetaOf(context, s.$1).color,
                   onTap: () => _setState(() => _status = s.$1),
                 ),
             ],
@@ -1949,7 +1950,7 @@ Future<TodoDetailResult?> showTodoDetailSheet(
     builder: (c) {
       final t = c.theme;
       final status = effectiveStatus(item);
-      final meta = statusMeta(status);
+      final meta = statusMetaOf(c, status);
       final done = status == 'completed';
       final tagMap = {for (final tg in tags) tg.key: tg};
       final tagViews = [

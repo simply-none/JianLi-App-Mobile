@@ -5,7 +5,8 @@
 //   统计横幅 PageBanner 蓝专属渐变 · stats 条目/分类/弱密码（随滚动移出）
 //   搜索行  ★吸顶锚点（名称/账号/网址/分类四字段，对齐 PC 搜索口径）
 //   分类行  SoftChip（从条目聚合去重，对齐 PC 分类过滤）
-//   列表    条目卡（首字母盘 + 账号 + OTP/弱密码徽标）；单击=只读详情、长按=操作菜单
+//   列表    条目卡（38×38 渐变徽标列 + 标题/分类徽标 + 副行 用户名→网址→分类
+//           逐级顶替 + 右侧 OTP 胶囊/弱密码警示）；单击=只读详情、长按=操作菜单
 //
 // 能力对齐 PC 端 passwordVault：字段全集（名称/账号/密码/网址/备注/分类/OTP 密钥）、
 // 密码生成器（随机+口令短语双模式）、TOTP 实时码、复制 30 秒自动清空、导出 vault 文件。
@@ -541,7 +542,9 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
   }
 }
 
-/// 密码条目卡片（首字母盘 + 账号 + OTP/弱密码徽标；单击=详情，长按=菜单）
+/// 密码条目卡片（方案 A · 双行居左 + 徽标列，对齐选型画板 15-A）
+/// 结构：38×38 渐变徽标 → 标题(13.5/w600)+分类徽标 → 副行(11/muted，
+/// 用户名→网址 host→分类 逐级顶替，全缺整行不渲染) → 右侧弱密码警示/OTP 胶囊 → chevron
 class _EntryTile extends StatelessWidget {
   const _EntryTile({
     required this.entry,
@@ -553,33 +556,52 @@ class _EntryTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
+  /// 副行文案：用户名 → 网址 host → 分类，逐级顶替；全缺返回 null（整行不渲染）
+  String? get _subline {
+    if (entry.username.isNotEmpty) return entry.username;
+    if (entry.url.isNotEmpty) {
+      final host = Uri.tryParse(entry.url)?.host ?? '';
+      return host.isNotEmpty ? host : entry.url;
+    }
+    final category = entry.category ?? '';
+    return category.isNotEmpty ? category : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    final subline = _subline;
+    final category = entry.category ?? '';
     return AppCard(
       // 列表卡 margin 清零：间距只由外层 Padding(bottom:10) 提供
       margin: EdgeInsets.zero,
       onTap: onTap,
       onLongPress: onLongPress,
-      padding: const EdgeInsets.symmetric(
+      // 无副行（极简条目）时上下收紧留白略增，视觉不空
+      padding: EdgeInsets.symmetric(
         horizontal: AppTokens.pagePadding,
-        vertical: 12,
+        vertical: subline == null ? 12 : 10,
       ),
       child: Row(
         children: [
-          // 首字母徽标（专属蓝强调色渐变底盘）
-          SquircleBox(
-            size: 44,
-            radius: 14,
-            gradient: AppTokens.accentGradient(_accentOf(context)),
+          // 渐变徽标列（主题主色渐变底盘 + 首字母；普通圆角 r11 对齐设计稿，
+          // 弃用 SquircleBox——超椭圆弧度与选型稿的圆角矩形不一致）
+          Container(
+            width: 38,
+            height: 38,
             alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: AppTokens.primaryGradient(context),
+              borderRadius: BorderRadius.circular(11),
+            ),
             child: Text(
               entry.title.isEmpty
                   ? '?'
                   : entry.title.characters.first.toUpperCase(),
               style: t.typography.body.md.copyWith(
+                fontSize: 16,
                 color: Colors.white,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -587,59 +609,99 @@ class _EntryTile extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 3,
               children: [
-                Text(
-                  entry.title,
-                  style: t.typography.body.md.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 3),
+                // 标题行：标题 + 分类徽标（徽标紧贴标题文字；
+                // 用 Flexible 不用 Expanded——Expanded 会把徽标推到行尾）
                 Row(
                   children: [
-                    Expanded(
+                    Flexible(
                       child: Text(
-                        entry.username.isEmpty ? '未设置账号' : entry.username,
-                        style: t.typography.body.sm.copyWith(
-                          color: t.colors.mutedForeground,
+                        entry.title,
+                        style: t.typography.body.md.copyWith(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (entry.hasOtp)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: Icon(
-                          FLucideIcons.keyRound,
-                          size: 13,
-                          color: AppTokens.accent(1),
+                    if (category.isNotEmpty) ...[
+                      const SizedBox(width: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: t.colors.primary.withValues(alpha: 0.09),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          category,
+                          style: t.typography.body.xs.copyWith(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                            color: t.colors.primary,
+                          ),
                         ),
                       ),
-                    if (entry.isWeak)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: Icon(
-                          FLucideIcons.triangleAlert,
-                          size: 13,
-                          color: t.colors.destructive,
-                        ),
-                      ),
+                    ],
                   ],
                 ),
+                // 副行：用户名 / 网址 host / 分类
+                if (subline != null)
+                  Text(
+                    subline,
+                    style: t.typography.body.sm.copyWith(
+                      fontSize: 11,
+                      height: 1.1,
+                      color: t.colors.mutedForeground,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
               ],
             ),
           ),
-          const SizedBox(width: 4),
-          Icon(
-            FLucideIcons.chevronRight,
-            size: 18,
-            color: t.colors.mutedForeground,
+          const SizedBox(width: 8),
+          // 右侧状态列：弱密码警示 / OTP 胶囊
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 6,
+            children: [
+              if (entry.isWeak)
+                Icon(
+                  FLucideIcons.triangleAlert,
+                  size: 15,
+                  color: t.colors.destructive,
+                ),
+              if (entry.hasOtp)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: t.colors.primary.withValues(alpha: 0.09),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Text(
+                    'OTP',
+                    style: t.typography.body.xs.copyWith(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                      color: t.colors.primary,
+                    ),
+                  ),
+                ),
+              Icon(
+                FLucideIcons.chevronRight,
+                size: 16,
+                color: t.colors.mutedForeground,
+              ),
+            ],
           ),
         ],
       ),
     );
   }
-
-  static Color _accentOf(BuildContext context) => AppTokens.accent(1);
 }
