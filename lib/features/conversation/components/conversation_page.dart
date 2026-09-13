@@ -1,189 +1,554 @@
-// 主题对话页 —— 主题列表 + 消息流（对齐桌面端 themeConversation 的移动端子集）
+// 主题对话页 —— 对齐待办列表页骨架（专属色横幅统计 + 吸顶搜索行 + 条件 chip + 分段 Tab + 列表）
 //
 // 能力对齐（桌面端 references/modules/theme-conversation.md）：
-// - 主题：新建/编辑（标题+备注，底部抽屉 + 底部固定保存条）、删除（子主题禁止 + 级联删消息，
-//   底部抽屉二次确认）、消息数角标、主题标签彩色徽标（conversation_tag 解析）、update_time 排序；
+// - 主题：新建/编辑（标题+备注+主题标签，lg 三档抽屉）、删除（子主题禁止 + 级联删消息，
+//   底部抽屉二次确认）、消息数角标、主题标签彩色徽标（conversation_tag 解析）、
+//   update_time 排序；跨主题搜索（标题+内容+标签，吸顶搜索行实时过滤）；
+//   标签筛选（多选任一命中，SoftChip 可点掉）；标签管理（重命名/改色/删除，
+//   conversation_sheets.dart）；分段 Tab：全部 / 有引用 / 本周更新；
 // - 消息：置顶（pinned='1' 排前 + 图标）、富文本（is_rich='1' 用 HtmlWidget 渲染，'0' 纯文本）、
-//   软删除（长按气泡 → 底部抽屉确认，is_deleted='1' 行保留）、底部输入栏追加记录；
-// 未做（桌面端有、移动端裁剪，记 SKILL.md 待办）：引用/跨主题引用、标注、多选、搜索、导出 Markdown、标签管理。
+//   软删除（长按气泡 → 底部抽屉确认，is_deleted='1' 行保留）、底部输入栏追加记录、
+//   引用/跨主题引用（ref_ids / cross_refs）与正反向链接抽屉、消息标签编辑。
+// 未做（桌面端有、移动端裁剪，记 SKILL.md 待办）：子主题发起、多选批量、情绪预设、LLM 回复。
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/filter_sheet.dart';
 import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/pinned_search_row.dart';
+import '../../../app/ui/scope_tab_bar.dart';
+import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/sheet_surface.dart';
+import '../../../app/ui/soft_chip.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
+import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
-import 'dart:io';
-
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../../core/db/app_database.dart';
 import '../repositories/conversation_repository.dart';
 import '../utils/export_markdown.dart';
+import 'conversation_sheets.dart';
+
+/// 分段 Tab 范围（主题列表）
+const List<(String, String)> kConvTabs = [
+  ('all', '全部'),
+  ('refs', '有引用'),
+  ('week', '本周更新'),
+];
 
 /// 主题列表页
-class ConversationPage extends ConsumerWidget {
+class ConversationPage extends ConsumerStatefulWidget {
   const ConversationPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ConversationPage> createState() => _ConversationPageState();
+}
+
+class _ConversationPageState extends ConsumerState<ConversationPage> {
+  /// 主题对话域专属粉强调色（与内容分组页「主题对话」入口色对齐）
+  static final Color _accent = AppTokens.accent(4);
+
+  /// 页内搜索关键词（跨主题：标题 + 内容 + 标签名，实时过滤）
+  String _keyword = '';
+
+  /// 分段 Tab 范围（kConvTabs）
+  String _tab = 'all';
+
+  /// 已生效标签筛选（主题标签 id，多选任一命中）
+  final Set<String> _selectedTagIds = {};
+  final _searchController = TextEditingController();
+
+  // 查询抽屉内的标签草稿（点「查询」才应用）
+  final Set<String> _draftTags = {};
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final themesAsync = ref.watch(conversationThemesProvider);
     final countsAsync = ref.watch(themeCountsProvider);
-    final tagsAsync = ref.watch(conversationTagsProvider);
-    final tagDefs = tagsAsync.value ?? const <ConversationTagData>[];
-    final tagById = {for (final t in tagDefs) t.id.toString(): t};
-    final counts = countsAsync.value ?? const <String, int>{};
+    final tagDefs =
+        ref.watch(conversationTagsProvider).value ?? const <ConversationTagData>[];
+    final t = context.theme;
 
     return FScaffold(
-      header: FHeader.nested(
-        title: const Text('主题对话'),
-        prefixes: [FHeaderAction.back(onPress: () => context.pop())],
-        suffixes: [
-          FHeaderAction(
-            icon: const Icon(FLucideIcons.download),
-            onPress: () => _openExportPicker(context, ref),
-          ),
-          FHeaderAction(
-            icon: const Icon(FLucideIcons.plus),
-            onPress: () => _showThemeEditor(context, ref),
-          ),
-        ],
-      ),
+      childPad: false,
       child: ColoredBox(
+        // 全局渐变背板由 app.dart 根容器绘制，页面保持透明以透出背板
         color: AppTokens.pageTint(context),
-        child: themesAsync.when(
-          loading: () => const Center(child: FCircularProgress()),
-          error: (e, _) => Center(child: Text('加载失败：$e')),
-          data: (themes) {
-            if (themes.isEmpty) {
-              return const EmptyState(
-                icon: FLucideIcons.messageSquareText,
-                title: '暂无主题',
-                subtitle: '点右上角新建，或等桌面端同步',
-              );
-            }
-            var totalMessages = 0;
-            for (final t in themes) {
-              totalMessages += counts[t.id.toString()] ?? 0;
-            }
-            return ListView(
-              padding: EdgeInsets.only(
-                top: AppTokens.listTopGapOf(context),
-                bottom: AppTokens.pageBottomGapOf(context),
-              ),
-              children: [
-                // 页面专属粉渐变横幅（与内容分组页「主题对话」入口色对齐）
-                PageBanner(
-                  icon: FLucideIcons.messageSquareText,
-                  title: '主题对话',
-                  subtitle: '把情绪与想法安放进主题',
-                  accentIndex: 4,
-                  stats: [
-                    ('${themes.length}', '个主题'),
-                    ('$totalMessages', '条记录'),
-                  ],
-                ),
-                StaggerList(
-                  children: [
-                    for (final theme in themes)
-                      _ThemeCard(
-                        theme: theme,
-                        messageCount: counts[theme.id.toString()] ?? 0,
-                        tagById: tagById,
-                        onTap: () => context.push('/conversation/${theme.id}'),
-                        onLongPress: () =>
-                            _showThemeActions(context, ref, theme),
+        child: SafeArea(
+          top: true,
+          bottom: false,
+          child: Column(
+            children: [
+              _header(context),
+              Expanded(
+                child: themesAsync.when(
+                  loading: () => const Center(child: FCircularProgress()),
+                  error: (e, _) => Center(
+                    child: Text(
+                      '加载失败：$e',
+                      textAlign: TextAlign.center,
+                      style: t.typography.body.sm.copyWith(
+                        color: t.colors.error,
                       ),
-                  ],
+                    ),
+                  ),
+                  data: (themes) => _body(
+                    context,
+                    themes,
+                    countsAsync.value ?? const <String, int>{},
+                    tagDefs,
+                  ),
                 ),
-              ],
-            );
-          },
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// 主题长按操作抽屉（页面规范：小功能操作走底部抽屉）
+  // ===================== 头部（对齐待办：‹ / 标题 / 标签 / 导出 / ＋） =====================
+
+  Widget _header(BuildContext context) {
+    final t = context.theme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        spacing: 10,
+        children: [
+          TapScale(
+            onTap: () => context.pop(),
+            child: Icon(
+              FLucideIcons.chevronLeft,
+              size: 22,
+              color: t.colors.foreground,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              '主题对话',
+              style: t.typography.body.lg.copyWith(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: t.colors.foreground,
+              ),
+            ),
+          ),
+          TapScale(
+            onTap: () => showConversationTagManagerSheet(context, ref),
+            child: Icon(FLucideIcons.tags, size: 18, color: t.colors.foreground),
+          ),
+          TapScale(
+            onTap: () => _openExportPicker(context, ref),
+            child: Icon(
+              FLucideIcons.download,
+              size: 18,
+              color: t.colors.foreground,
+            ),
+          ),
+          TapScale(
+            onTap: () => _showThemeEditor(context, ref),
+            child: Icon(FLucideIcons.plus, size: 22, color: t.colors.foreground),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===================== 主体（待办骨架） =====================
+
+  Widget _body(
+    BuildContext context,
+    List<ConversationThemeData> themes,
+    Map<String, int> counts,
+    List<ConversationTagData> tagDefs,
+  ) {
+    final allMsgs =
+        ref.watch(allConversationsProvider).value ?? const <ConversationData>[];
+    final tagById = {for (final d in tagDefs) d.id.toString(): d};
+    var totalMessages = 0;
+    for (final th in themes) {
+      totalMessages += counts[th.id.toString()] ?? 0;
+    }
+    final scoped = _filterThemes(
+      themes: themes,
+      allMsgs: allMsgs,
+      tagDefs: tagDefs,
+    );
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: _banner(context, themes.length, totalMessages, allMsgs, tagDefs),
+        ),
+        // ★吸顶锚点：搜索行常驻视口顶部（横幅 / chip / Tab 随滚动移出）
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: PinnedSearchHeader(
+            extent: kSearchRowExtent,
+            child: PinnedSearchRow(
+              controller: _searchController,
+              hintText: '搜索主题、内容与标签…',
+              onChanged: (v) => setState(() => _keyword = v),
+              onFilter: () => _openFilterSheet(tagDefs),
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(child: _chipsRow(context, tagDefs)),
+        SliverToBoxAdapter(
+          child: ScopeTabBar<String>(
+            tabs: kConvTabs,
+            selected: _tab,
+            onSelect: (tab) => setState(() => _tab = tab),
+          ),
+        ),
+        if (themes.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _emptyState(context, totallyEmpty: true),
+          )
+        else if (scoped.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _emptyState(context, totallyEmpty: false),
+          )
+        else
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              AppTokens.pagePadding,
+              AppTokens.listTopGapOf(context),
+              AppTokens.pagePadding,
+              AppTokens.pageBottomGapOf(context),
+            ),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                StaggerList(
+                  children: [
+                    for (final theme in scoped)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _ThemeCard(
+                          theme: theme,
+                          messageCount: counts[theme.id.toString()] ?? 0,
+                          tagById: tagById,
+                          onTap: () =>
+                              context.push('/conversation/${theme.id}'),
+                          onLongPress: () =>
+                              _showThemeActions(context, ref, theme),
+                        ),
+                      ),
+                  ],
+                ),
+              ]),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// 统计横幅（粉专属渐变 + 纹理 + 同心圆环）
+  Widget _banner(
+    BuildContext context,
+    int themeCount,
+    int totalMessages,
+    List<ConversationData> allMsgs,
+    List<ConversationTagData> tagDefs,
+  ) {
+    final todayPrefix = _todayPrefix();
+    var todayMsgs = 0;
+    for (final m in allMsgs) {
+      if ((m.createTime ?? '').startsWith(todayPrefix) && m.isDeleted != '1') {
+        todayMsgs++;
+      }
+    }
+    return PageBanner(
+      icon: FLucideIcons.messageSquareText,
+      title: '主题对话',
+      subtitle: '把情绪与想法安放进主题',
+      accentIndex: 4,
+      cornerRadius: 22,
+      textureAsset: CardTextures.texture11,
+      ringDecor: true,
+      shadow: false,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      stats: [
+        ('$themeCount', '主题'),
+        ('$totalMessages', '记录'),
+        ('$todayMsgs', '今日'),
+      ],
+    );
+  }
+
+  /// 生效条件 chip（关键词/标签逐个可点掉；无生效条件整块不渲染）
+  Widget _chipsRow(BuildContext context, List<ConversationTagData> tagDefs) {
+    final tagById = {for (final d in tagDefs) d.id.toString(): d};
+    final chips = <Widget>[];
+    if (_keyword.trim().isNotEmpty) {
+      chips.add(
+        _condChip(context, '搜索：${_keyword.trim()}', _accent, () {
+          _searchController.clear();
+          setState(() => _keyword = '');
+        }),
+      );
+    }
+    for (final id in _selectedTagIds) {
+      final tag = tagById[id];
+      if (tag == null) continue;
+      chips.add(
+        _condChip(
+          context,
+          tag.name ?? '',
+          _parseTagColor(tag),
+          () => setState(() => _selectedTagIds.remove(id)),
+        ),
+      );
+    }
+    if (chips.isEmpty) return const SizedBox.shrink();
+    chips.add(
+      _condChip(context, '清除全部', context.theme.colors.destructive,
+          _clearAllFilters),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Wrap(spacing: 6, runSpacing: 6, children: chips),
+    );
+  }
+
+  /// 生效条件 chip（SoftChip 可点掉形态）
+  Widget _condChip(
+    BuildContext context,
+    String label,
+    Color color,
+    VoidCallback onTap,
+  ) =>
+      SoftChip(
+        label: label,
+        color: color,
+        alpha: 0.12,
+        padding: const EdgeInsets.all(6),
+        onRemove: onTap,
+      );
+
+  /// 空态（对齐待办）
+  Widget _emptyState(BuildContext context, {required bool totallyEmpty}) {
+    final t = context.theme;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 14,
+        children: [
+          Container(
+            width: 76,
+            height: 76,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _accent.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              totallyEmpty
+                  ? FLucideIcons.messageSquareText
+                  : FLucideIcons.searchX,
+              size: 32,
+              color: _accent,
+            ),
+          ),
+          Text(
+            totallyEmpty ? '还没有主题' : '没有匹配的主题',
+            style: t.typography.body.lg.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: t.colors.foreground,
+            ),
+          ),
+          Text(
+            totallyEmpty ? '点右上角 ＋ 建第一个主题' : '换个关键词，或清除筛选条件',
+            style: t.typography.body.xs.copyWith(
+              fontSize: 13,
+              color: t.colors.mutedForeground,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===================== 过滤与行为 =====================
+
+  /// 主题过滤：Tab 范围 → 标签多选（任一命中）→ 关键词（标题/内容/标签名）。
+  /// 消息内容命中也算主题命中（跨主题搜索，对齐 PC 搜索语义）。
+  List<ConversationThemeData> _filterThemes({
+    required List<ConversationThemeData> themes,
+    required List<ConversationData> allMsgs,
+    required List<ConversationTagData> tagDefs,
+  }) {
+    final tagById = {for (final d in tagDefs) d.id.toString(): d};
+    // themeId → 命中信息
+    final hasRefs = <String>{};
+    final contentTexts = <String, String>{};
+    for (final m in allMsgs) {
+      if (m.isDeleted == '1') continue;
+      final tid = m.themeId ?? '';
+      if (convStrIds(m.refIds).isNotEmpty ||
+          convCrossRefs(m.crossRefs).isNotEmpty) {
+        hasRefs.add(tid);
+      }
+      final raw = m.content ?? '';
+      final text = (m.isRich == '1')
+          ? raw.replaceAll(RegExp(r'<[^>]*>'), ' ')
+          : raw;
+      contentTexts[tid] =
+          '${contentTexts[tid] ?? ''}\n${text.replaceAll(RegExp(r'\s+'), ' ')}';
+    }
+    final weekAgo = DateTime.now().subtract(const Duration(days: 7));
+    final kw = _keyword.trim().toLowerCase();
+
+    return themes.where((th) {
+      final id = th.id.toString();
+      // Tab 范围
+      switch (_tab) {
+        case 'refs':
+          if (!hasRefs.contains(id)) return false;
+        case 'week':
+          final u = DateTime.tryParse(th.updateTime ?? '');
+          if (u == null || u.isBefore(weekAgo)) return false;
+      }
+      // 标签筛选（任一命中）
+      if (_selectedTagIds.isNotEmpty) {
+        final ids = convStrIds(th.tags);
+        if (!_selectedTagIds.any(ids.contains)) return false;
+      }
+      // 关键词：主题标题 / 标签名 / 消息内容
+      if (kw.isNotEmpty) {
+        final inTitle = (th.title ?? '').toLowerCase().contains(kw);
+        final inTagNames = convStrIds(th.tags).any(
+          (k) => (tagById[k]?.name ?? '').toLowerCase().contains(kw),
+        );
+        final inContent = (contentTexts[id] ?? '').toLowerCase().contains(kw);
+        if (!inTitle && !inTagNames && !inContent) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  /// 打开「查询抽屉」（主题标签多选）：草稿从已生效条件初始化
+  Future<void> _openFilterSheet(List<ConversationTagData> tagDefs) async {
+    final themeTags = tagDefs.where((d) => d.scope == 'theme').toList();
+    _draftTags
+      ..clear()
+      ..addAll(_selectedTagIds);
+    final result = await showFilterSheet<Set<String>>(
+      context: context,
+      title: '筛选主题',
+      body: (context, refresh) =>
+          _buildFilterBody(context, themeTags, refresh),
+      onReset: (refresh) {
+        _draftTags.clear();
+        refresh();
+      },
+      onConfirm: () => Set<String>.of(_draftTags),
+    );
+    if (result == null || !mounted) return;
+    setState(() => _selectedTagIds..clear()..addAll(result));
+  }
+
+  /// 查询抽屉选项区：主题标签多选
+  Widget _buildFilterBody(
+    BuildContext context,
+    List<ConversationTagData> themeTags,
+    VoidCallback refresh,
+  ) {
+    if (themeTags.isEmpty) {
+      return Text(
+        '暂无主题标签，可在编辑主题时新建',
+        style: context.theme.typography.body.xs.copyWith(
+          color: context.theme.colors.mutedForeground,
+        ),
+      );
+    }
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final tag in themeTags)
+          _ConvTagOption(
+            tag: tag,
+            selected: _draftTags.contains(tag.id.toString()),
+            onTap: () {
+              final key = tag.id.toString();
+              _draftTags.contains(key) ? _draftTags.remove(key) : _draftTags.add(key);
+              refresh();
+            },
+          ),
+      ],
+    );
+  }
+
+  void _clearAllFilters() {
+    _searchController.clear();
+    setState(() {
+      _keyword = '';
+      _selectedTagIds.clear();
+    });
+  }
+
+  /// 今天的 'yyyy-MM-dd' 前缀（横幅「今日」统计用）
+  static String _todayPrefix() {
+    final n = DateTime.now();
+    String p(int v) => v.toString().padLeft(2, '0');
+    return '${n.year}-${p(n.month)}-${p(n.day)}';
+  }
+
+  /// 主题长按操作菜单（sm 档共享操作菜单：编辑 / 导出 / 删除）
   Future<void> _showThemeActions(
     BuildContext context,
     WidgetRef ref,
     ConversationThemeData theme,
   ) async {
-    await showFSheet<void>(
-      context: context,
-      side: FLayout.btt,
-      builder: (context) => SheetSurface(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              theme.title ?? '未命名主题',
-              style: context.theme.typography.body.lg.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 12),
-            FTileGroup(
-              divider: FItemDivider.none,
-              children: [
-                FTile(
-                  prefix: const Icon(FLucideIcons.pencil, size: 16),
-                  title: const Text('编辑主题'),
-                  onPress: () {
-                    Navigator.pop(context);
-                    _showThemeEditor(context, ref, existing: theme);
-                  },
-                ),
-                FTile(
-                  prefix: const Icon(FLucideIcons.download, size: 16),
-                  title: const Text('导出 Markdown'),
-                  subtitle: const Text('导出该主题全部对话为 .md'),
-                  onPress: () {
-                    Navigator.pop(context);
-                    _exportTheme(context, ref, theme);
-                  },
-                ),
-                FTile(
-                  prefix: Icon(
-                    FLucideIcons.trash2,
-                    size: 16,
-                    color: context.theme.colors.destructive,
-                  ),
-                  title: Text(
-                    '删除主题',
-                    style: context.theme.typography.body.md.copyWith(
-                      color: context.theme.colors.destructive,
-                    ),
-                  ),
-                  onPress: () {
-                    Navigator.pop(context);
-                    _deleteTheme(context, ref, theme);
-                  },
-                ),
-              ],
-            ),
-          ],
+    final action = await showSheetActionMenu<String>(
+      context,
+      title: theme.title ?? '未命名主题',
+      actions: const [
+        SheetAction('edit', '编辑主题', icon: FLucideIcons.pencil),
+        SheetAction('export', '导出 Markdown', icon: FLucideIcons.download),
+        SheetAction(
+          'delete',
+          '删除主题',
+          icon: FLucideIcons.trash2,
+          destructive: true,
         ),
-      ),
+      ],
     );
+    if (!context.mounted || action == null) return;
+    switch (action) {
+      case 'edit':
+        await _showThemeEditor(context, ref, existing: theme);
+      case 'export':
+        await _exportTheme(context, ref, theme);
+      case 'delete':
+        await _deleteTheme(context, ref, theme);
+    }
   }
 
-  /// 新建 / 编辑主题抽屉（底部固定保存条——页面保存规范）
+  /// 新建 / 编辑主题抽屉（lg 定高三档制；打开不自动聚焦——红线 #14⑤）
   Future<void> _showThemeEditor(
     BuildContext context,
     WidgetRef ref, {
@@ -192,208 +557,182 @@ class ConversationPage extends ConsumerWidget {
     final title = TextEditingController(text: existing?.title ?? '');
     final remark = TextEditingController(text: existing?.remark ?? '');
     // 编辑草稿：主题标签 id（scope='theme'），对齐 PC 主题编辑可挂标签
-    final editTagIds = <String>{..._ThemeCard._parseIds(existing?.tags)};
+    final editTagIds = <String>{...convStrIds(existing?.tags)};
     await showFSheet<void>(
       context: context,
       side: FLayout.btt,
-      mainAxisMaxRatio: null,
-      builder: (context) => SheetSurface(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              existing == null ? '新建主题' : '编辑主题',
-              style: context.theme.typography.body.lg.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 14),
-            FTextField(
-              label: const Text('主题标题'),
-              hint: '例如：深夜情绪记录',
-              control: FTextFieldControl.managed(controller: title),
-              autofocus: existing == null,
-            ),
-            const SizedBox(height: 10),
-            FTextField(
-              label: const Text('备注（可选）'),
-              control: FTextFieldControl.managed(controller: remark),
-            ),
-            const SizedBox(height: 14),
-            // 主题标签选择（对齐 PC 主题编辑可挂标签；scope='theme'，复用消息标签彩色徽标规格）
-            StatefulBuilder(
-              builder: (ctx, setInner) {
-                final t = ctx.theme;
-                final themeTagDefs =
-                    ((ref.read(conversationTagsProvider).value ??
-                            const <ConversationTagData>[]))
-                        .where((d) => d.scope == 'theme')
-                        .toList();
-                final tagById = {for (final d in themeTagDefs) d.id.toString(): d};
-                return Column(
+      // 三档制配对（红线 #9）：lg 定高 + 键盘覆盖不折叠
+      mainAxisMaxRatio: AppTokens.sheetHeightLg,
+      resizeToAvoidBottomInset: false,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final t = sheetContext.theme;
+          final themeTagDefs = (ref.read(conversationTagsProvider).value ??
+                  const <ConversationTagData>[])
+              .where((d) => d.scope == 'theme')
+              .toList();
+          final tagById = {for (final d in themeTagDefs) d.id.toString(): d};
+          return SheetScaffold(
+            title: existing == null ? '新建主题' : '编辑主题',
+            size: SheetSize.lg,
+            body: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 14,
+              children: [
+                // 字段组：label↔输入框间距只由 SheetFieldLabel 自带 bottom:6 提供
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    GestureDetector(
-                      onTap: () async {
-                        final picked = await _openThemeTagPicker(ctx, ref, editTagIds);
-                        if (picked != null && ctx.mounted) {
-                          editTagIds
-                            ..clear()
-                            ..addAll(picked);
-                          setInner(() {});
-                        }
-                      },
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: t.colors.card,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: t.colors.border),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              FLucideIcons.tags,
-                              size: 14,
-                              color: AppTokens.accent(4),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              editTagIds.isEmpty
-                                  ? '主题标签'
-                                  : '主题标签 ${editTagIds.length}',
-                              style: t.typography.body.xs.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    const SheetFieldLabel('主题标题'),
+                    SheetInputBox(
+                      controller: title,
+                      hintText: '例如：深夜情绪记录',
                     ),
-                    if (editTagIds.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SheetFieldLabel('备注（可选）'),
+                    SheetInputBox(controller: remark, hintText: '备注'),
+                  ],
+                ),
+                // 主题标签（对齐 PC 主题编辑可挂标签；scope='theme'，点行开选择抽屉）
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const SheetFieldLabel('主题标签'),
+                        GestureDetector(
+                          onTap: () async {
+                            final picked = await _openThemeTagPicker(
+                              sheetContext,
+                              ref,
+                              editTagIds,
+                            );
+                            if (picked != null) {
+                              editTagIds
+                                ..clear()
+                                ..addAll(picked);
+                              setSheetState(() {});
+                            }
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  FLucideIcons.tags,
+                                  size: 13,
+                                  color: AppTokens.accent(4),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '选择',
+                                  style: t.typography.body.xs.copyWith(
+                                    fontSize: 12,
+                                    color: t.colors.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (editTagIds.isEmpty)
+                      Text(
+                        '未选择标签',
+                        style: t.typography.body.sm.copyWith(
+                          fontSize: 13,
+                          color: t.colors.mutedForeground,
+                        ),
+                      )
+                    else
                       Wrap(
                         spacing: 6,
-                        runSpacing: 4,
+                        runSpacing: 6,
                         children: [
                           for (final id in editTagIds)
                             if (tagById[id] != null)
                               GestureDetector(
                                 onTap: () {
                                   editTagIds.remove(id);
-                                  setInner(() {});
+                                  setSheetState(() {});
                                 },
                                 child: _ConvTagBadge(tag: tagById[id]!),
                               ),
                         ],
                       ),
-                    ],
                   ],
-                );
-              },
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            GradientButton(
-              label: existing == null ? '创建' : '保存',
-              icon: FLucideIcons.check,
-              onPress: () {
-                final t = title.text.trim();
-                if (t.isEmpty) return;
-                final repo = ref.read(conversationRepositoryProvider);
-                if (existing == null) {
-                  repo.createTheme(
-                    title: t,
-                    remark: remark.text.trim(),
-                    tagIds: editTagIds.toList(),
-                  );
-                } else {
-                  repo.updateTheme(
-                    existing.id,
-                    title: t,
-                    remark: remark.text.trim(),
-                    tagIds: editTagIds.toList(),
-                  );
-                }
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
+            bottomBar: [
+              Expanded(
+                child: FButton(
+                  variant: FButtonVariant.outline,
+                  onPress: () => Navigator.pop(sheetContext),
+                  child: const Text('取消'),
+                ),
+              ),
+              Expanded(
+                child: GradientButton(
+                  label: existing == null ? '创建' : '保存',
+                  icon: FLucideIcons.check,
+                  onPress: () {
+                    final titleText = title.text.trim();
+                    if (titleText.isEmpty) {
+                      showFToast(
+                        context: sheetContext,
+                        title: const Text('标题不能为空'),
+                      );
+                      return;
+                    }
+                    final repo = ref.read(conversationRepositoryProvider);
+                    if (existing == null) {
+                      repo.createTheme(
+                        title: titleText,
+                        remark: remark.text.trim(),
+                        tagIds: editTagIds.toList(),
+                      );
+                    } else {
+                      repo.updateTheme(
+                        existing.id,
+                        title: titleText,
+                        remark: remark.text.trim(),
+                        tagIds: editTagIds.toList(),
+                      );
+                    }
+                    Navigator.pop(sheetContext);
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  /// 删除主题（底部抽屉二次确认——全局弹窗规范；子主题检查在仓储层）
+  /// 删除主题（sm 确认抽屉；子主题检查在仓储层）
   Future<void> _deleteTheme(
     BuildContext context,
     WidgetRef ref,
     ConversationThemeData theme,
   ) async {
-    final confirmed = await showFSheet<bool>(
-      context: context,
-      side: FLayout.btt,
-      mainAxisMaxRatio: null,
-      builder: (c) => SheetSurface(
-        padding: EdgeInsets.fromLTRB(
-          AppTokens.pagePadding,
-          12,
-          AppTokens.pagePadding,
-          12,
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '确认删除主题「${theme.title ?? ''}」？',
-                style: c.theme.typography.body.lg,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '将同时删除其下全部对话，且不可恢复',
-                style: c.theme.typography.body.sm.copyWith(
-                  color: c.theme.colors.mutedForeground,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                spacing: 8,
-                children: [
-                  Expanded(
-                    child: FButton(
-                      variant: FButtonVariant.outline,
-                      onPress: () => Navigator.pop(c, false),
-                      child: const Text('取消'),
-                    ),
-                  ),
-                  Expanded(
-                    child: FButton(
-                      variant: FButtonVariant.destructive,
-                      onPress: () => Navigator.pop(c, true),
-                      child: const Text('删除'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    final confirmed = await showSheetConfirm(
+      context,
+      title: '删除主题',
+      message: '确定删除「${theme.title ?? ''}」？将同时删除其下全部对话，且不可恢复。',
+      confirmLabel: '删除',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await ref.read(conversationRepositoryProvider).deleteTheme(theme.id);
     } catch (e) {
@@ -515,55 +854,17 @@ class ConversationPage extends ConsumerWidget {
     Set<String> draft,
     VoidCallback refresh,
   ) async {
-    final controller = TextEditingController();
-    final name = await showFSheet<String>(
-      context: context,
-      side: FLayout.btt,
-      builder: (context) => SheetSurface(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '新建主题标签',
-              style: context.theme.typography.body.lg.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '配色按顺序自动分配，与桌面端一致',
-              style: context.theme.typography.body.sm.copyWith(
-                color: context.theme.colors.mutedForeground,
-              ),
-            ),
-            const SizedBox(height: 14),
-            FTextField(
-              control: FTextFieldControl.managed(controller: controller),
-              hint: '输入标签名称',
-              autofocus: true,
-              onSubmit: (v) => Navigator.pop(context, v),
-            ),
-            const SizedBox(height: 16),
-            GradientButton(
-              label: '创建',
-              icon: FLucideIcons.check,
-              onPress: () => Navigator.pop(context, controller.text),
-            ),
-          ],
-        ),
-      ),
+    final name = await showConvPromptSheet(
+      context,
+      title: '新建主题标签',
+      subtitle: '配色按顺序自动分配，与桌面端一致',
+      hint: '输入标签名称',
+      confirmLabel: '创建',
     );
-    if (name == null || name.trim().isEmpty || !context.mounted) return;
+    if (name == null || !context.mounted) return;
     final tag = await ref
         .read(conversationRepositoryProvider)
-        .createThemeTag(name.trim());
+        .createThemeTag(name);
     if (context.mounted) {
       draft.add(tag.id.toString());
       refresh();
@@ -754,6 +1055,9 @@ class _ThemeCard extends StatelessWidget {
     return GestureDetector(
       onLongPress: onLongPress,
       child: AppCard(
+        // 列表卡 margin 清零：间距只由外层 Padding(bottom:10) 提供
+        //（AppCard 默认 vertical:6 会叠出 22px 大间隙，2026-09-13 用户实指）
+        margin: EdgeInsets.zero,
         onTap: onTap,
         child: Row(
           children: [
@@ -796,7 +1100,7 @@ class _ThemeCard extends StatelessWidget {
                   ],
                   const SizedBox(height: 4),
                   Text(
-                    '$messageCount 条 · 更新于 ${theme.updateTime ?? '-'}$remark',
+                    '$messageCount 条 · 更新于 ${convFriendlyTime(theme.updateTime)}$remark',
                     style: t.typography.body.sm.copyWith(
                       color: t.colors.mutedForeground,
                     ),
@@ -1055,6 +1359,8 @@ class _ConversationMessagesPageState
       title: '引用对话',
       confirmLabel: '完成',
       resetLabel: '清空',
+      // 内含搜索输入框 → lg 80vh 定高（2026-09-13 全局定案：含输入框一律 lg）
+      size: SheetSize.lg,
       body: (context, refresh) => _buildRefPickerBody(refresh),
       onReset: (refresh) {
         _draftRefSel.clear();
@@ -1286,188 +1592,88 @@ class _ConversationMessagesPageState
 
   /// 新建对话标签小抽屉（创建后自动加入草稿并刷新选择区）
   Future<void> _createConversationTag(VoidCallback refresh) async {
-    final controller = TextEditingController();
-    final name = await showFSheet<String>(
-      context: context,
-      side: FLayout.btt,
-      builder: (context) => SheetSurface(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '新建标签',
-              style: context.theme.typography.body.lg.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '配色按顺序自动分配，与桌面端一致',
-              style: context.theme.typography.body.sm.copyWith(
-                color: context.theme.colors.mutedForeground,
-              ),
-            ),
-            const SizedBox(height: 14),
-            FTextField(
-              control: FTextFieldControl.managed(controller: controller),
-              hint: '输入标签名称',
-              autofocus: true,
-              onSubmit: (v) => Navigator.pop(context, v),
-            ),
-            const SizedBox(height: 16),
-            GradientButton(
-              label: '创建',
-              icon: FLucideIcons.check,
-              onPress: () => Navigator.pop(context, controller.text),
-            ),
-          ],
-        ),
-      ),
+    final name = await showConvPromptSheet(
+      context,
+      title: '新建标签',
+      subtitle: '配色按顺序自动分配，与桌面端一致',
+      hint: '输入标签名称',
+      confirmLabel: '创建',
     );
-    if (name == null || name.trim().isEmpty || !mounted) return;
+    if (name == null || !mounted) return;
     final tag = await ref
         .read(conversationRepositoryProvider)
-        .createConversationTag(name.trim());
+        .createConversationTag(name);
     if (mounted) {
       setState(() => _draftMsgTags.add(tag.id.toString()));
       refresh();
     }
   }
 
-  /// 长按气泡：操作菜单（对齐 PC 右键菜单的移动端子集——正向/反向链接、置顶、删除）
+  /// 长按气泡：操作菜单（sm 档共享操作菜单；链接类条目为空时省略，
+  /// 对齐 PC 右键菜单的移动端子集——引用/链接、标签、置顶、删除）
   Future<void> _showMessageMenu(ConversationData msg) async {
     final links = await ref
         .read(conversationRepositoryProvider)
         .loadRefLinks(msg);
     if (!mounted) return;
-    await showFSheet<void>(
-      context: context,
-      side: FLayout.btt,
-      builder: (context) => SheetSurface(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 摘要标题（富文本剥标签）
-            Text(
-              _snippetOf(msg).isEmpty ? '（无文本内容）' : _snippetOf(msg),
-              style: context.theme.typography.body.lg.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 12),
-            FTileGroup(
-              divider: FItemDivider.none,
-              children: [
-                // 引用此对话：挂入发送草稿，发送时写入 ref_ids/cross_refs（对齐 PC「引用此对话」）
-                FTile(
-                  prefix: const Icon(FLucideIcons.link, size: 16),
-                  title: const Text('引用此对话'),
-                  subtitle: Text(
-                    _pendingRefIds.contains(msg.id)
-                        ? '已在发送引用草稿中'
-                        : '发送下一条记录时一并引用',
-                  ),
-                  onPress: () {
-                    Navigator.pop(context);
-                    setState(() => _pendingRefIds.add(msg.id));
-                    showFToast(
-                      context: context,
-                      title: const Text('已加入引用，发送时生效'),
-                    );
-                  },
-                ),
-                // 正向链接：本条引用的消息（对齐 PC「正向链接」）
-                FTile(
-                  prefix: const Icon(FLucideIcons.arrowUpRight, size: 16),
-                  title: Text('正向链接（${links.outgoing.length}）'),
-                  subtitle: const Text('本条引用的消息'),
-                  onPress: links.outgoing.isEmpty
-                      ? null
-                      : () {
-                          Navigator.pop(context);
-                          _showRefDrawer('正向链接', [
-                            for (final c in links.outgoing)
-                              ConvRefItem(c, null),
-                          ]);
-                        },
-                ),
-                // 反向链接：引用了本条的消息（含跨主题来源，对齐 PC「反向链接」）
-                FTile(
-                  prefix: const Icon(FLucideIcons.arrowDownLeft, size: 16),
-                  title: Text('反向链接（${links.backlinks.length}）'),
-                  subtitle: const Text('引用了本条的消息'),
-                  onPress: links.backlinks.isEmpty
-                      ? null
-                      : () {
-                          Navigator.pop(context);
-                          _showRefDrawer('反向链接', links.backlinks);
-                        },
-                ),
-                // 跨主题引用：本条 cross_refs 指向的其它主题消息
-                if (links.cross.isNotEmpty)
-                  FTile(
-                    prefix: const Icon(FLucideIcons.layers, size: 16),
-                    title: Text('跨主题引用（${links.cross.length}）'),
-                    subtitle: const Text('本条引用的其它主题消息'),
-                    onPress: () {
-                      Navigator.pop(context);
-                      _showRefDrawer('跨主题引用', links.cross);
-                    },
-                  ),
-                FTile(
-                  prefix: const Icon(FLucideIcons.tags, size: 16),
-                  title: const Text('编辑标签'),
-                  subtitle: Text('当前 ${_idsOf(msg.tags).length} 个'),
-                  onPress: () {
-                    Navigator.pop(context);
-                    _editMsgTags(msg);
-                  },
-                ),
-                FTile(
-                  prefix: Icon(
-                    msg.pinned == '1' ? FLucideIcons.pinOff : FLucideIcons.pin,
-                    size: 16,
-                  ),
-                  title: Text(msg.pinned == '1' ? '取消置顶' : '置顶'),
-                  onPress: () {
-                    Navigator.pop(context);
-                    ref.read(conversationRepositoryProvider).togglePin(msg);
-                  },
-                ),
-                FTile(
-                  prefix: Icon(
-                    FLucideIcons.trash2,
-                    size: 16,
-                    color: context.theme.colors.destructive,
-                  ),
-                  title: Text(
-                    '删除记录',
-                    style: context.theme.typography.body.md.copyWith(
-                      color: context.theme.colors.destructive,
-                    ),
-                  ),
-                  onPress: () {
-                    Navigator.pop(context);
-                    _confirmSoftDelete(msg);
-                  },
-                ),
-              ],
-            ),
-          ],
+    final actions = <SheetAction<String>>[
+      const SheetAction('ref', '引用此对话', icon: FLucideIcons.link),
+      if (links.outgoing.isNotEmpty)
+        SheetAction(
+          'outgoing',
+          '正向链接（${links.outgoing.length}）',
+          icon: FLucideIcons.arrowUpRight,
         ),
+      if (links.backlinks.isNotEmpty)
+        SheetAction(
+          'backlinks',
+          '反向链接（${links.backlinks.length}）',
+          icon: FLucideIcons.arrowDownLeft,
+        ),
+      if (links.cross.isNotEmpty)
+        SheetAction(
+          'cross',
+          '跨主题引用（${links.cross.length}）',
+          icon: FLucideIcons.layers,
+        ),
+      const SheetAction('tags', '编辑标签', icon: FLucideIcons.tags),
+      SheetAction(
+        'pin',
+        msg.pinned == '1' ? '取消置顶' : '置顶',
+        icon: msg.pinned == '1' ? FLucideIcons.pinOff : FLucideIcons.pin,
       ),
+      const SheetAction(
+        'delete',
+        '删除记录',
+        icon: FLucideIcons.trash2,
+        destructive: true,
+      ),
+    ];
+    final action = await showSheetActionMenu<String>(
+      context,
+      title: _snippetOf(msg).isEmpty ? '（无文本内容）' : _snippetOf(msg),
+      actions: actions,
     );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'ref':
+        setState(() => _pendingRefIds.add(msg.id));
+        showFToast(context: context, title: const Text('已加入引用，发送时生效'));
+      case 'outgoing':
+        await _showRefDrawer('正向链接', [
+          for (final c in links.outgoing) ConvRefItem(c, null),
+        ]);
+      case 'backlinks':
+        await _showRefDrawer('反向链接', links.backlinks);
+      case 'cross':
+        await _showRefDrawer('跨主题引用', links.cross);
+      case 'tags':
+        await _editMsgTags(msg);
+      case 'pin':
+        await ref.read(conversationRepositoryProvider).togglePin(msg);
+      case 'delete':
+        await _confirmSoftDelete(msg);
+    }
   }
 
   /// 引用关系右侧抽屉（对齐 PC ReferenceDrawer）：列出关联消息（跨主题附主题名）；
@@ -1615,58 +1821,14 @@ class _ConversationMessagesPageState
     return text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  /// 长按气泡：软删除确认（底部抽屉——全局弹窗规范；行保留对齐桌面追溯语义）
+  /// 长按气泡：软删除确认（sm 确认抽屉；行保留对齐桌面追溯语义）
   Future<void> _confirmSoftDelete(ConversationData msg) async {
-    final confirmed = await showFSheet<bool>(
-      context: context,
-      side: FLayout.btt,
-      mainAxisMaxRatio: null,
-      builder: (c) => SheetSurface(
-        padding: EdgeInsets.fromLTRB(
-          AppTokens.pagePadding,
-          12,
-          AppTokens.pagePadding,
-          12,
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('删除这条记录？', style: c.theme.typography.body.lg),
-              const SizedBox(height: 8),
-              Text(
-                '记录将标记为已删除（保留数据以便追溯）',
-                style: c.theme.typography.body.sm.copyWith(
-                  color: c.theme.colors.mutedForeground,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                spacing: 8,
-                children: [
-                  Expanded(
-                    child: FButton(
-                      variant: FButtonVariant.outline,
-                      onPress: () => Navigator.pop(c, false),
-                      child: const Text('取消'),
-                    ),
-                  ),
-                  Expanded(
-                    child: FButton(
-                      variant: FButtonVariant.destructive,
-                      onPress: () => Navigator.pop(c, true),
-                      child: const Text('删除'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    final confirmed = await showSheetConfirm(
+      context,
+      title: '删除记录',
+      message: '确定删除这条记录？记录将标记为已删除（保留数据以便追溯）。',
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await ref.read(conversationRepositoryProvider).softDeleteMessage(msg.id);
     }
   }
@@ -2490,4 +2652,154 @@ String _timestamp() {
   final d = DateTime.now();
   String p(int n) => n.toString().padLeft(2, '0');
   return '${d.year}${p(d.month)}${p(d.day)}_${p(d.hour)}${p(d.minute)}${p(d.second)}';
+}
+
+// ===================== 模块级共享辅助 =====================
+
+/// 解析 JSON 字符串数组（tags / ref_ids 通用，异常返回空）
+List<String> convStrIds(String? raw) {
+  if (raw == null || raw.isEmpty) return const [];
+  try {
+    final v = jsonDecode(raw);
+    return [
+      if (v is List)
+        for (final e in v) e.toString(),
+    ];
+  } catch (_) {
+    return const [];
+  }
+}
+
+/// 解析跨主题引用 JSON（[{themeId, convId}]，异常返回空）
+List<({int themeId, int convId})> convCrossRefs(String? raw) {
+  if (raw == null || raw.isEmpty) return const [];
+  try {
+    final v = jsonDecode(raw);
+    return [
+      if (v is List)
+        for (final e in v)
+          if (e is Map)
+            (
+              themeId: int.tryParse('${e['themeId']}') ?? 0,
+              convId: int.tryParse('${e['convId']}') ?? 0,
+            ),
+    ];
+  } catch (_) {
+    return const [];
+  }
+}
+
+/// conversation_tag.color('#RRGGBB') → Color（解析失败回落默认紫）
+Color _parseTagColor(ConversationTagData tag) {
+  final hex = (tag.color ?? '').replaceFirst('#', '');
+  final v = int.tryParse(hex, radix: 16);
+  return v == null ? const Color(0xFF6366F1) : Color(0xFF000000 | v);
+}
+
+/// 'yyyy-MM-dd HH:mm:ss' → 今天 HH:mm / 昨天 HH:mm / M月D日（跨年带年份）
+String convFriendlyTime(String? raw) {
+  final d = DateTime.tryParse(raw ?? '');
+  if (d == null) return raw ?? '';
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final diff = today.difference(DateTime(d.year, d.month, d.day)).inDays;
+  final hhmm =
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  if (diff == 0) return '今天 $hhmm';
+  if (diff == 1) return '昨天 $hhmm';
+  if (d.year == now.year) return '${d.month}月${d.day}日';
+  return '${d.year}年${d.month}月${d.day}日';
+}
+
+/// 轻量输入抽屉（sm 档共享骨架）：controller 由自身 State 释放（红线：controller
+/// 生命周期跟 State，不跟 await 之后的调用点）；打开不自动聚焦（红线 #14⑤）。
+Future<String?> showConvPromptSheet(
+  BuildContext context, {
+  required String title,
+  required String hint,
+  required String confirmLabel,
+  String? subtitle,
+}) {
+  return showFSheet<String>(
+    context: context,
+    side: FLayout.btt,
+    mainAxisMaxRatio: AppTokens.sheetHeightLg,
+    resizeToAvoidBottomInset: false,
+    builder: (c) => _ConvPromptSheet(
+      title: title,
+      subtitle: subtitle,
+      hint: hint,
+      confirmLabel: confirmLabel,
+    ),
+  );
+}
+
+class _ConvPromptSheet extends StatefulWidget {
+  const _ConvPromptSheet({
+    required this.title,
+    required this.hint,
+    required this.confirmLabel,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+  final String hint;
+  final String confirmLabel;
+
+  @override
+  State<_ConvPromptSheet> createState() => _ConvPromptSheetState();
+}
+
+class _ConvPromptSheetState extends State<_ConvPromptSheet> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 内含输入框 → lg 80vh 定高（2026-09-13 全局定案：含输入框一律 lg）
+    return SheetScaffold(
+      title: widget.title,
+      size: SheetSize.lg,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 12,
+        children: [
+          if (widget.subtitle != null)
+            Text(
+              widget.subtitle!,
+              style: context.theme.typography.body.sm.copyWith(
+                fontSize: 12,
+                color: context.theme.colors.mutedForeground,
+              ),
+            ),
+          SheetInputBox(controller: _controller, hintText: widget.hint),
+        ],
+      ),
+      bottomBar: [
+        Expanded(
+          child: FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+        ),
+        Expanded(
+          child: GradientButton(
+            label: widget.confirmLabel,
+            icon: FLucideIcons.check,
+            onPress: () {
+              final v = _controller.text.trim();
+              Navigator.pop(context, v.isEmpty ? null : v);
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }

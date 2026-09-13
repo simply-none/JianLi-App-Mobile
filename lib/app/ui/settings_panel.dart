@@ -15,6 +15,10 @@ import '../providers/theme_providers.dart';
 import '../theme/app_theme.dart';
 import 'segmented.dart';
 import 'squircle_box.dart';
+import 'ui_atoms.dart';
+
+/// App 版本（与 pubspec.yaml 的 version 保持一致；与 about_page.dart 同值）
+const String kAppVersion = '26.9.6';
 
 /// 齿轮设置按钮（首页 / 三个分组页 右上角复用）
 class SettingsButton extends StatelessWidget {
@@ -29,7 +33,9 @@ class SettingsButton extends StatelessWidget {
     return SquircleBox(
       size: size,
       radius: radius,
-      color: t.colors.mutedForeground.withValues(alpha: 0.12),
+      // 无背景（透明）：SquircleBox 的 color 为 null 会回落到默认主题浅底，
+      // 所以这里必须显式给透明色（2026-09-13 用户定案：去掉齿轮底色）
+      color: Colors.transparent,
       alignment: Alignment.center,
       onTap: () => showSettingsPanel(context),
       haptic: HapticType.light,
@@ -145,42 +151,67 @@ class _SettingsPanel extends ConsumerWidget {
                         },
                       ),
                       const SizedBox(height: 26),
-                      const _SectionLabel('数据与同步'),
-                      FTileGroup(
-                        divider: FItemDivider.none,
-                        children: [
-                          FTile(
-                            onPress: () {
-                              Navigator.of(context).pop();
-                              // 面板已 pop，跨异步使用 originContext 前先查 mounted
-                              Future.microtask(() {
-                                if (!originContext.mounted) return;
-                                GoRouter.of(originContext).push('/sync');
-                              });
-                            },
-                            prefix: Icon(
-                              FLucideIcons.refreshCw,
-                              color: AppTokens.accent(3),
+                      const _SectionLabel('数据与同步', icon: FLucideIcons.refreshCw),
+                      AppCard(
+                        margin: EdgeInsets.zero,
+                        padding: EdgeInsets.zero,
+                        child: FTileGroup(
+                          divider: FItemDivider.none,
+                          children: [
+                            FTile(
+                              onPress: () {
+                                Navigator.of(context).pop();
+                                // 面板已 pop，跨异步使用 originContext 前先查 mounted
+                                Future.microtask(() {
+                                  if (!originContext.mounted) return;
+                                  GoRouter.of(originContext).push('/sync');
+                                });
+                              },
+                              prefix: Icon(
+                                FLucideIcons.refreshCw,
+                                color: AppTokens.accent(3),
+                              ),
+                              title: const Text('数据同步'),
+                              subtitle: const Text('在受信局域网内与其他设备互传数据'),
                             ),
-                            title: const Text('局域网同步'),
-                            subtitle: const Text('在受信局域网内与其他设备互传数据'),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 26),
-                      const _SectionLabel('关于'),
-                      FTileGroup(
-                        divider: FItemDivider.none,
-                        children: [
-                          FTile(
-                            prefix: Icon(
-                              FLucideIcons.info,
-                              color: AppTokens.accent(0),
+                      const _SectionLabel('关于', icon: FLucideIcons.info),
+                      AppCard(
+                        margin: EdgeInsets.zero,
+                        padding: EdgeInsets.zero,
+                        child: FTileGroup(
+                          divider: FItemDivider.none,
+                          children: [
+                            FTile(
+                              onPress: () {
+                                Navigator.of(context).pop();
+                                Future.microtask(() {
+                                  if (!originContext.mounted) return;
+                                  GoRouter.of(originContext).push('/about');
+                                });
+                              },
+                              prefix: Icon(
+                                FLucideIcons.info,
+                                color: AppTokens.accent(0),
+                              ),
+                              title: const Text('渐离App'),
+                              subtitle: const Text('功能介绍 · 依赖鸣谢 · 版本信息'),
                             ),
-                            title: const Text('渐离App'),
-                            subtitle: const Text('效率 · 内容 · 工具 一体工作台'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Center(
+                        child: Text(
+                          '渐离App Mobile · v$kAppVersion',
+                          style: t.typography.body.xs.copyWith(
+                            fontSize: 12,
+                            color: t.colors.mutedForeground,
                           ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
@@ -200,22 +231,32 @@ class _SettingsPanel extends ConsumerWidget {
   }
 }
 
-/// 分区小标题
+/// 分区小标题（带可选前置小图标）
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
+  const _SectionLabel(this.text, {this.icon});
+
   final String text;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Text(
-        text,
-        style: t.typography.body.sm.copyWith(
-          color: t.colors.primary,
-          fontWeight: FontWeight.w700,
-        ),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: t.colors.primary),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            text,
+            style: t.typography.body.sm.copyWith(
+              color: t.colors.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

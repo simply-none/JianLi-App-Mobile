@@ -7,6 +7,10 @@
 //
 // 用法：调用方维护「草稿」选项状态（打开前从已生效条件初始化），
 // onReset 里清空草稿并调 refresh()，onConfirm 里组装结果并作为 pop 值返回。
+//
+// 高度三档（2026-09-13 用户定案）：抽屉内含输入框的一律传 size: SheetSize.lg——
+// 80vh 定高、键盘覆盖不折叠（对齐 SKILL.md 红线 #9 的 lg 口径）；纯选择/多选类
+// 保持默认 md（50%，扣键盘）。
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -23,10 +27,17 @@ Future<R?> showFilterSheet<R>({
   R? Function()? onConfirm,
   String confirmLabel = '查询',
   String resetLabel = '重置',
+
+  /// 档位：默认 md（50% 扣键盘）；含输入框的抽屉必须传 lg（80vh 定高不扣键盘）
+  SheetSize size = SheetSize.md,
 }) {
   return showFSheet<R>(
     context: context,
     side: FLayout.btt,
+    // 三档制配对：定高 lg 必须挂 mainAxisMaxRatio=lg + 不随键盘收缩
+    //（否则 forui 默认 9/16≈56% 会把 80vh 压住——与 SheetScaffold 同一套规则）
+    mainAxisMaxRatio: AppTokens.sheetHeightLg,
+    resizeToAvoidBottomInset: false,
     builder: (context) => _FilterSheet<R>(
       title: title,
       body: body,
@@ -34,6 +45,7 @@ Future<R?> showFilterSheet<R>({
       onConfirm: onConfirm,
       confirmLabel: confirmLabel,
       resetLabel: resetLabel,
+      isLg: size == SheetSize.lg,
     ),
   );
 }
@@ -46,7 +58,11 @@ class _FilterSheet<R> extends StatefulWidget {
     this.onConfirm,
     required this.confirmLabel,
     required this.resetLabel,
+    required this.isLg,
   });
+
+  /// lg = 80vh 全屏定高（不扣键盘）；md = 50% 可用定高（扣键盘）
+  final bool isLg;
 
   final String title;
   final Widget Function(BuildContext context, VoidCallback refresh) body;
@@ -68,7 +84,9 @@ class _FilterSheetState<R> extends State<_FilterSheet<R>> {
     // 弹窗三档制：查询抽屉 = md（50%）**定高**——「重置 / 查询」绝对贴底不浮动，
     // 选项超出时中部滚动（minHeight 方案在 forui Sheet 的松约束下按钮会随内容收起，
     // 实踩后改为定高）。高度不再手写比例，统一走共享规则（含键盘扣减）。
-    final sheetHeight = sheetMaxHeight(context, SheetSize.md);
+    final sheetHeight = widget.isLg
+        ? sheetMaxHeightFull(context, SheetSize.lg)
+        : sheetMaxHeight(context, SheetSize.md);
     return SheetSurface(
       child: SizedBox(
         height: sheetHeight,

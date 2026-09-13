@@ -18,10 +18,18 @@ import '../services/totp_service.dart';
 
 /// 单条 2FA 账户码展示
 class AccountCodeTile extends StatelessWidget {
-  const AccountCodeTile({super.key, required this.account, required this.meta});
+  const AccountCodeTile({
+    super.key,
+    required this.account,
+    required this.meta,
+    this.onMenu,
+  });
 
   final TwoFactorAccount account;
   final TotpWithMeta meta;
+
+  /// 长按菜单（编辑 / 导出二维码 / 删除；null = 无长按行为）
+  final VoidCallback? onMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +40,7 @@ class AccountCodeTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 5),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       onTap: () => _copy(context),
+      onLongPress: onMenu,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

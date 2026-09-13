@@ -20,8 +20,8 @@
 | 档位 | 高度 | 用在哪 | 枚举值 |
 |---|---|---|---|
 | `sm` | **30%** | 确认、操作菜单、单选 —— 内容少、一眼看完 | `SheetSize.sm` |
-| `md` | **50%** | 多选、日期时间、输入、按天列表 —— 需要滚动 | `SheetSize.md` |
-| `lg` | **80%** | 详情、新增/编辑表单 —— 长表单 | `SheetSize.lg` |
+| `md` | **50%** | 多选、日期时间、按天列表 —— 需要滚动（**不含输入框**） | `SheetSize.md` |
+| `lg` | **80%** | 详情、新增/编辑表单、**一切含输入框的弹窗（2026-09-13 定案）** | `SheetSize.lg` |
 
 - **禁止第四种**：新增弹窗必须挂到其中一档，**不要在调用点写裸比例**（历史债：曾出现 0.86 / 0.88 / 0.9 / 0.94 / 0.7 五种散落比例，同一模块的详情比编辑矮、键盘一弹就全乱）。
 - 比例值 = `AppTokens.sheetHeightSm / Md / Lg`（`lib/app/theme/app_theme.dart`）。
@@ -29,11 +29,12 @@
 
 ### 1.2 高度分档：lg = 全屏固定 80vh（键盘不收），sm/md = 可用高度（扣键盘）
 
-- **lg 档（详情 / 新增 / 编辑，长表单）**：高度 = **屏幕高 × 0.8**，取自 `sheetMaxHeightFull(context, size)`，**不扣键盘**。
+- **lg 档（详情 / 新增 / 编辑，长表单；⚠️ 2026-09-13 定案：判定标准 = **内含输入框**，
+  只要抽屉里有 TextField / FTextField / SheetInputBox / SheetMultilineBox 就必须 lg**）**：高度 = **屏幕高 × 0.8**，取自 `sheetMaxHeightFull(context, size)`，**不扣键盘**。
   键盘弹出时**覆盖在抽屉上方**，抽屉不重排、不折叠；输入框聚焦后中间滚动区把该框滚入可视区，底部按钮在键盘收起后可见。
   调用点必须配对（见 §1.7）：`mainAxisMaxRatio: AppTokens.sheetHeightLg` + `resizeToAvoidBottomInset: false`；
   内部承载件**必须定高**（`BoxConstraints.tightFor(height: maxH)` 或 `SizedBox(height:)`），**绝不能只用 `ConstrainedBox(maxHeight:)`**（那只是上界，内容少会 hug，抽屉缩到 ~30% 够不到 80%，实踩 Request 5）。
-- **sm / md 档（确认 / 单选 / 多选 / 日期 / 输入）**：高度 = **（屏幕高 − 键盘高）× 档位**，取自 `sheetMaxHeight(context, size)`，**必须扣键盘**。
+- **sm / md 档（确认 / 单选 / 多选 / 日期（**不含输入框**））**：高度 = **（屏幕高 − 键盘高）× 档位**，取自 `sheetMaxHeight(context, size)`，**必须扣键盘**。
   **为什么必须减键盘高**（2026-09-12 实测，改前必读）：forui 的 `ShiftedSheet` 用
   `dy = max(0, H − 抽屉高 − 键盘高)` 摆放抽屉。抽屉高一旦超过「H − 键盘高」，`dy` 就被夹到 0
   **停止上移** —— 抽屉**不会**抬到键盘上方，而是被键盘从底下盖住，底部「保存 / 查询」按钮
@@ -68,8 +69,8 @@
 | chip（软底 / 状态 / 优先级 / 标签） | 11 / Semi Bold | |
 | 底部按钮 | 15 / Semi Bold · 高 46 · r14 | |
 
-- **字段组（label ↔ 输入框）绑定规则（2026-09-12 下午定，强制）**：每个字段 = `Column(mainAxisSize:min, crossAxisAlignment:stretch, spacing:6)[ 标签Text(14, mutedForeground), 输入框 ]`，label 在上、输入框在下、组内间距 6。
-  - 标签与字段值**同大 14**；**不要**把标签和输入框直接当作外层 `Column(spacing:12)` 的同级 children —— 外层间距会把「上一组输入框 / 下一组标签」也撑出 12px，导致 label↔field 视觉间距被放大到约 30px（实踩：用户实指「label 和字段之间隔得太远」）。用嵌套字段组 Column 隔离组内 6px 与组间 12px。
+- **字段组（label ↔ 输入框）绑定规则（2026-09-12 下午定；2026-09-13 澄清间距唯一来源，强制）**：每个字段 = `Column(mainAxisSize:min, crossAxisAlignment:stretch, children:[ SheetFieldLabel(14, mutedForeground), 输入框 ])`，label 在上、输入框在下。⚠️ **组内间距 6px 的唯一来源 = `SheetFieldLabel` 自带的 `bottom:6`——字段组 Column 禁止再写 `spacing:`**（写了就叠成 12px；若 label 是平铺在外层 spacing 列表里，则叠出 14~20px。2026-09-13 用户实指「label 和表单值间距过大」后全库收口）。倒计时/提醒/番茄钟表单是正确先例：label 与输入框相邻、组间 `SizedBox(height:16)`。
+  - 标签与字段值**同大 14**；**不要**把标签和输入框直接当作外层 `Column(spacing:12/14)` 的同级 children —— 外层间距会把「上一组输入框 / 下一组标签」也撑出来，导致 label↔field 视觉间距被放大（两次实踩：2026-09-12「label 和字段隔得太远」、2026-09-13「label 和表单值间距过大」）。字段组必须嵌套 Column 隔离组内 6px 与组间 16px。
   - **右侧提示**（如「留空不提醒」）= 12、与 label 同行右端：`Row(spaceBetween)[ label(14), hint(12) ]`，比 label 小 2 号，层级明显。
 
 ### 1.5 定高 vs 上限（三个承载件的分工）
@@ -188,8 +189,14 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
 
 ### 3.4 统计卡片（PageBanner 渐变横幅 + 统计数）
 
-- 元素：`PageBanner(icon: check, title:'待办', subtitle:'专注当下，一件一件来', gradient: AppTokens.primaryGradient, cornerRadius:22, textureAsset: CardTextures.texture11, ringDecor:true, shadow:false, margin: EdgeInsets(16,0,16,0), stats:[全部/进行中/已完成/已取消])`。
-- 样式：主色渐变背景 + 纹理叠加 + 同心环装饰（`ringDecor`）。
+- 元素：`PageBanner(icon: check, title:'待办', subtitle:'专注当下，一件一件来', gradient: AppTokens.accentGradient(专属色), cornerRadius:22, textureAsset: CardTextures.texture11, ringDecor:true, shadow:false, margin: EdgeInsets(16,0,16,0), stats:[全部/进行中/已完成/已取消])`。
+- 样式：**专属强调色渐变背景** + 纹理叠加 + 同心环装饰（`ringDecor`）。
+- ⚠️ **功能色跟随功能域专属 accent（2026-09-13 用户定案，反转 09-12 的「统一主题色」）**：
+  待办=accent(1)蓝 / 习惯=accent(2)绿 / 番茄钟=accent(6)红 / 倒计时=accent(0)紫 / 提醒=accent(3)琥珀——
+  与 Hub 入口卡图标色一一对应，切换外观主题时**功能色不变**（外观只影响中性层与 CTA）。
+  页面级强调元素（空态圆盘/勾选框/进度环/状态强调/条件 chip 默认色/弹层内选中态与开关轨）同步用专属色；
+  GradientButton 与 `_sheetButton` 等 CTA 仍走主题主色（与内容/工具页一致）。先例：todo_page `_accent`、
+  pomodoro 进度环颜色=阶段语义色（专注红 6 / 休息绿 2）。
 - **背景纹理**：`CardTextures.texture11 = 'assets/images/textures/lemoonboots-texture-2351354_1920.jpg'`；合成不透明度 `composedOpacity = 0.196`（= `fillOpacity 0.56 × nodeOpacity 0.35`）。纹理以 600×600 贴在 `(-100,-100)`，节点 opacity `0.35`，再叠整层 `0.56`。
 - 统计数（`AnimatedStat`）：数值 `20/Bold` 白色，标签白色 `0.75`。
 - 图标盘 `SquircleBox` 44/14 白 `0.22` + 白 icon 22；标题 `body.lg` 白 w800；副标题白 `0.78`；内边距全 18。
@@ -313,6 +320,31 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
 | **输入框**（#15） | 常态描边（不写 `border:`）+ 点空白/滚动失焦收键盘（`app.dart` + `sheet_surface` 两处兜底）+ 多行 `maxLines:null minLines:N` 随内容增长 |
 | **已知不一致** | 卡片/日历视图是 `Column` 固定头（搜索/条件/Tab 全固定），与列表页「只有搜索行吸顶」不同形；彻底统一需改 sliver，改动面大，**未拍板前保持现状** |
 
+### 3.18 待办骨架的共享原子与新消费方（2026-09-12 扩展）
+
+> 待办骨架（图1：主色横幅统计 + 吸顶搜索行 + 分段 Tab + 列表）已抽出为 `lib/app/ui/`
+> 共享原子，待办页与三个新消费方（提醒 / 倒计时 / 番茄钟记录）共同使用。
+> **新增列表页照此组装，禁止再各写一套搜索行 / Tab 栏 / 软底 chip。**
+
+| 原子 | 路径 | 要点 |
+|---|---|---|
+| 吸顶搜索行 | `lib/app/ui/pinned_search_row.dart` | `PinnedSearchRow`（h40/r10/卡底描边 + 28×28 筛选钮，`onFilter:null` 隐藏）+ `PinnedSearchHeader`（`shrinkOffset>0` 才铺 `pinnedCover`，见 §3.5 雷区）+ `kSearchRowExtent`=60（吸顶高度与行内常量同源推导） |
+| 分段 Tab 栏 | `lib/app/ui/scope_tab_bar.dart` | `ScopeTabBar<T>`（h34 muted 轨 r11、选中白卡 r8、13px、`CrossAxisAlignment.stretch`）；**不吸顶**，随滚动移出 |
+| 软底 chip | `lib/app/ui/soft_chip.dart` | `SoftChip`（色底 alpha · r10 · 11/w600，可选 `leading`/`onRemove` ×；2026-09-13 增选择形态 `onTap`——无 ×、TapScale 包装，供分类/标签选择行使用，与 `onRemove` 互斥）；待办 `TodoStatusChip`(15%)/`TodoTagChip`(14%)/条件 chip(12%) 均为其包装 |
+| 弹窗表单原子 | `lib/app/ui/sheet_form.dart` | `SheetScaffold`（lg 定高骨架：居中把手 + 17/Bold 标题 + 裸 X + 中间滚动体 + 底部条）+ `SheetHandle`/`SheetChoiceChip`/`SheetFieldLabel`/`SheetInputBox`（数字类短输入可 `textAlign: center`；**与按钮并排等高对齐的唯一选择，见 §4.6**）/`SheetMultilineBox`/`SheetSwitchRow`/`sheetBottomActions`（`destructive: true` 出红色主按钮）+ **`showSheetActionMenu`（长按操作菜单，sm 档）** + **`showSheetConfirm`（危险确认，sm 档，恒返回 bool）**；**新增弹窗优先用这组**（调用点必须配 `mainAxisMaxRatio: AppTokens.sheetHeightLg + resizeToAvoidBottomInset: false`，见 §一）；待办 `todo_sheets.dart` 私有 `_sheetScaffold` 为同构先例，待后续统一迁移 |
+
+| 消费方 | 骨架构成（横幅统计 / Tab / 备注） |
+|---|---|
+| `todo_page.dart` | 全部/进行中/已完成/已取消 · Tab=状态范围 · 横幅纹理「卡11」+ 条件 chip 行（原子迁移，零视觉变化） |
+| `reminder_list_page.dart` | 全部/定点/周期/启用中 · Tab=全部/定点/周期/多状态 · 权限提示条（通知权限 / 「闹钟和提醒」，可点去设置）+ 搜索按标题/内容 + 编辑弹层走 `SheetScaffold` + **长按卡片 → `showSheetActionMenu`【编辑/停用·启用/删除】**（stateful 只读不响应），删除走 `showSheetConfirm` |
+| `countdown_page.dart` | 全部/进行中/已暂停/已结束 · Tab=同四段 · 大计时器白卡主色环（横幅与搜索行之间，随滚动移出）+ 新建/编辑共用 `_CountdownFormSheet`（**设定方式对齐 PC（2026-09-12）**：指定时刻=复用待办 `showTodoDateTimeSheet` 月历选择器；指定时长=年/月/日/时/分/秒六小输入框（年=365 天、月=30 天折算），默认 1 小时；编辑未改时间设定保留原 timing，改了回到 running 并重排通知）+ **长按卡片 → `showSheetActionMenu`【编辑/删除】**，删除走 `showSheetConfirm` |
+| `pomodoro_page.dart` | **三种展示效果（存 basic_info 键 `pomodoro_display`，编辑弹层内 choiceChip 切换）**：`normal`=主色横幅 + 白卡进度环 + 操作条固定页底（⚙设置 + ▶重新开始；⟳ 横竖屏循环仅此模式）／`clean`=仅进度环内容卡（去说明文字）+ 头部 ⚙ + 「开始专注」文字钮（无底色不抢色，锁竖屏）／`landscape`=**七段数码管电子钟**（`_SegmentClock` CustomPainter 逐段绘制，外框 card + 内屏 muted + 数字 foreground 走主题；星期排今日高亮 + 右下角阶段小字；锁横屏）；`startRound()` 写 `reminders.startTime=now+enabled='1'`（行缺失落种子 work35/rest5，不做暂停语义）；阶段边界一次性通知 `reschedulePhaseNotifications()`；**长按整页 → 编辑配置弹层（md 档：专注/休息分钟 + 展示效果）**；横竖屏偏好持久化、离开页面恢复 auto |
+| `pomodoro_records_page.dart` | 今日专注/近 7 天/累计记录 · Tab=全部/专注/休息 · 流水卡（类型 SoftChip：专注红(6)/休息绿(2)） |
+
+> 到点通知 / 权限 / 保活的横切约定（`POST_NOTIFICATIONS`、`SCHEDULE_EXACT_ALARM` 引导、
+> `AlarmBootstrap` 启动重排、`stableId` 通知 id）见 `modules/features.md` 功能域清单
+> 「新增功能域落地清单」第 4 条与 `modules/changelog.md`（2026-09-12 XIV）。
+
 ---
 
 ## 四、输入框交互规范（2026-09-12 定，全 App 适用）
@@ -386,3 +418,40 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
 - ⚠️ **单行输入框文字垂直居中（关键，照搬搜索栏）**：固定高 `Container` 直接放 `Material(TextField)` 会让 TextField 按自身内容高、文字**贴顶**不对齐（Container child 默认 top-start）。修法是包一层 `Row`（`Expanded` 撑宽、默认 `center` 对齐）——和待办列表搜索栏 `_searchRow` 完全一致的写法，三处先例（`_searchRow` / `_TodoEditSheet` 标题 / `_showCreateSheet` 名称）已统一。**不要**用 `crossAxisAlignment: CrossAxisAlignment.stretch`：单行虽不崩但无必要，多行会崩。
 - ⚠️ **多行输入框（描述/备注）绝对禁止套 Row/Expanded**：必须直接 `Container(padding: symmetric(h:12, v:12)) → Material(TextField(maxLines:null, minLines:2))`。一旦套 `Row(stretch)+Expanded` 且外层 `Container` **无定高**，会形成「Row 高度取决于子项、子项又被 stretch 撑到 Row 高度」的约束死循环 → `RenderBox was not laid out` / `Cannot hit test a render box with no size`（2026-09-12 实踩崩溃，已回退）。
 - ⚠️ **不要**为了「输入框」去用 forui `FTextField` 再包 Container（双重盒子）；也不要裸写 `TextField(decoration: InputBorder.none)` 不加外层 Container（那会没边框、和搜索栏不一致）。先例：单行用「Container + Row(默认center) + Expanded + Material + 原生 TextField」，多行用「Container + Material + 原生 TextField」。
+
+### 4.6 与输入框并排的按钮（添加/发送等）等高对齐 —— 两侧全自绘，禁套 forui 控件（2026-09-13 定案）
+
+- **根因（两轮实拍截图验证，勿再踩）**：
+  - **forui `FTextField` 的可见边框按内容固有高度绘制，外层紧高度约束不拉伸它**——`SizedBox(height:44)` 套住后盒子是 44，可见边框仍只有 sm 档固有 ~36，其余透明（「一边虚高」）；
+  - **forui `FButton` 同理**：在固定高度盒内仍按自身 padding 画框排内容（「一边实高」）。
+  - 于是「虚高 + 实高」怎么调数字都对不齐：第一轮锁 44 输入框 vs FButton 不齐；第二轮输入框套 44 + 自绘按钮真 44，反而按钮比输入框还高。**结论：与输入框并排时，两侧必须都是自绘容器，禁用 forui 字段/按钮硬套高度。**
+- **正确写法**（先例：`sync_page` / `file_transfer_page` 的「手动填 IP + 添加」行）：
+  ```dart
+  Row(
+    children: [
+      Expanded(
+        child: SheetInputBox(                      // 共享原子（sheet_form.dart）：
+          controller: _manualIp,                   //   边框由自绘 Container 画
+          hintText: '手动填 IP…',                  //   高度真实可控 h40
+          keyboardType: TextInputType.number,
+        ),
+      ),
+      const SizedBox(width: 8),
+      TapScale(                                    // 自绘按钮：与输入框同高同圆角
+        onTap: ...,
+        child: Container(
+          height: 40,                              // = SheetInputBox 高（40），结构性等高
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: AppTokens.primaryGradient(context),   // 主操作 = 主色渐变
+            borderRadius: BorderRadius.circular(10),        // = 输入盒圆角 10
+          ),
+          child: Text('添加', style: ...14/w600/白),
+        ),
+      ),
+    ],
+  )
+  ```
+- **要点**：① 两侧同为自绘容器 → 结构性必然等高，键盘弹起不漂移，与字号缩放无关；② 圆角与输入盒统一 10；③ 次要按钮（如「扫描」独立行）可继续用 FButton——本规则只约束「与输入框并排」的场景；④ 需要固定高度/并排对齐的输入框**一律 SheetInputBox，不要 SizedBox 套 FTextField**（forui 字段适合自适应高度场景）。
+- ⚠️ 禁止再写「SizedBox(height:X) 套 FTextField/FButton 求对齐」——2026-09-13 两轮截图实指后由自绘方案收口。

@@ -28,6 +28,7 @@ import '../../features/ebook/components/book_notes_page.dart';
 import '../../features/ebook/components/epub_reader_page.dart';
 import '../../features/conversation/components/conversation_page.dart';
 import '../../features/sync/components/sync_page.dart';
+import '../../features/about/about_page.dart';
 import '../../features/file_transfer/components/file_transfer_page.dart';
 import '../../features/ferry/ferry_page.dart';
 import '../anim/jianli_transitions.dart';
@@ -196,6 +197,11 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/sync',
       pageBuilder: (context, state) => slidePage(const SyncPage(), state),
+    ),
+    // 关于页（设置面板「关于」入口）
+    GoRoute(
+      path: '/about',
+      pageBuilder: (context, state) => slidePage(const AboutPage(), state),
     ),
     GoRoute(
       path: '/file-transfer',

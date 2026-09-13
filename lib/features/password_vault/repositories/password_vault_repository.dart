@@ -38,6 +38,9 @@ class PasswordVaultRepository {
     return path;
   }
 
+  /// vault 文件路径（公开：导出/分享保险库文件用）
+  Future<String> getVaultPath() => _vaultPath();
+
   /// 是否已建库
   Future<bool> hasVault() =>
       _vaultPath().then((path) => File(path).existsSync());

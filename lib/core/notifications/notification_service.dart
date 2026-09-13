@@ -17,6 +17,7 @@
 //   分钟再响一次，重排的通知仍带该按钮可连续贪睡；由 init() 注册的 onActionReceived
 //   → _onActionReceived 处理，依赖 payload 透传 id/渠道/标题/内容。
 import 'package:awesome_notifications/awesome_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// 通知渠道定义（与功能域一一对应，便于系统级分组管理）
 class NotificationChannels {
@@ -30,6 +31,9 @@ class NotificationChannels {
 
   /// 番茄钟阶段切换
   static const String pomodoro = 'pomodoro';
+
+  /// 倒计时到点（普通系统通知；精确性由 scheduleOnce 的 preciseAlarm 保证）
+  static const String countdown = 'countdown';
 
   /// 闹钟（强提醒）：高重要 + 可全屏
   static const String alarm = 'alarm';
@@ -55,6 +59,14 @@ class NotificationChannels {
           channelName: '番茄钟',
           channelDescription: '番茄钟工作/休息阶段切换提醒',
           channelShowBadge: true,
+          playSound: true,
+        ),
+        NotificationChannel(
+          channelKey: countdown,
+          channelName: '倒计时提醒',
+          channelDescription: '倒计时到点提醒',
+          channelShowBadge: true,
+          importance: NotificationImportance.High,
           playSound: true,
         ),
         NotificationChannel(
@@ -106,6 +118,36 @@ class NotificationService {
       if (allowed) return true;
       return AwesomeNotifications().requestPermissionToSendNotifications();
     });
+  }
+
+  /// 精确闹钟（Android 12+「闹钟和提醒」特殊权限）当前是否可用。
+  ///
+  /// Android 12 以下没有该权限概念，permission_handler 直接返回 granted；
+  /// Android 12+ 需用户在系统设置里开「闹钟和提醒」，未授权时 AlarmManager
+  /// 的精确调度会退化为非精确（到点可能延迟几分钟）。
+  static Future<bool> get exactAlarmAllowed async {
+    try {
+      final status = await Permission.scheduleExactAlarm.status;
+      return status.isGranted || status.isLimited;
+    } catch (_) {
+      // 平台不支持该权限（如 iOS/低版本）时按「可用」处理
+      return true;
+    }
+  }
+
+  /// 引导用户去系统设置开「闹钟和提醒」（Android 12+；低版本直接返回 true）
+  static Future<bool> requestExactAlarmPermission() =>
+      Permission.scheduleExactAlarm.request().then((s) => s.isGranted);
+
+  /// 一次性检查到点提醒的两项前置权限（提醒页内联提示条用）。
+  ///
+  /// - notifications：Android 13+ 通知运行时权限；
+  /// - exactAlarm：Android 12+「闹钟和提醒」特殊权限。
+  static Future<({bool notifications, bool exactAlarm})>
+      checkCapabilities() async {
+    final notifications = await Permission.notification.isGranted;
+    final exactAlarm = await exactAlarmAllowed;
+    return (notifications: notifications, exactAlarm: exactAlarm);
   }
 
   /// 取消单条通知（含其定时计划）

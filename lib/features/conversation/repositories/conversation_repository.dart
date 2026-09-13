@@ -6,8 +6,8 @@
 //   cross_refs(跨主题引用 JSON：[{themeId,convId}])/tags/create_time/annotate_time/pinned('1'置顶)/
 //   is_deleted('1'软删)
 // - conversation_tag：name/color/scope(theme|conversation)/create_time
-// 未做（桌面端有、移动端裁剪）：发起引用/跨主题引用、标注、多选、导出 Markdown、标签管理 CRUD、
-// 富文本编辑——记 SKILL.md 待办。
+// 2026-09-13 起：引用/跨主题引用、导出 Markdown、标签管理 CRUD（updateTag/deleteTag）均已落地；
+// 未做（桌面端有、移动端裁剪）：子主题发起、多选批量、情绪预设、LLM 回复——记 SKILL.md 待办。
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
@@ -47,6 +47,21 @@ class ConversationRepository {
   ConversationRepository(this._db);
 
   final AppDatabase _db;
+
+  /// 标签配色轮转（对齐桌面端 TAG_COLORS 顺序取色，createConversationTag /
+  /// createThemeTag / 改色共用同一色板）
+  static const List<String> kTagPalette = [
+    '#6366f1',
+    '#ec4899',
+    '#f59e0b',
+    '#10b981',
+    '#3b82f6',
+    '#8b5cf6',
+    '#ef4444',
+    '#14b8a6',
+    '#f97316',
+    '#06b6d4',
+  ];
 
   /// 主题列表流（update_time 倒序，与桌面端 loadThemes 一致）
   Stream<List<ConversationThemeData>> watchThemes() {
@@ -219,22 +234,10 @@ class ConversationRepository {
 
   /// 新建对话标签（scope='conversation'；配色对齐桌面端 TAG_COLORS 按顺序取色）
   Future<ConversationTagData> createConversationTag(String name) async {
-    const palette = [
-      '#6366f1',
-      '#ec4899',
-      '#f59e0b',
-      '#10b981',
-      '#3b82f6',
-      '#8b5cf6',
-      '#ef4444',
-      '#14b8a6',
-      '#f97316',
-      '#06b6d4',
-    ];
     final existing = await (_db.select(
       _db.conversationTag,
     )..where((t) => t.scope.equals('conversation'))).get();
-    final color = palette[existing.length % palette.length];
+    final color = kTagPalette[existing.length % kTagPalette.length];
     final id = await _db
         .into(_db.conversationTag)
         .insert(
@@ -257,22 +260,10 @@ class ConversationRepository {
   /// 新建主题标签（scope='theme'；配色对齐桌面端 TAG_COLORS 按顺序取色）
   /// 与 createConversationTag 平行，仅 scope 不同；创建后自动选中由调用方处理。
   Future<ConversationTagData> createThemeTag(String name) async {
-    const palette = [
-      '#6366f1',
-      '#ec4899',
-      '#f59e0b',
-      '#10b981',
-      '#3b82f6',
-      '#8b5cf6',
-      '#ef4444',
-      '#14b8a6',
-      '#f97316',
-      '#06b6d4',
-    ];
     final existing = await (_db.select(
       _db.conversationTag,
     )..where((t) => t.scope.equals('theme'))).get();
-    final color = palette[existing.length % palette.length];
+    final color = kTagPalette[existing.length % kTagPalette.length];
     final id = await _db
         .into(_db.conversationTag)
         .insert(
@@ -290,6 +281,55 @@ class ConversationRepository {
       scope: 'theme',
       createTime: _now(),
     );
+  }
+
+  /// 更新标签（重命名 / 改色，对齐桌面端 updateTag；引用处无需回写——
+  /// 主题/消息 tags 存 id，名称与颜色实时解析）
+  Future<void> updateTag(int id, {String? name, String? color}) async {
+    await (_db.update(
+      _db.conversationTag,
+    )..where((t) => t.id.equals(id))).write(
+      ConversationTagCompanion(
+        name: name == null ? const Value.absent() : Value(name),
+        color: color == null ? const Value.absent() : Value(color),
+      ),
+    );
+  }
+
+  /// 删除标签（对齐桌面端 deleteTag 语义：删行 + 自动从主题/对话 tags 字段移除该 id）
+  Future<void> deleteTag(int id) async {
+    final idStr = '$id';
+    await (_db.delete(
+      _db.conversationTag,
+    )..where((t) => t.id.equals(id))).go();
+    final themes = await _db.select(_db.conversationTheme).get();
+    for (final th in themes) {
+      final ids = _strArr(th.tags);
+      if (ids.contains(idStr)) {
+        await (_db.update(
+          _db.conversationTheme,
+        )..where((t) => t.id.equals(th.id))).write(
+          ConversationThemeCompanion(
+            tags: Value(
+              jsonEncode(ids.where((e) => e != idStr).toList()),
+            ),
+          ),
+        );
+      }
+    }
+    final msgs = await _db.select(_db.conversation).get();
+    for (final m in msgs) {
+      final ids = _strArr(m.tags);
+      if (ids.contains(idStr)) {
+        await (_db.update(
+          _db.conversation,
+        )..where((t) => t.id.equals(m.id))).write(
+          ConversationCompanion(
+            tags: Value(jsonEncode(ids.where((e) => e != idStr).toList())),
+          ),
+        );
+      }
+    }
   }
 
   /// 取某主题下的全部对话（排除软删，按 create_time 升序）——导出 Markdown 用，

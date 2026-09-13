@@ -12,13 +12,16 @@ final Provider<NoteRepository> noteRepositoryProvider =
       (ref) => NoteRepository(ref.watch(appDatabaseProvider)),
     );
 
-/// 笔记列表流（family 参数为分类过滤；null = 全部）
-/// 注：不显式声明 family 类型名（Riverpod 3 的 family 类型命名与 2.x 不同），交给推断。
-final notesStreamProvider = StreamProvider.family<List<NoteItem>, String?>((
+/// 笔记列表流（family 参数为多分类的编码串：'\u0001'.join(cats)，空串 = 全部。
+/// 用稳定字符串做 key——List 直接做 family 参数每次新实例都会换 provider）
+final notesStreamProvider = StreamProvider.family<List<NoteItem>, String>((
   ref,
-  category,
+  categoryKey,
 ) {
-  return ref.watch(noteRepositoryProvider).watchNotes(category: category);
+  final categories = categoryKey.isEmpty
+      ? const <String>[]
+      : categoryKey.split('\u0001');
+  return ref.watch(noteRepositoryProvider).watchNotes(categories: categories);
 });
 
 /// 分类列表（一次性加载）

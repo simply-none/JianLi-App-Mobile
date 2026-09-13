@@ -134,7 +134,8 @@ Widget _choiceChip(
   VoidCallback? onTap,
 }) {
   final t = context.theme;
-  final c = color ?? t.colors.primary;
+  // 选中/强调默认色 = 待办域专属蓝（2026-09-13 功能色定案）
+  final c = color ?? AppTokens.accent(1);
   return FTappable(
     onPress: onTap,
     child: Container(
@@ -446,19 +447,19 @@ Future<DateTime?> showTodoDateTimeSheet(
                     height: 38,
                     decoration: BoxDecoration(
                       color: sel
-                          ? c.theme.colors.primary.withValues(alpha: 0.16)
+                          ? AppTokens.accent(1).withValues(alpha: 0.16)
                           : Colors.transparent,
                       borderRadius:
                           BorderRadius.circular(AppTokens.radiusSm),
                       border: sel
-                          ? Border.all(color: c.theme.colors.primary)
+                          ? Border.all(color: AppTokens.accent(1))
                           : null,
                     ),
                     child: Text(
                       '$d',
                       style: c.theme.typography.body.sm.copyWith(
                         color: sel
-                            ? c.theme.colors.primary
+                            ? AppTokens.accent(1)
                             : c.theme.colors.foreground,
                         fontWeight:
                             sel ? FontWeight.w700 : FontWeight.normal,
@@ -524,58 +525,6 @@ Future<DateTime?> showTodoDateTimeSheet(
             );
           }
 
-          Widget stepper(
-            String label,
-            int value,
-            void Function(int) onChanged,
-          ) {
-            return Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: c.theme.colors.muted,
-                  borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-                ),
-                child: Column(
-                  children: [
-                    Text(label,
-                        style: c.theme.typography.body.xs
-                            .copyWith(color: c.theme.colors.mutedForeground)),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        FTappable(
-                          onPress: () => onChanged(value - 1),
-                          child: Padding(
-                            padding: const EdgeInsets.all(6),
-                            child: Icon(FLucideIcons.minus, size: 16),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 36,
-                          child: Text(
-                            '$value',
-                            textAlign: TextAlign.center,
-                            style: c.theme.typography.body.lg
-                                .copyWith(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                        FTappable(
-                          onPress: () => onChanged(value + 1),
-                          child: Padding(
-                            padding: const EdgeInsets.all(6),
-                            child: Icon(FLucideIcons.plus, size: 16),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-
           final hour = selected?.hour ?? 9;
           final minute = selected?.minute ?? 0;
 
@@ -585,28 +534,23 @@ Future<DateTime?> showTodoDateTimeSheet(
               buildGrid(),
               if (!dateOnly) ...[
                 const SizedBox(height: 14),
-                Row(
-                  spacing: 12,
-                  children: [
-                    stepper('时', hour, (v) {
-                      final nv = (v % 24 + 24) % 24;
-                      setInner(() => selected = DateTime(
-                          selected?.year ?? DateTime.now().year,
-                          selected?.month ?? DateTime.now().month,
-                          selected?.day ?? DateTime.now().day,
-                          nv,
-                          minute));
-                    }),
-                    stepper('分', minute, (v) {
-                      final nv = (v % 60 + 60) % 60;
-                      setInner(() => selected = DateTime(
-                          selected?.year ?? DateTime.now().year,
-                          selected?.month ?? DateTime.now().month,
-                          selected?.day ?? DateTime.now().day,
-                          hour,
-                          nv));
-                    }),
-                  ],
+                // 时刻轮式选择器（forui FTimePicker，24 小时制）——替代时/分步进器
+                FTimePicker(
+                  hour24: true,
+                  control: FTimePickerControl.managed(
+                    controller: FTimePickerController(
+                      time: FTime(hour, minute),
+                    ),
+                    onChange: (t) => setInner(
+                      () => selected = DateTime(
+                        selected?.year ?? DateTime.now().year,
+                        selected?.month ?? DateTime.now().month,
+                        selected?.day ?? DateTime.now().day,
+                        t.hour,
+                        t.minute,
+                      ),
+                    ),
+                  ),
                 ),
               ],
               const SizedBox(height: 8),
@@ -656,7 +600,8 @@ Future<void> showRecordProgressSheet(
     builder: (c) => _sheetScaffold(
       context: c,
       title: '记录进展',
-      size: SheetSize.md,
+      // 内含多行输入框 → lg 80vh 定高（2026-09-13 全局定案）
+      size: SheetSize.lg,
       body: StatefulBuilder(
         builder: (c, setInner) {
           final t = c.theme;
@@ -786,7 +731,7 @@ Widget _viewModeOption(
   required VoidCallback onTap,
 }) {
   final t = c.theme;
-  final p = t.colors.primary;
+  final p = AppTokens.accent(1);
   return FTappable(
     onPress: onTap,
     child: Container(
@@ -1229,7 +1174,7 @@ Widget _pill(
   VoidCallback? onTap,
 }) {
   final t = c.theme;
-  final col = color ?? t.colors.primary;
+  final col = color ?? AppTokens.accent(1);
   return FTappable(
     onPress: onTap,
     child: Container(
@@ -1310,7 +1255,7 @@ class _CanvasSwitch extends StatelessWidget {
         padding: const EdgeInsets.all(2),
         alignment: value ? Alignment.centerRight : Alignment.centerLeft,
         decoration: BoxDecoration(
-          color: value ? t.colors.primary : _stepUp(context, alpha: 0.26),
+          color: value ? AppTokens.accent(1) : _stepUp(context, alpha: 0.26),
           borderRadius: BorderRadius.circular(13),
         ),
         child: Container(
@@ -2052,9 +1997,9 @@ Future<TodoDetailResult?> showTodoDetailSheet(
                   0.14,
                 ),
                 if (item.isTemplate)
-                  _softChip(c, '重复模板', t.colors.primary, 0.12),
+                  _softChip(c, '重复模板', AppTokens.accent(1), 0.12),
                 if (item.isRecurrenceInstance == 1)
-                  _softChip(c, '重复实例', t.colors.primary, 0.12),
+                  _softChip(c, '重复实例', AppTokens.accent(1), 0.12),
               ],
             ),
             if (item.description.trim().isNotEmpty) ...[
@@ -2240,13 +2185,13 @@ Widget _parentChip(
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: t.colors.primary.withValues(alpha: 0.12),
+        color: AppTokens.accent(1).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(FLucideIcons.cornerDownRight, size: 12, color: t.colors.primary),
+          Icon(FLucideIcons.cornerDownRight, size: 12, color: AppTokens.accent(1)),
           const SizedBox(width: 4),
           Text(
             parent.title,
@@ -2315,7 +2260,7 @@ Widget _detailText(BuildContext c, String text, {bool primary = false}) {
       fontSize: 14,
       height: 1.4,
       fontWeight: primary ? FontWeight.w600 : FontWeight.w400,
-      color: primary ? t.colors.primary : t.colors.foreground,
+      color: primary ? AppTokens.accent(1) : t.colors.foreground,
     ),
   );
 }

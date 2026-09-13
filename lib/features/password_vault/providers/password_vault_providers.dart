@@ -1,6 +1,5 @@
 // 密码库状态管理（Riverpod AsyncNotifier，范式与 2FA 一致）
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../models/password_entry.dart';
@@ -53,28 +52,14 @@ class PasswordVaultController extends AsyncNotifier<List<PasswordEntry>> {
         .saveAll(passphrase, entries);
   }
 
-  /// 新增/编辑条目（passphrase 由 UI 保存的内存口令提供，不落任何状态）
+  /// 新增/编辑条目（passphrase 由 UI 保存的内存口令提供，不落任何状态；
+  /// entry 携带全字段——名称/账号/密码/网址/备注/分类/OTP 密钥，对齐 PC VaultEntry）
   Future<void> upsertEntry({
     required String passphrase,
-    String? key,
-    required String title,
-    required String username,
-    required String password,
-    required String url,
-    required String note,
+    required PasswordEntry entry,
   }) async {
-    final now = DateTime.now().toIso8601String();
     final entries = [...(state.value ?? const <PasswordEntry>[])];
-    final idx = key == null ? -1 : entries.indexWhere((e) => e.key == key);
-    final entry = PasswordEntry(
-      key: idx >= 0 ? entries[idx].key : const Uuid().v4(),
-      title: title,
-      username: username,
-      password: password,
-      url: url,
-      note: note,
-      updatedAt: now,
-    );
+    final idx = entries.indexWhere((e) => e.key == entry.key);
     if (idx >= 0) {
       entries[idx] = entry;
     } else {

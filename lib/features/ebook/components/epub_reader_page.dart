@@ -387,7 +387,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     showFSheet<void>(
       context: context,
       side: FLayout.btt,
-      mainAxisMaxRatio: null,
+      // 「添加批注」含笔记输入框 → lg 80vh 定高、键盘覆盖不折叠（2026-09-13 全局定案）
+      mainAxisMaxRatio: AppTokens.sheetHeightLg,
+      resizeToAvoidBottomInset: false,
       builder: (context) => SheetSurface(
         child: SafeArea(
           child: StatefulBuilder(
@@ -586,7 +588,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     showFSheet<void>(
       context: context,
       side: FLayout.btt,
-      mainAxisMaxRatio: null,
+      // 内含搜索输入框 → lg 80vh 定高、键盘覆盖不折叠（2026-09-13 全局定案）
+      mainAxisMaxRatio: AppTokens.sheetHeightLg,
+      resizeToAvoidBottomInset: false,
       builder: (context) => SheetSurface(
         child: SafeArea(
           child: StatefulBuilder(

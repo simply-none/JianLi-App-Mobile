@@ -47,6 +47,37 @@ class TwoFactorAccountsController
     final entries = [...(state.value ?? const <TwoFactorAccount>[])];
     entries.add(account);
     state = AsyncData(entries);
+    await _persist(passphrase, entries);
+  }
+
+  /// 更新账户（按 key 替换；解锁态编辑表单调用）
+  Future<void> updateAccount({
+    required String passphrase,
+    required TwoFactorAccount account,
+  }) async {
+    final entries = [
+      for (final e in (state.value ?? const <TwoFactorAccount>[]))
+        if (e.key == account.key) account else e,
+    ];
+    state = AsyncData(entries);
+    await _persist(passphrase, entries);
+  }
+
+  /// 删除账户（按 key；解锁态长按菜单调用）
+  Future<void> removeAccount({
+    required String passphrase,
+    required String key,
+  }) async {
+    final entries = [
+      for (final e in (state.value ?? const <TwoFactorAccount>[]))
+        if (e.key != key) e,
+    ];
+    state = AsyncData(entries);
+    await _persist(passphrase, entries);
+  }
+
+  /// 重新加密写回 vault（路径取会话记忆或 basic_info）
+  Future<void> _persist(String passphrase, List<TwoFactorAccount> entries) async {
     final vaultPath =
         _vaultPath ??
         await ref.read(twoFactorRepositoryProvider).getVaultPath();

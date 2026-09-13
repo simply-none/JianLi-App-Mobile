@@ -34,6 +34,9 @@ import 'package:uuid/uuid.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/pinned_search_row.dart';
+import '../../../app/ui/scope_tab_bar.dart';
+import '../../../app/ui/soft_chip.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../models/todo.dart';
 import '../models/todo_filter.dart';
@@ -44,18 +47,8 @@ import 'todo_card_view.dart';
 import 'todo_sheets.dart';
 import 'todo_tile.dart';
 
-/// 搜索行几何：上留白 12 + 搜索框 40 + 下留白 8（画布 5:420 / 5:421）
-const double _kSearchBoxHeight = 40;
-const double _kSearchRowTopGap = 12;
-const double _kSearchRowBottomGap = 8;
-
-/// 搜索行总高 = 上留白 + 搜索框 + 下留白。
-///
-/// ⚠️ **搜索行是本页的吸顶元素**（见 `_body` 的 sliver 结构），`SliverPersistentHeader`
-/// 必须显式给高度，所以这里由「搜索行自身用到的三个常量」推导，避免两处尺寸漂移。
-/// 下留白让内容从搜索框下方 8px 处开始被遮住，而不是贴着框底消失。
-const double _kSearchRowExtent =
-    _kSearchRowTopGap + _kSearchBoxHeight + _kSearchRowBottomGap;
+// 搜索行几何（上留白 12 + 搜索框 40 + 下留白 8）与吸顶高度已抽出为共享原子
+// `lib/app/ui/pinned_search_row.dart`（kSearchRowExtent = 60），本页只消费、不再自带一份。
 
 /// 待办页
 class TodoPage extends ConsumerStatefulWidget {
@@ -66,6 +59,8 @@ class TodoPage extends ConsumerStatefulWidget {
 }
 
 class _TodoPageState extends ConsumerState<TodoPage> {
+  /// 待办域专属蓝强调色（与 Hub 入口卡图标色一致，2026-09-13 功能色定案）
+  static final Color _accent = AppTokens.accent(1);
   /// 显示风格（画布 09；持久化于 shared_preferences）
   TodoViewMode _view = TodoViewMode.list;
 
@@ -286,8 +281,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         SliverToBoxAdapter(child: _banner(context, all)),
         SliverPersistentHeader(
           pinned: true,
-          delegate: _PinnedHeader(
-            extent: _kSearchRowExtent,
+          delegate: PinnedSearchHeader(
+            extent: kSearchRowExtent,
             child: _searchRow(context),
           ),
         ),
@@ -319,7 +314,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     title: '待办',
     subtitle: '专注当下，一件一件来',
     // 画布渐变与首页英雄卡同源 → 走主色渐变（换外观色系时整屏跟着走）
-    gradient: AppTokens.primaryGradient(context),
+    gradient: AppTokens.accentGradient(_accent),
     cornerRadius: 22,
     textureAsset: CardTextures.texture11,
     ringDecor: true,
@@ -335,81 +330,13 @@ class _TodoPageState extends ConsumerState<TodoPage> {
 
   /// 搜索行（画布 5:420）：白底框 + 实搜输入 + 「≡ 高级搜索」按钮。
   ///
-  /// ⚠️ 尺寸（上留白 / 框高 / 下留白）由 [_kSearchRowTopGap] / [_kSearchBoxHeight] /
-  /// [_kSearchRowBottomGap] 三个常量决定，吸顶高度 [_kSearchRowExtent] 与之一一对应，
-  /// 改边距必须同源改常量，禁止让这里和吸顶高度各写一套数。
-  Widget _searchRow(BuildContext context) {
-    final t = context.theme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        16,
-        _kSearchRowTopGap,
-        16,
-        _kSearchRowBottomGap,
-      ),
-      child: Container(
-        height: _kSearchBoxHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: t.colors.card,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: t.colors.border),
-        ),
-        child: Row(
-          spacing: 8,
-          children: [
-            Icon(
-              FLucideIcons.search,
-              size: 15,
-              color: t.colors.mutedForeground,
-            ),
-            Expanded(
-              // ⚠️ 原生 Material TextField 需要 Material 祖先；forui 的 FScaffold 不提供，
-              // 而底部抽屉里能用是因为抽屉路由自带 Material。这里显式补一层透明 Material。
-              child: Material(
-                type: MaterialType.transparency,
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (v) => setState(() => _search = v),
-                  style: t.typography.body.sm.copyWith(
-                    fontSize: 14,
-                    color: t.colors.foreground,
-                  ),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    border: InputBorder.none,
-                    hintText: '搜索待办…',
-                    hintStyle: t.typography.body.sm.copyWith(
-                      fontSize: 14,
-                      color: t.colors.mutedForeground,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            TapScale(
-              onTap: _openFilter,
-              child: Container(
-                width: 28,
-                height: 28,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: t.colors.muted,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  FLucideIcons.listFilter,
-                  size: 15,
-                  color: t.colors.mutedForeground,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  /// ⚠️ 尺寸常量与吸顶高度已收口到共享原子 `PinnedSearchRow`（kSearchRowExtent 同源推导）。
+  Widget _searchRow(BuildContext context) => PinnedSearchRow(
+    controller: _searchController,
+    hintText: '搜索待办…',
+    onChanged: (v) => setState(() => _search = v),
+    onFilter: _openFilter,
+  );
 
   /// 生效条件（画布 5:424）：无生效条件时整块不渲染。
   ///
@@ -420,7 +347,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final chips = <Widget>[];
     if (_search.isNotEmpty) {
       chips.add(
-        _condChip(context, '搜索：$_search', t.colors.primary, () {
+        _condChip(context, '搜索：$_search', _accent, () {
           _searchController.clear();
           setState(() => _search = '');
         }),
@@ -441,7 +368,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         _condChip(
           context,
           '标签：${_filter.tagKeys.length} 个',
-          t.colors.primary,
+          _accent,
           () => _updateFilter((f) => f.copyWith(tagKeys: {})),
         ),
       );
@@ -451,7 +378,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         _condChip(
           context,
           '到期：${kDueRangeLabels[_filter.dueGroup] ?? ''}',
-          t.colors.primary,
+          _accent,
           () => _updateFilter((f) => f.copyWith(clearDueGroup: true)),
         ),
       );
@@ -461,7 +388,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         _condChip(
           context,
           '仅未完成',
-          t.colors.primary,
+          _accent,
           () => _updateFilter((f) => f.copyWith(showCompleted: true)),
         ),
       );
@@ -471,7 +398,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         _condChip(
           context,
           '含重复模板',
-          t.colors.primary,
+          _accent,
           () => _updateFilter((f) => f.copyWith(showTemplates: false)),
         ),
       );
@@ -486,58 +413,14 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     );
   }
 
-  /// Tab 栏（画布 8:2）：状态范围切换。
+  /// Tab 栏（画布 8:2）：状态范围切换（共享原子 [ScopeTabBar]）。
   ///
-  /// ⚠️ **不吸顶** —— 吸顶锚点是上方的搜索行，本栏随滚动移出视口（见文件头吸顶规则）。
-  Widget _tabBar(BuildContext context) {
-    final t = context.theme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      child: Container(
-        height: 34,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: t.colors.muted,
-          borderRadius: BorderRadius.circular(11),
-        ),
-        child: Row(
-          spacing: 3,
-          // 画布选中态是 fill_container 高度（填满 34-3-3=28 的内轨），
-          // Row 默认 center 会让白底药丸只有文字高 → 必须 stretch
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final tab in kTodoScopeTabs)
-              Expanded(
-                child: FTappable(
-                  onPress: () => setState(() => _scope = tab.$1),
-                  child: Container(
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _scope == tab.$1
-                          ? t.colors.card
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      tab.$2,
-                      style: t.typography.body.xs.copyWith(
-                        fontSize: 13,
-                        fontWeight: _scope == tab.$1
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        color: _scope == tab.$1
-                            ? t.colors.foreground
-                            : t.colors.mutedForeground,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
+  /// ⚠️ **不吸顶** —— 吸顶锚点是上方的搜索行，本栏随滚动移出（见文件头吸顶规则）。
+  Widget _tabBar(BuildContext context) => ScopeTabBar<TodoScope>(
+    tabs: kTodoScopeTabs,
+    selected: _scope,
+    onSelect: (tab) => setState(() => _scope = tab),
+  );
 
   /// 列表子项（分组标题 + 卡片），逐项下留 10 的间距（画布列表区 gap 10）
   List<Widget> _listChildren(
@@ -602,10 +485,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             height: 76,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: t.colors.primary.withValues(alpha: 0.12),
+              color: _accent.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: Icon(FLucideIcons.list, size: 32, color: t.colors.primary),
+            child: Icon(FLucideIcons.list, size: 32, color: _accent),
           ),
           Text(
             totallyEmpty ? '还没有待办' : '没有匹配的待办',
@@ -627,40 +510,19 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     );
   }
 
-  /// 生效条件 chip（画布 5:425：底 = 同色 12% · r10 · 内边距 6 · 11/SemiBold）
+  /// 生效条件 chip（画布 5:425：底 = 同色 12% · r10 · 内边距 6 · 11/SemiBold，共享原子 [SoftChip]）
   Widget _condChip(
     BuildContext context,
     String label,
     Color color,
     VoidCallback onTap,
-  ) {
-    final t = context.theme;
-    return TapScale(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: t.typography.body.xs.copyWith(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Icon(FLucideIcons.x, size: 11, color: color),
-          ],
-        ),
-      ),
-    );
-  }
+  ) => SoftChip(
+    label: label,
+    color: color,
+    alpha: 0.12,
+    padding: const EdgeInsets.all(6),
+    onRemove: onTap,
+  );
 
   // ===================== 行为 =====================
 
@@ -806,46 +668,5 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   }
 }
 
-/// 吸顶头（通用）：列表页把**搜索行**作为滚动吸顶锚点，滚过横幅后搜索框常驻顶部。
-///
-/// - [extent] 必须与实际子节点高度（搜索行上留白 + 框高 + 下留白）完全一致，
-///   否则吸顶瞬间会跳一下；
-/// - 覆盖色走 [AppTokens.pinnedCover]（背板同源渐变），**只在有内容滚过时才画**。
-class _PinnedHeader extends SliverPersistentHeaderDelegate {
-  _PinnedHeader({required this.extent, required this.child});
-
-  final double extent;
-  final Widget child;
-
-  @override
-  double get minExtent => extent;
-
-  @override
-  double get maxExtent => extent;
-
-  /// ⚠️ 背景**只在「吸顶后（下方内容从缝里滚过）」才画**——用 [shrinkOffset] > 0 判断。
-  ///
-  /// pinned 头的 `build(overlapsContent:)` 那个 `overlapsContent` 是「前方是否有 floating sliver
-  /// 压着自己」（本布局前方是 banner，永远为 false），**不是**「下方内容是否滚到了头下面」。
-  /// 所以不能直接用 `overlapsContent`，否则它永远 false → 吸顶后透明 → 列表文字从缝里透出来
-  /// （2026-09-12 用户实指：滚动时灰色列表文字出现在间隙里）。
-  ///
-  /// 正确信号是 [shrinkOffset]：它 = 已滚过的量，> 0 即已滚动、头已吸顶、下方内容正从缝下经过。
-  /// - shrinkOffset == 0（静止在顶部，banner 还在上方）→ **完全透明**，透出页面渐变背板，无额外色块；
-  /// - shrinkOffset > 0（已滚动）→ 铺背板同源渐变（`AppTokens.pinnedCover`）：盖住内容且与背板无缝。
-  ///
-  /// ❌ 早期实现无条件刷 `colors.background` 纯色，静止时也是一块灰白挡板
-  /// （上半屏紫渐变、往下突然灰白 = 背景被内容区切断，2026-09-12 用户实指）。
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) =>
-      DecoratedBox(
-        decoration: shrinkOffset > 0
-            ? AppTokens.pinnedCover(context, extent)
-            : const BoxDecoration(),
-        child: child,
-      );
-
-  @override
-  bool shouldRebuild(covariant _PinnedHeader oldDelegate) =>
-      oldDelegate.extent != extent || oldDelegate.child != child;
-}
+// 吸顶头 delegate 已抽出为共享原子 `lib/app/ui/pinned_search_row.dart`
+// 的 [PinnedSearchHeader]（shrinkOffset>0 才铺 pinnedCover 的正确逻辑同源保留）。

@@ -15,6 +15,8 @@ import 'security/vault_auto_lock.dart';
 import 'theme/app_theme.dart';
 import 'theme/jianli_palette.dart';
 import 'router/app_router.dart';
+import 'di/app_providers.dart';
+import 'alarm_bootstrap.dart';
 
 /// 渐离App移动端根组件
 class JianliApp extends ConsumerStatefulWidget {
@@ -31,6 +33,12 @@ class _JianliAppState extends ConsumerState<JianliApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 到点提醒引导（首帧后跑一次）：通知权限 + 提醒重排 + 倒计时补账 + 番茄钟阶段通知。
+    // initState 里不能同步 read provider（会断 Riverpod 生命期断言），放首帧回调。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      bootstrapAlarms(ref.read(appDatabaseProvider));
+    });
   }
 
   @override

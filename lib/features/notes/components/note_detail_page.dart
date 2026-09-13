@@ -107,27 +107,50 @@ class NoteDetailPage extends ConsumerWidget {
                     runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      // 分类 chip：琥珀软底 + 专属色文字（与笔记域强调色一致）
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTokens.accentSoft(
-                            context,
-                            AppTokens.accent(3),
+                      // 分类 chips：琥珀软底 + 专属色文字（多分类逐枚展示）
+                      if (note.categories.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
                           ),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          note.category ?? '未分类',
-                          style: t.typography.body.xs.copyWith(
-                            color: AppTokens.accent(3),
-                            fontWeight: FontWeight.w600,
+                          decoration: BoxDecoration(
+                            color: AppTokens.accentSoft(
+                              context,
+                              AppTokens.accent(3),
+                            ),
+                            borderRadius: BorderRadius.circular(999),
                           ),
-                        ),
-                      ),
+                          child: Text(
+                            '未分类',
+                            style: t.typography.body.xs.copyWith(
+                              color: AppTokens.accent(3),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        )
+                      else
+                        for (final c in note.categories)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTokens.accentSoft(
+                                context,
+                                AppTokens.accent(3),
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              c,
+                              style: t.typography.body.xs.copyWith(
+                                color: AppTokens.accent(3),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                       // 标签彩色徽标（对齐 PC 列表/详情的标签展示）
                       for (final tag in badges) NoteTagBadge(tag: tag),
                       Text(

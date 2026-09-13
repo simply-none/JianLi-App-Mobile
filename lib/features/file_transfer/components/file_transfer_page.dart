@@ -23,10 +23,13 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/theme/card_textures.dart';
 import '../../../core/android/media_scan.dart';
 import '../../../app/ui/sheet_surface.dart';
+import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/squircle_box.dart';
+import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../app/ui/gradient_button.dart';
 import '../../../core/sync/sync_discovery.dart';
@@ -63,9 +66,11 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
   List<RecentPeer> _recentPeers = const []; // #11
   IncomingAsk? _ask; // #15 待答复
   StreamSubscription<IncomingAsk>? _askSub;
+
   /// 传输记录只显示当次批次：发送进度 / 接收端 offer 登记时切换
   String? _batchTid;
   StreamSubscription<String>? _batchTidSub;
+
   /// 传输记录标题下方的存储位置提示（随授权状态刷新）
   String _receiveHint = '';
   final List<String> _logs = [];
@@ -85,7 +90,10 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
     await ensureNickname(); // #昵称：确保本机昵称已加载（main 已预载，此处幂等兜底）
     final service = ref.read(syncServiceProvider);
     await service.startServer(name: localBroadcastName, id: localDeviceId);
-    await _discovery.startResponder(name: localBroadcastName, id: localDeviceId);
+    await _discovery.startResponder(
+      name: localBroadcastName,
+      id: localDeviceId,
+    );
     final settings = ref.read(transferSettingsProvider);
     _autoAccept = settings.autoAccept;
     _renameOverwrite = settings.renameStrategy == 'overwrite';
@@ -120,10 +128,7 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
       if (await getAndroidSdkInt() >= 30) {
         await Permission.manageExternalStorage.request();
       } else {
-        await [
-          Permission.manageExternalStorage,
-          Permission.storage,
-        ].request();
+        await [Permission.manageExternalStorage, Permission.storage].request();
       }
     }
     final granted = await server.hasPublicDownloadsAccess();
@@ -184,11 +189,10 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
       allowMultiple: true,
     );
     if (result.isEmpty) return;
-    final files =
-        result
-            .where((f) => f.path != null)
-            .map((f) => File(f.path!))
-            .toList();
+    final files = result
+        .where((f) => f.path != null)
+        .map((f) => File(f.path!))
+        .toList();
     if (files.isNotEmpty) {
       setState(() => _selectedFiles.addAll(files));
       _log('已选择 ${_selectedFiles.length} 个文件');
@@ -295,278 +299,360 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
     final historyAsync = ref.watch(transferHistoryProvider);
     // 传输记录只显示当次批次（其他历史记录暂不展示，DB 仍全量写入）
     final allHistory = historyAsync.value ?? const <FileTransferData>[];
-    final history =
-        _batchTid == null
-            ? const <FileTransferData>[]
-            : allHistory.where((r) => r.tid == _batchTid).toList();
+    final history = _batchTid == null
+        ? const <FileTransferData>[]
+        : allHistory.where((r) => r.tid == _batchTid).toList();
 
     return FScaffold(
-      header: FHeader.nested(
-        title: const Text('文件互传'),
-        prefixes: [FHeaderAction.back(onPress: () => context.pop())],
-      ),
+      childPad: false,
       child: ColoredBox(
         color: AppTokens.pageTint(context),
-        child: ListView(
-          padding: EdgeInsets.only(
-            top: AppTokens.listTopGapOf(context),
-            bottom: AppTokens.pageBottomGapOf(context),
-          ),
-          children: [
-            PageBanner(
-              icon: FLucideIcons.arrowLeftRight,
-              title: '文件互传',
-              subtitle: '双端批量收发，局域网直连不出内网',
-              accentIndex: 4,
-              stats: [
-                ('${_peers.length}', '发现设备'),
-                ('${history.length}', '当次文件'),
-              ],
-            ),
-            // 设备区
-            // 我的设备（本机随机昵称，#昵称）
-            AppCard(
-              child: Row(
-                children: [
-                  const Icon(FLucideIcons.smartphone, size: 22),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '我的设备',
-                          style: t.typography.body.xs
-                              .copyWith(color: t.colors.mutedForeground),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          localNickname,
-                          style: t.typography.body.sm
-                              .copyWith(fontWeight: FontWeight.w600),
-                        ),
+        child: SafeArea(
+          top: true,
+          bottom: false,
+          child: Column(
+            children: [
+              _header(context),
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    AppTokens.pagePadding,
+                    AppTokens.listTopGapOf(context),
+                    AppTokens.pagePadding,
+                    AppTokens.pageBottomGapOf(context),
+                  ),
+                  children: [
+                    PageBanner(
+                      icon: FLucideIcons.arrowLeftRight,
+                      title: '文件互传',
+                      subtitle: '双端批量收发，局域网直连不出内网',
+                      accentIndex: 4,
+                      cornerRadius: 22,
+                      textureAsset: CardTextures.texture11,
+                      ringDecor: true,
+                      shadow: false,
+                      margin: EdgeInsets.zero,
+                      stats: [
+                        ('${_peers.length}', '发现设备'),
+                        ('${history.length}', '当次文件'),
                       ],
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            const SectionHeader(title: '发现设备'),
-            AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '需另一端渐离App在线；模拟器填 10.0.2.2',
-                          style: t.typography.body.sm.copyWith(
-                            color: t.colors.mutedForeground,
+                    const SizedBox(height: 10),
+                    // 设备区
+                    // 我的设备（本机随机昵称，#昵称）
+                    AppCard(
+                      margin: EdgeInsets.zero,
+                      child: Row(
+                        children: [
+                          const Icon(FLucideIcons.smartphone, size: 22),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '我的设备',
+                                  style: t.typography.body.xs.copyWith(
+                                    color: t.colors.mutedForeground,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  localNickname,
+                                  style: t.typography.body.sm.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                      FButton(
-                        variant: FButtonVariant.outline,
-                        size: FButtonSizeVariant.sm,
-                        onPress: _scanning ? null : _scan,
-                        prefix: _scanning
-                            ? const FCircularProgress(
-                                size: FCircularProgressSizeVariant.xs,
-                              )
-                            : const Icon(FLucideIcons.radar, size: 16),
-                        child: const Text('扫描'),
+                    ),
+                    const SectionHeader(title: '发现设备'),
+                    AppCard(
+                      margin: EdgeInsets.zero,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '需另一端渐离App在线；模拟器填 10.0.2.2',
+                                  style: t.typography.body.sm.copyWith(
+                                    color: t.colors.mutedForeground,
+                                  ),
+                                ),
+                              ),
+                              FButton(
+                                variant: FButtonVariant.outline,
+                                size: FButtonSizeVariant.sm,
+                                onPress: _scanning ? null : _scan,
+                                prefix: _scanning
+                                    ? const FCircularProgress(
+                                        size: FCircularProgressSizeVariant.xs,
+                                      )
+                                    : const Icon(FLucideIcons.radar, size: 16),
+                                child: const Text('扫描'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          if (_peers.isEmpty)
+                            Text(
+                              '暂无设备。真机：双端同 Wi-Fi 后扫描；\n模拟器：广播不通，手动填宿主 IP 10.0.2.2。',
+                              style: t.typography.body.xs.copyWith(
+                                color: t.colors.mutedForeground,
+                              ),
+                            )
+                          else
+                            for (final peer in _peers.values)
+                              _PeerRow(
+                                peer: peer,
+                                enabled: _selectedFiles.isNotEmpty && !_sending,
+                                onSend: () => _sendToPeer(peer),
+                              ),
+                          const SizedBox(height: 8),
+                          // 根因修复：forui FTextField 的可见边框按内容固有高度画，
+                          // 不随紧约束拉伸（44 盒里仍只有 ~36）——这才是对不齐的真相。
+                          // 改用共享 SheetInputBox（边框由自绘容器画，高度真实可控 40）
+                          // + 自绘按钮同高 40，两侧天然等高。
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SheetInputBox(
+                                  controller: _manualIp,
+                                  hintText: '手动填 IP（模拟器填 10.0.2.2）',
+                                  keyboardType: TextInputType.number,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // 自绘按钮：与 SheetInputBox 同高 40 / 同圆角 10
+                              TapScale(
+                                onTap: () {
+                                  final ip = _manualIp.text.trim();
+                                  if (ip.isEmpty) return;
+                                  final peer = PeerDevice(
+                                    ip: ip,
+                                    name: '手动添加',
+                                    id: ip,
+                                    platform: '-',
+                                  );
+                                  setState(() => _peers[ip] = peer);
+                                  unawaited(RecentPeers.remember(peer));
+                                  _log('已添加手动设备 $ip');
+                                },
+                                child: Container(
+                                  height: 40,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 18,
+                                  ),
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    gradient:
+                                        AppTokens.primaryGradient(context),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '添加',
+                                    style: context.theme.typography.body.sm
+                                        .copyWith(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    // #11 最近设备区（离线可见）
+                    if (_recentPeers.isNotEmpty) ...[
+                      const SectionHeader(title: '最近设备'),
+                      AppCard(
+                        margin: EdgeInsets.zero,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final rp in _recentPeers)
+                              _RecentRow(
+                                peer: rp,
+                                enabled: _selectedFiles.isNotEmpty && !_sending,
+                                onSend: () => _sendToPeer(rp.toPeer()),
+                                onForget: () async {
+                                  await RecentPeers.forget(rp.ip);
+                                  final peers = await RecentPeers.load();
+                                  if (mounted) {
+                                    setState(() => _recentPeers = peers);
+                                  }
+                                },
+                              ),
+                          ],
+                        ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (_peers.isEmpty)
-                    Text(
-                      '暂无设备。真机：双端同 Wi-Fi 后扫描；\n模拟器：广播不通，手动填宿主 IP 10.0.2.2。',
-                      style: t.typography.body.xs.copyWith(
-                        color: t.colors.mutedForeground,
-                      ),
-                    )
-                  else
-                    for (final peer in _peers.values)
-                      _PeerRow(
-                        peer: peer,
-                        enabled: _selectedFiles.isNotEmpty && !_sending,
-                        onSend: () => _sendToPeer(peer),
-                      ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FTextField(
-                          control: FTextFieldControl.managed(
-                            controller: _manualIp,
+                    // 发送区
+                    const SectionHeader(title: '发送文件'),
+                    AppCard(
+                      margin: EdgeInsets.zero,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '已选 ${_selectedFiles.length} 个文件',
+                                  style: t.typography.body.sm.copyWith(
+                                    color: t.colors.mutedForeground,
+                                  ),
+                                ),
+                              ),
+                              if (_sending)
+                                FButton(
+                                  variant: FButtonVariant.destructive,
+                                  size: FButtonSizeVariant.sm,
+                                  onPress: _cancelSend,
+                                  child: const Text('取消'),
+                                )
+                              else
+                                FButton(
+                                  variant: FButtonVariant.outline,
+                                  size: FButtonSizeVariant.sm,
+                                  onPress: _pickFiles,
+                                  prefix: const Icon(
+                                    FLucideIcons.folderOpen,
+                                    size: 16,
+                                  ),
+                                  child: const Text('选文件'),
+                                ),
+                            ],
                           ),
-                          hint: '手动填 IP（模拟器填 10.0.2.2）',
-                          keyboardType: TextInputType.number,
-                          size: FTextFieldSizeVariant.sm,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      FButton(
-                        variant: FButtonVariant.outline,
-                        onPress: () {
-                          final ip = _manualIp.text.trim();
-                          if (ip.isEmpty) return;
-                          final peer = PeerDevice(
-                            ip: ip,
-                            name: '手动添加',
-                            id: ip,
-                            platform: '-',
-                          );
-                          setState(() => _peers[ip] = peer);
-                          unawaited(RecentPeers.remember(peer));
-                          _log('已添加手动设备 $ip');
-                        },
-                        child: const Text('添加'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            // #11 最近设备区（离线可见）
-            if (_recentPeers.isNotEmpty) ...[
-              const SectionHeader(title: '最近设备'),
-              AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (final rp in _recentPeers)
-                      _RecentRow(
-                        peer: rp,
-                        enabled: _selectedFiles.isNotEmpty && !_sending,
-                        onSend: () => _sendToPeer(rp.toPeer()),
-                        onForget: () async {
-                          await RecentPeers.forget(rp.ip);
-                          final peers = await RecentPeers.load();
-                          if (mounted) setState(() => _recentPeers = peers);
-                        },
-                      ),
-                  ],
-                ),
-              ),
-            ],
-            // 发送区
-            const SectionHeader(title: '发送文件'),
-            AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '已选 ${_selectedFiles.length} 个文件',
-                          style: t.typography.body.sm.copyWith(
-                            color: t.colors.mutedForeground,
+                          const SizedBox(height: 8),
+                          if (_selectedFiles.isEmpty)
+                            Text(
+                              '点击下方「选文件」批量选择；在上方选设备点「发到此处」。',
+                              style: t.typography.body.xs.copyWith(
+                                color: t.colors.mutedForeground,
+                              ),
+                            )
+                          else
+                            for (final file in _selectedFiles)
+                              _FileProgressTile(
+                                file: file,
+                                progress:
+                                    _progress['${_selectedFiles.indexOf(file) + 1}'],
+                              ),
+                          const SizedBox(height: 12),
+                          // #9 重名策略：默认自动重命名，开启则覆盖
+                          FSwitch(
+                            value: _renameOverwrite,
+                            onChange: _toggleRename,
+                            label: const Text('重名时覆盖（关闭则自动重命名）'),
                           ),
-                        ),
+                          // #14 传输加密（需双端开启）
+                          FSwitch(
+                            value: _enc,
+                            onChange: _toggleEnc,
+                            label: const Text('传输加密（AES-256-CTR，需收发双端均开启）'),
+                          ),
+                          // 自动接收开关（接收端设置，供对端 offer 时判定；关闭则弹窗询问 #15）
+                          FSwitch(
+                            value: _autoAccept,
+                            onChange: _toggleAutoAccept,
+                            label: const Text('自动接收（关闭后需手动确认他人发送）'),
+                          ),
+                        ],
                       ),
-                      if (_sending)
-                        FButton(
-                          variant: FButtonVariant.destructive,
-                          size: FButtonSizeVariant.sm,
-                          onPress: _cancelSend,
-                          child: const Text('取消'),
-                        )
-                      else
-                        FButton(
-                          variant: FButtonVariant.outline,
-                          size: FButtonSizeVariant.sm,
-                          onPress: _pickFiles,
-                          prefix: const Icon(FLucideIcons.folderOpen, size: 16),
-                          child: const Text('选文件'),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (_selectedFiles.isEmpty)
-                    Text(
-                      '点击下方「选文件」批量选择；在上方选设备点「发到此处」。',
-                      style: t.typography.body.xs.copyWith(
-                        color: t.colors.mutedForeground,
-                      ),
-                    )
-                  else
-                    for (final file in _selectedFiles)
-                      _FileProgressTile(
-                        file: file,
-                        progress: _progress['${_selectedFiles.indexOf(file) + 1}'],
-                      ),
-                  const SizedBox(height: 12),
-                  // #9 重名策略：默认自动重命名，开启则覆盖
-                  FSwitch(
-                    value: _renameOverwrite,
-                    onChange: _toggleRename,
-                    label: const Text('重名时覆盖（关闭则自动重命名）'),
-                  ),
-                  // #14 传输加密（需双端开启）
-                  FSwitch(
-                    value: _enc,
-                    onChange: _toggleEnc,
-                    label: const Text('传输加密（AES-256-CTR，需收发双端均开启）'),
-                  ),
-                  // 自动接收开关（接收端设置，供对端 offer 时判定；关闭则弹窗询问 #15）
-                  FSwitch(
-                    value: _autoAccept,
-                    onChange: _toggleAutoAccept,
-                    label: const Text('自动接收（关闭后需手动确认他人发送）'),
-                  ),
-                ],
-              ),
-            ),
-            // 记录区（标题下方提示接收文件存储位置，随授权状态刷新）
-            const SectionHeader(title: '传输记录'),
-            if (_receiveHint.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-                child: Text(
-                  _receiveHint,
-                  style: t.typography.body.xs.copyWith(
-                    color: t.colors.mutedForeground,
-                  ),
-                ),
-              ),
-            AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (history.isEmpty)
-                    Text(
-                      '暂无当次传输记录',
-                      style: t.typography.body.xs.copyWith(
-                        color: t.colors.mutedForeground,
-                      ),
-                    )
-                  else
-                    for (final row in history) _HistoryTile(row: row),
-                ],
-              ),
-            ),
-            if (_logs.isNotEmpty) ...[
-              const SectionHeader(title: '日志'),
-              AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (final l in _logs.take(10))
+                    ),
+                    // 记录区（标题下方提示接收文件存储位置，随授权状态刷新）
+                    const SectionHeader(title: '传输记录'),
+                    if (_receiveHint.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Text(l, style: t.typography.body.xs),
+                        padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                        child: Text(
+                          _receiveHint,
+                          style: t.typography.body.xs.copyWith(
+                            color: t.colors.mutedForeground,
+                          ),
+                        ),
                       ),
+                    AppCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (history.isEmpty)
+                            Text(
+                              '暂无当次传输记录',
+                              style: t.typography.body.xs.copyWith(
+                                color: t.colors.mutedForeground,
+                              ),
+                            )
+                          else
+                            for (final row in history) _HistoryTile(row: row),
+                        ],
+                      ),
+                    ),
+                    if (_logs.isNotEmpty) ...[
+                      const SectionHeader(title: '日志'),
+                      AppCard(
+                        margin: EdgeInsets.zero,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final l in _logs.take(10))
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 2,
+                                ),
+                                child: Text(l, style: t.typography.body.xs),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ],
-          ],
+          ),
         ),
+      ),
+    );
+  }
+
+  // ===================== 头部（对齐待办：‹ / 标题） =====================
+
+  Widget _header(BuildContext context) {
+    final t = context.theme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        spacing: 10,
+        children: [
+          TapScale(
+            onTap: () => context.pop(),
+            child: Icon(
+              FLucideIcons.chevronLeft,
+              size: 22,
+              color: t.colors.foreground,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              '文件互传',
+              style: t.typography.body.lg.copyWith(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: t.colors.foreground,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -719,14 +805,13 @@ class _FileProgressTile extends StatelessWidget {
     final name = file.path.split(RegExp(r'[/\\]')).last;
     final ratio = progress?.ratio ?? 0.0;
     final phase = progress?.phase ?? '';
-    final label =
-        phase == 'done'
-            ? '完成'
-            : phase == 'failed'
-            ? '失败'
-            : phase == 'data'
-            ? '${(ratio * 100).toInt()}%'
-            : '等待';
+    final label = phase == 'done'
+        ? '完成'
+        : phase == 'failed'
+        ? '失败'
+        : phase == 'data'
+        ? '${(ratio * 100).toInt()}%'
+        : '等待';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
@@ -767,18 +852,16 @@ class _HistoryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.theme;
     final isSend = row.direction == 'send';
-    final color =
-        row.status == 'failed'
-            ? t.colors.destructive
-            : row.status == 'canceled'
-            ? t.colors.mutedForeground
-            : AppTokens.accent(isSend ? 4 : 5);
-    final statusText =
-        row.status == 'done'
-            ? '完成'
-            : row.status == 'failed'
-            ? '失败'
-            : '已取消';
+    final color = row.status == 'failed'
+        ? t.colors.destructive
+        : row.status == 'canceled'
+        ? t.colors.mutedForeground
+        : AppTokens.accent(isSend ? 4 : 5);
+    final statusText = row.status == 'done'
+        ? '完成'
+        : row.status == 'failed'
+        ? '失败'
+        : '已取消';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -914,10 +997,7 @@ class _AskReceiveSheet extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: GradientButton(
-                label: '接收',
-                onPress: () => onAnswer(true),
-              ),
+              child: GradientButton(label: '接收', onPress: () => onAnswer(true)),
             ),
           ],
         ),
@@ -1005,9 +1085,7 @@ class _OpenActionsSheetState extends State<_OpenActionsSheet> {
               children: [
                 const Icon(FLucideIcons.folderOpen, size: 22),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: Text('打开所在文件夹', style: t.typography.body.sm),
-                ),
+                Expanded(child: Text('打开所在文件夹', style: t.typography.body.sm)),
               ],
             ),
           ),
@@ -1020,7 +1098,9 @@ class _OpenActionsSheetState extends State<_OpenActionsSheet> {
               return const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Center(
-                  child: FCircularProgress(size: FCircularProgressSizeVariant.sm),
+                  child: FCircularProgress(
+                    size: FCircularProgressSizeVariant.sm,
+                  ),
                 ),
               );
             }
@@ -1030,8 +1110,9 @@ class _OpenActionsSheetState extends State<_OpenActionsSheet> {
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Text(
                   '没有可打开该文件的应用',
-                  style: t.typography.body.xs
-                      .copyWith(color: t.colors.mutedForeground),
+                  style: t.typography.body.xs.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
                 ),
               );
             }

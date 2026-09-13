@@ -21,6 +21,7 @@ class AppCard extends StatelessWidget {
     super.key,
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.padding = const EdgeInsets.all(16),
     this.margin = const EdgeInsets.symmetric(vertical: 6),
     this.elevation = 1,
@@ -32,6 +33,9 @@ class AppCard extends StatelessWidget {
 
   final Widget child;
   final VoidCallback? onTap;
+
+  /// 长按回调（条目操作菜单入口；与 [onTap] 同走 TapScale 按压反馈）
+  final VoidCallback? onLongPress;
 
   /// 内边距
   final EdgeInsetsGeometry padding;
@@ -70,10 +74,17 @@ class AppCard extends StatelessWidget {
       ),
       child: child,
     );
-    if (onTap == null) return Padding(padding: margin, child: card);
+    if (onTap == null && onLongPress == null) {
+      return Padding(padding: margin, child: card);
+    }
     return Padding(
       padding: margin,
-      child: TapScale(onTap: onTap, haptic: haptic, child: card),
+      child: TapScale(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        haptic: haptic,
+        child: card,
+      ),
     );
   }
 }

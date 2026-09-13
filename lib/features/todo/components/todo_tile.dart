@@ -90,7 +90,7 @@ class TodoListTile extends StatelessWidget {
                       selected ? FLucideIcons.circleDot : FLucideIcons.circle,
                       size: 20,
                       color: selected
-                          ? t.colors.primary
+                          ? AppTokens.accent(1)
                           : t.colors.mutedForeground,
                     )
                   : GestureDetector(
@@ -98,7 +98,7 @@ class TodoListTile extends StatelessWidget {
                       behavior: HitTestBehavior.opaque,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: done ? t.colors.primary : Colors.transparent,
+                          color: done ? AppTokens.accent(1) : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
                           border: done
                               ? null

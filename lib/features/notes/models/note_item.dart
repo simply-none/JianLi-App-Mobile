@@ -2,6 +2,8 @@
 //
 // 桌面端 note_book 关键字段：excerpt（摘要）/ html（富文本）/ category（分类）/
 // tags（JSON 数组文本）/ createTime、updateTime（yyyy-MM-dd HH:mm:ss 文本）。
+// ⚠️ category 存储两代兼容（PC 端 categorizableNotes 无分类业务、不读该列）：
+//    旧 = 单值文本（'工作'）；新 = JSON 数组文本（'["工作","生活"]'，多选分类）。
 import 'dart:convert';
 
 import '../../../core/db/app_database.dart';
@@ -15,7 +17,7 @@ class NoteItem {
     required this.html,
     required this.content,
     required this.mdText,
-    required this.category,
+    required this.categories,
     required this.tags,
     required this.updateTime,
     required this.createTime,
@@ -30,7 +32,7 @@ class NoteItem {
       html: row.html ?? '',
       content: row.content ?? '',
       mdText: row.mdText ?? '',
-      category: row.category,
+      categories: parseNoteCategories(row.category),
       tags: parseNoteTags(row.tags),
       updateTime: row.updateTime ?? '',
       createTime: row.createTime ?? '',
@@ -46,8 +48,8 @@ class NoteItem {
   final String content;
   final String mdText;
 
-  /// 分类（桌面端直接存文本，无独立分类表）
-  final String? category;
+  /// 多选分类（旧单值文本按 1 项解析；写回为 JSON 数组文本）
+  final List<String> categories;
   final List<String> tags;
   final String updateTime;
   final String createTime;
@@ -61,6 +63,24 @@ class NoteItem {
     if (excerpt == null || excerpt.trim().isEmpty) return null;
     return excerpt.trim().split('\n').first.trim();
   }
+}
+
+/// 解析 note_book.category（兼容旧单值文本与 JSON 数组文本；空/异常返回空列表）
+List<String> parseNoteCategories(String? raw) {
+  final trimmed = raw?.trim() ?? '';
+  if (trimmed.isEmpty) return const [];
+  try {
+    final decoded = jsonDecode(trimmed);
+    if (decoded is List) {
+      return [
+        for (final e in decoded)
+          if (e.toString().trim().isNotEmpty) e.toString(),
+      ];
+    }
+  } catch (_) {
+    // 旧单值文本（非 JSON）走下方兜底
+  }
+  return [trimmed];
 }
 
 /// 解析 note_book.tags 的 JSON 数组文本（非 JSON 或解析失败一律返回空列表）

@@ -12,6 +12,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/animated_check.dart';
+import '../../../app/ui/datetime_pickers.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/squircle_box.dart';
@@ -145,7 +146,7 @@ class HabitPage extends ConsumerWidget {
               icon: FLucideIcons.calendarCheck,
               title: '习惯打卡',
               subtitle: '每天进步一点点，坚持带来大改变',
-              gradient: AppTokens.primaryGradient(context),
+              gradient: AppTokens.accentGradient(AppTokens.accent(2)),
               textureAsset: CardTextures.texture11,
               ringDecor: true,
               shadow: false,
@@ -187,9 +188,9 @@ class HabitPage extends ConsumerWidget {
   /// + sheetTitleStyle 标题 + _pill 选择 chip + _sheetButton 底部按钮。
   Future<void> _showCreateSheet(BuildContext context, WidgetRef ref) async {
     final nameController = TextEditingController();
-    // 提醒时刻：forui 原生时间组件（滚轮选时 + 输入），value 为 FTime?；
-    // 默认 08:00，clearable 允许用户清空表示「不提醒」。
-    final timeController = FTimeFieldController(time: const FTime(8, 0));
+    // 提醒时刻：与提醒管理同款「选择时刻」抽屉（showTimePickerSheet）；
+    // 默认 08:00，null 表示「不提醒」（行尾「清除」入口）。
+    TimeOfDay? timeValue = const TimeOfDay(hour: 8, minute: 0);
     final weekDays = <int>{};
     final t = context.theme;
 
@@ -300,18 +301,65 @@ class HabitPage extends ConsumerWidget {
                     ),
                   ],
                 ),
-                FTimeField.picker(
-                  control: FTimeFieldControl.managed(controller: timeController),
-                  size: FTextFieldSizeVariant.sm,
-                  hint: '选择提醒时间',
-                  hour24: true,
-                  clearable: true,
-                  prefixBuilder: (c, style, variants) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Icon(
-                      FLucideIcons.clock,
-                      size: 18,
-                      color: t.colors.primary,
+                FTappable(
+                  onPress: () async {
+                    final picked = await showTimePickerSheet(
+                      context,
+                      initial: timeValue,
+                      title: '选择提醒时刻',
+                    );
+                    if (picked != null) setSheetState(() => timeValue = picked);
+                  },
+                  child: Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: t.colors.card,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: t.colors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          FLucideIcons.clock,
+                          size: 15,
+                          color: AppTokens.accent(2),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            timeValue == null
+                                ? '不提醒'
+                                : '${timeValue!.hour.toString().padLeft(2, '0')}:${timeValue!.minute.toString().padLeft(2, '0')}',
+                            style: t.typography.body.sm.copyWith(
+                              fontSize: 14,
+                              color: timeValue == null
+                                  ? t.colors.mutedForeground
+                                  : t.colors.foreground,
+                            ),
+                          ),
+                        ),
+                        if (timeValue != null)
+                          GestureDetector(
+                            onTap: () =>
+                                setSheetState(() => timeValue = null),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(
+                                FLucideIcons.x,
+                                size: 14,
+                                color: t.colors.mutedForeground,
+                              ),
+                            ),
+                          )
+                        else
+                          Icon(
+                            FLucideIcons.chevronDown,
+                            size: 16,
+                            color: t.colors.mutedForeground,
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -358,11 +406,10 @@ class HabitPage extends ConsumerWidget {
             onTap: () {
               final name = nameController.text.trim();
               if (name.isEmpty) return;
-              // FTime.toString() 直接产出 'HH:mm'，与桌面端 reminderTimes 契约一致；
-              // 清空（value==null）即表示不提醒，传空串。
-              final reminderTime = timeController.value == null
+              // 'HH:mm' 与桌面端 reminderTimes 契约一致；null 即不提醒，传空串。
+              final reminderTime = timeValue == null
                   ? ''
-                  : timeController.value!.toString();
+                  : '${timeValue!.hour.toString().padLeft(2, '0')}:${timeValue!.minute.toString().padLeft(2, '0')}';
               ref
                   .read(habitRepositoryProvider)
                   .createHabit(
@@ -472,7 +519,7 @@ class _HabitCard extends ConsumerWidget {
         checked ? '已完成' : (scheduledToday ? '今日待打卡' : '休息日');
     final statusColor = checked
         ? const Color(0xFF22C55E)
-        : (scheduledToday ? t.colors.primary : t.colors.mutedForeground);
+        : (scheduledToday ? AppTokens.accent(2) : t.colors.mutedForeground);
 
     final last7 =
         ref.watch(last7CheckedProvider(habit.key)).value ??
@@ -578,7 +625,8 @@ class _WeekStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
-    final primary = t.colors.primary;
+    // 今日打卡行的强调色 = 习惯域专属绿（2026-09-13 功能色定案）
+    final primary = AppTokens.accent(2);
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: List.generate(7, (j) {
@@ -737,7 +785,7 @@ Widget _weekChip(
   required VoidCallback onTap,
 }) {
   final t = c.theme;
-  final col = t.colors.primary;
+  final col = AppTokens.accent(2);
   return FTappable(
     onPress: onTap,
     child: Container(

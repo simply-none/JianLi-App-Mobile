@@ -27,27 +27,41 @@ class NoteRepository {
 
   // ---------- 笔记 CRUD ----------
 
-  /// 笔记列表流（可按分类过滤，按 updateTime 倒序）
-  Stream<List<NoteItem>> watchNotes({String? category}) {
+  /// 笔记列表流（可按多分类过滤——任一命中即列出，按 updateTime 倒序）。
+  /// ⚠️ category 列存 JSON 数组文本（多选分类），用 `"名称"` 全匹配子串定位；
+  /// LIKE 通配符做基础转义（分类名含 % _ 的极端场景不保证，注释在案）。
+  Stream<List<NoteItem>> watchNotes({List<String> categories = const []}) {
     final query = _db.select(_db.noteBook);
-    if (category != null && category.isNotEmpty) {
-      query.where((tbl) => tbl.category.equals(category));
+    if (categories.isNotEmpty) {
+      Expression<bool> cond = _categoryLike(categories.first);
+      for (final c in categories.skip(1)) {
+        cond = cond | _categoryLike(c);
+      }
+      query.where((tbl) => cond);
     }
     query.orderBy([(tbl) => OrderingTerm.desc(tbl.updateTime)]);
     return query.watch().map((rows) => rows.map(NoteItem.fromRow).toList());
   }
 
-  /// 全部分类（distinct，供筛选 chips）
+  Expression<bool> _categoryLike(String category) {
+    final escaped = category
+        .replaceAll(r'\', r'\\')
+        .replaceAll('"', r'\"')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
+    return _db.noteBook.category.like('%"$escaped"%');
+  }
+
+  /// 全部分类（从各行 category 列解析 JSON 数组后取并集，供筛选 chips）
   Future<List<String>> loadCategories() async {
-    final query = _db.selectOnly(_db.noteBook)
-      ..addColumns([_db.noteBook.category])
-      ..groupBy([_db.noteBook.category]);
-    final rows = await query.get();
-    return rows
-        .map((r) => r.read(_db.noteBook.category))
-        .whereType<String>()
-        .where((c) => c.isNotEmpty)
-        .toList();
+    final rows = await _db.select(_db.noteBook).get();
+    final cats = <String>[];
+    for (final row in rows) {
+      for (final c in parseNoteCategories(row.category)) {
+        if (!cats.contains(c)) cats.add(c);
+      }
+    }
+    return cats;
   }
 
   /// 单条笔记详情；不存在返回 null
@@ -58,11 +72,12 @@ class NoteRepository {
     return row == null ? null : NoteItem.fromRow(row);
   }
 
-  /// 新建笔记（html 由纯文本段落生成，与桌面端 vue-quill 的 <p> 结构兼容）
+  /// 新建笔记（html 由纯文本段落生成，与桌面端 vue-quill 的 <p> 结构兼容；
+  /// categories 多选分类，落库为 JSON 数组文本，空列表存 NULL）
   Future<String> createNote({
     required String title,
     required String content,
-    String? category,
+    List<String> categories = const [],
     List<String> tagKeys = const [],
   }) async {
     final key = _uuid.v4();
@@ -78,7 +93,9 @@ class NoteRepository {
             createTime: Value(now),
             updateTime: Value(now),
             tags: Value(jsonEncode(tagKeys)),
-            category: Value(category),
+            category: Value(
+              categories.isEmpty ? null : jsonEncode(categories),
+            ),
           ),
         );
     return key;
@@ -89,14 +106,16 @@ class NoteRepository {
     String key, {
     required String title,
     required String content,
-    String? category,
+    List<String> categories = const [],
     List<String> tagKeys = const [],
   }) async {
     await (_db.update(_db.noteBook)..where((tbl) => tbl.key.equals(key))).write(
       NoteBookCompanion(
         excerpt: Value(_excerptOf(title, content)),
         html: Value(_textToHtml(content)),
-        category: Value(category),
+        category: Value(
+          categories.isEmpty ? null : jsonEncode(categories),
+        ),
         tags: Value(jsonEncode(tagKeys)),
         updateTime: Value(_now()),
       ),
@@ -148,6 +167,50 @@ class NoteRepository {
     });
     await _writeTagDefsRaw(rawList);
     return tag;
+  }
+
+  /// 重命名标签（对齐 PC TagSelector：与其它活跃标签重名时返回 false 不写入）
+  Future<bool> renameTagDef(String key, String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return false;
+    final rawList = await _readTagDefsRaw();
+    for (final item in rawList) {
+      if (item is Map &&
+          item['key'] != key &&
+          item['name']?.toString() == trimmed &&
+          item['deleted'] != true) {
+        return false;
+      }
+    }
+    return _patchTagDef(key, (item) {
+      item['name'] = trimmed;
+      item['updateTime'] = _now();
+    });
+  }
+
+  /// 改标签颜色（'#RRGGBB'，色板 = [kNoteTagPalette]，与 PC TagSelector 同源）
+  Future<void> updateTagColor(String key, String color) => _patchTagDef(key, (
+    item,
+  ) {
+    item['color'] = color;
+    item['updateTime'] = _now();
+  });
+
+  /// 按 key 打补丁并回写 basic_info.note_tags（命中返回 true）
+  Future<bool> _patchTagDef(
+    String key,
+    void Function(Map<dynamic, dynamic> item) patch,
+  ) async {
+    final rawList = await _readTagDefsRaw();
+    var touched = false;
+    for (final item in rawList) {
+      if (item is Map && item['key'] == key) {
+        patch(item);
+        touched = true;
+      }
+    }
+    if (touched) await _writeTagDefsRaw(rawList);
+    return touched;
   }
 
   /// 软删标签（deleted: true；笔记上已挂的 key 保留，与桌面端语义一致）
