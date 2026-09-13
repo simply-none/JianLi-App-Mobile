@@ -19,7 +19,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/sheet_form.dart';
@@ -276,7 +275,6 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
             subtitle: 'AES-256 加密，仅驻留本机内存',
             accentIndex: 1,
             cornerRadius: 22,
-            textureAsset: CardTextures.texture11,
             ringDecor: true,
             shadow: false,
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),

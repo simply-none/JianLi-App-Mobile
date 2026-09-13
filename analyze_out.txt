@@ -1,0 +1,38 @@
+﻿flutter.bat : Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+所在位置 行:445 字符: 49
++ ... obile-app'; & 'C:\src\flutter\bin\flutter.bat' analyze lib 2>&1 | Out ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Flutter assets ...st this source!:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Analyzing lib...                                                
+
+warning - The operand can't be 'null', so the condition is always 'true'. Remove the condition - lib\app\ui\page_banner.dart:97:23 - unnecessary_null_comparison
+warning - The '!' will have no effect because the receiver can't be null. Try removing the '!' operator - lib\app\ui\page_banner.dart:106:26 - unnecessary_non_null_assertion
+warning - Unused import: '../../app/theme/app_theme.dart'. Try removing the import directive - lib\features\ferry\ferry_page.dart:15:8 - unused_import
+warning - Unused import: '../../app/ui/page_banner.dart'. Try removing the import directive - lib\features\ferry\ferry_page.dart:16:8 - unused_import
+warning - The value of the field '_url' isn't used. Try removing the field, or using it - lib\features\ferry\ferry_page.dart:48:11 - unused_field
+warning - The value of the field '_assetCheck' isn't used. Try removing the field, or using it - lib\features\ferry\ferry_page.dart:53:11 - unused_field
+warning - The value of the field '_qyferryAssets' isn't used. Try removing the field, or using it - lib\features\ferry\ferry_page.dart:54:16 - unused_field
+   info - Statements in a for should be enclosed in a block. Try wrapping the statement in a block - lib\features\ferry\ferry_page.dart:211:32 - curly_braces_in_flow_control_structures
+   info - Don't invoke 'print' in production code. Try using a logging framework - lib\features\ferry\ferry_server.dart:69:5 - avoid_print
+   info - Don't invoke 'print' in production code. Try using a logging framework - lib\features\ferry\ferry_server.dart:103:7 - avoid_print
+   info - Don't invoke 'print' in production code. Try using a logging framework - lib\features\ferry\ferry_server.dart:109:9 - avoid_print
+   info - Don't invoke 'print' in production code. Try using a logging framework - lib\features\ferry\ferry_server.dart:135:7 - avoid_print
+   info - Don't invoke 'print' in production code. Try using a logging framework - lib\features\ferry\ferry_server.dart:137:7 - avoid_print
+warning - Unused import: '../repositories/transfer_repository.dart'. Try removing the import directive - lib\features\file_transfer\components\file_transfer_page.dart:41:8 - unused_import
+warning - The value of the field '_ask' isn't used. Try removing the field, or using it - lib\features\file_transfer\components\file_transfer_page.dart:66:16 - unused_field
+   info - 'allowMultiple' is deprecated and shouldn't be used. use pickFile for single-file selection; this parameter will be removed in a future release. Try replacing the use of the deprecated member with the replacement - lib\features\file_transfer\components\file_transfer_page.dart:188:7 - deprecated_member_use
+   info - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check - lib\features\file_transfer\components\file_transfer_page.dart:254:29 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check. Guard a 'State.context' use with a 'mounted' check on the State, and other BuildContext use with a 'mounted' check on the BuildContext - lib\features\file_transfer\components\file_transfer_page.dart:1033:18 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check. Guard a 'State.context' use with a 'mounted' check on the State, and other BuildContext use with a 'mounted' check on the BuildContext - lib\features\file_transfer\components\file_transfer_page.dart:1050:18 - use_build_context_synchronously
+   info - The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/services.dart'. Try removing the import directive - lib\features\file_transfer\services\file_actions.dart:10:8 - unnecessary_import
+   info - The imported package 'mime' isn't a dependency of the importing package. Try adding a dependency for 'mime' in the 'pubspec.yaml' file - lib\features\file_transfer\services\transfer_client.dart:19:8 - depend_on_referenced_packages
+warning - The '!' will have no effect because the receiver can't be null. Try removing the '!' operator - lib\features\file_transfer\services\transfer_client.dart:197:63 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null. Try removing the '!' operator - lib\features\file_transfer\services\transfer_client.dart:202:25 - unnecessary_non_null_assertion
+warning - Unused import: 'package:drift/drift.dart'. Try removing the import directive - lib\features\file_transfer\services\transfer_server.dart:21:8 - unused_import
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\file_transfer\services\transfer_server.dart:346:18 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block. Try wrapping the statement in a block - lib\features\file_transfer\services\transfer_server.dart:347:23 - curly_braces_in_flow_control_structures
+   info - Unnecessary use of multiple underscores. Try using '_' - lib\features\sync\components\sync_log_list.dart:44:31 - unnecessary_underscores
+
+27 issues found. (ran in 9.8s)

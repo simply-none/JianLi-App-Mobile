@@ -136,12 +136,15 @@
 | **危险确认** | 也走底部抽屉（不是居中弹窗）；泛型 + `Navigator.pop(c, true/false)` 回传 | `showTodoConfirmSheet` |
 | **查询 / 筛选** | 条件收进「查询抽屉」：标题「查询」+ 关裸图标；中部选项滚动；底部「重置 / 查询」**恒贴底**（定高 + `Expanded`，minHeight 方案会让按钮随内容浮起，实踩） | `lib/app/ui/filter_sheet.dart`（`md`）；待办另有 `showTodoFilterSheet`（画布 10） |
 | **条目单击 = 查看详情** | 单击先出**只读详情**，要改再点详情的「编辑」；多入口**共用同一函数**，避免「某处点开是编辑」的漂移 | `openTodoDetail` + `showTodoDetailSheet` |
+| **列表卡片的破坏性动作** | **卡片行尾不放删除按钮**（2026-09-13 用户定，习惯卡首发）：删除统一收进**只读详情底栏**（`_sheetButton(label:'删除习惯', bg: destructive)`）。理由：卡右侧只留「主动作」（打卡圈 / ⋯），避免误触删除；新增列表页照此办，勿再往卡里塞 trash 图标 | `habit_page.dart` `_HabitCard` / `_showDetailSheet` |
 | **详情出口动作回传** | 用 `枚举 + 目标条目` 回传（`TodoDetailResult(action, item)`），抽屉自己不直接开表单；带 item 是为了支持父任务**层层下钻**后动作逐层上抛 | `TodoDetailResult` |
 | **新增 / 编辑保存** | 底部固定操作条（`GradientButton`），不随内容滚动；编辑态头部不放重复保存入口 | `note_editor_page.dart` |
+| **页面底部固定条（机制）** | 一律用 **`FScaffold.footer:`**，**不要**自己拼 `Column + Expanded + 底部条`——forui 会自动把它排在 body 之下（body 高度自动扣减，内容不会滚到条下面）并按 `viewInsets` 避让键盘，且自带 `footerDecoration`（**默认仅一条顶部描边、无背景**，透明底透出页面背板，与 App「渐变背板」架构一致）。⚠️ **footer 内容必须自带 `SafeArea(top: false)`**：footer **不被 `childPad` 包裹**，forui 也**不会**自动避让系统导航栏（只避让键盘）。⚠️ **`child:` 必须写在构造参数最后**，否则报 info `sort_child_properties_last`（本项目 analyze 要求零 issue） | `main_shell.dart`（悬浮胶囊底栏）、`book_notes_page.dart`（导出条） |
 | **表单输入框** | ① 抽屉内原生 `TextField` 必须有 `Material` 祖先 —— 统一由 `SheetSurface` 提供；`FScaffold` 与 forui Sheet **都不提供**；② **常态必须可见描边、聚焦高亮主题色**（不写 `border:` 即继承主题 `inputDecorationTheme`，**严禁 `InputBorder.none` 抹掉描边**）；③ **点空白 / 滚动失焦收键盘**（根 `Actions` 覆盖 `EditableTextTapOutsideIntent` + `SheetSurface` 的 `ScrollNotification` 兜底，无需各自写 `onTapOutside`）；④ 多行 `maxLines: null` 随内容增长 | `sheet_surface.dart` 注释 / `app.dart` / `interaction-patterns.md` §五 |
 | **controller 生命周期** | controller 归**持有它的 State**，**绝不**在 `await 抽屉 Future` 之后 dispose（会断言 `_dependents.isEmpty` 整屏红） | `architecture.md` 雷区 #14 + `_ControllerHost` |
 | **列表滚动吸顶** | 锚点 = **搜索行**（搜索框常驻视口顶部），**不是** Tab 栏；条件 chip / Tab 栏都随滚动移出 | `todo_page.dart` 的 `_PinnedHeader`；本模块 §3.5 / §3.17 |
 | **反馈（toast）** | 统一 `showFToast`（`FToaster` 已在根组件挂全局） | `showRecordProgressSheet` |
+| **库内英文码值展示** | 文案里**禁止直出 DB 码值**（`daily`/`weekly`…）。中文名放**模型 getter** 作单一来源（未知值原样返回，别吞信息），卡片与详情共用同一处（2026-09-13 习惯 `freqType` 先踩：卡片直出 `daily`、详情自带一份 switch → 两处重复） | `HabitItem.freqLabel`（`models/habit.dart`） |
 
 ---
 
@@ -323,7 +326,8 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
 ### 3.18 待办骨架的共享原子与新消费方（2026-09-12 扩展）
 
 > 待办骨架（图1：主色横幅统计 + 吸顶搜索行 + 分段 Tab + 列表）已抽出为 `lib/app/ui/`
-> 共享原子，待办页与三个新消费方（提醒 / 倒计时 / 番茄钟记录）共同使用。
+> 共享原子，待办页与两个新消费方（提醒 / 倒计时）共同使用；行为页（习惯打卡）也已按此骨架加吸顶搜索行。
+> ⚠️ 番茄钟记录已由独立列表页改为 80vh 抽屉（2026-09-13），**不再消费** `PinnedSearchRow`/`ScopeTabBar`。
 > **新增列表页照此组装，禁止再各写一套搜索行 / Tab 栏 / 软底 chip。**
 
 | 原子 | 路径 | 要点 |
@@ -331,15 +335,16 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
 | 吸顶搜索行 | `lib/app/ui/pinned_search_row.dart` | `PinnedSearchRow`（h40/r10/卡底描边 + 28×28 筛选钮，`onFilter:null` 隐藏）+ `PinnedSearchHeader`（`shrinkOffset>0` 才铺 `pinnedCover`，见 §3.5 雷区）+ `kSearchRowExtent`=60（吸顶高度与行内常量同源推导） |
 | 分段 Tab 栏 | `lib/app/ui/scope_tab_bar.dart` | `ScopeTabBar<T>`（h34 muted 轨 r11、选中白卡 r8、13px、`CrossAxisAlignment.stretch`）；**不吸顶**，随滚动移出 |
 | 软底 chip | `lib/app/ui/soft_chip.dart` | `SoftChip`（色底 alpha · r10 · 11/w600，可选 `leading`/`onRemove` ×；2026-09-13 增选择形态 `onTap`——无 ×、TapScale 包装，供分类/标签选择行使用，与 `onRemove` 互斥）；待办 `TodoStatusChip`(15%)/`TodoTagChip`(14%)/条件 chip(12%) 均为其包装 |
-| 弹窗表单原子 | `lib/app/ui/sheet_form.dart` | `SheetScaffold`（lg 定高骨架：居中把手 + 17/Bold 标题 + 裸 X + 中间滚动体 + 底部条）+ `SheetHandle`/`SheetChoiceChip`/`SheetFieldLabel`/`SheetInputBox`（数字类短输入可 `textAlign: center`；**与按钮并排等高对齐的唯一选择，见 §4.6**）/`SheetMultilineBox`/`SheetSwitchRow`/`sheetBottomActions`（`destructive: true` 出红色主按钮）+ **`showSheetActionMenu`（长按操作菜单，sm 档）** + **`showSheetConfirm`（危险确认，sm 档，恒返回 bool）**；**新增弹窗优先用这组**（调用点必须配 `mainAxisMaxRatio: AppTokens.sheetHeightLg + resizeToAvoidBottomInset: false`，见 §一）；待办 `todo_sheets.dart` 私有 `_sheetScaffold` 为同构先例，待后续统一迁移 |
+| 弹窗表单原子 | `lib/app/ui/sheet_form.dart` | `SheetScaffold`（lg 定高骨架：居中把手 + 17/Bold 标题 + 裸 X + 中间滚动体 + 底部条）+ `SheetHandle`/`SheetChoiceChip`/`SheetFieldLabel`/`SheetInputBox`（数字类短输入可 `textAlign: center`；**与按钮并排等高对齐的唯一选择，见 §4.6**）/`SheetMultilineBox`/`SheetSwitchRow`/`sheetBottomActions`（`destructive: true` 出红色主按钮）+ **`showSheetActionMenu`（长按操作菜单，**默认 sm 档**；可传 `size:` 按三档制升档——**电子书书架长按书籍卡片用 `md`(50vh)**，2026-09-13 用户定）** + **`showSheetConfirm`（危险确认，sm 档，恒返回 bool）**；**新增弹窗优先用这组**（调用点必须配 `mainAxisMaxRatio: AppTokens.sheetHeightLg + resizeToAvoidBottomInset: false`，见 §一）；待办 `todo_sheets.dart` 私有 `_sheetScaffold` 为同构先例，待后续统一迁移 |
+| 日期/时间选择 | `lib/app/ui/datetime_pickers.dart` | **录入日期时间一律走共享原子，禁止再手写文本框收日期**（interaction-patterns 同源思路），三选一：① `showTimePickerSheet`（**纯时刻「时/分」两列独立滚轮 → forui 公开原语 `FPicker`+`FPickerWheel` 自拼，中文单位 `时`/`分`，sm=30vh；滚轮高度按 `sheetMaxHeight(sm)−144` 自适应避免溢出**，2026-09-13 改 30vh）；② `showDateTimePickerSheet`（日期+时+分 → forui 原生 `FDateTimePicker` 轮式，md，分隔符 `:` 写死、无秒）；③ `showDateTimeWheelSheet`（**年/月/日/时/分/秒 六列独立滚轮 → `FPicker`+`FPickerWheel` 自拼，中文单位，md**，跨年/跨月场景好选，默认年列 `今年-10~今年+30`、`withSeconds` 默认 true）。⚠️ **forui 原生 picker 的分隔符写死、改不了**（`FTimePicker` 用 `:`、`FDateTimePicker` 时刻格式写死 `.Hm`），故要求中文单位（`08时00分` / `2026年 09月 13日 06时 10分 12秒`）的场景都走自拼 ① / ③（2026-09-13 用户定），`FDateTimePicker` 仅剩免拆列的简单场景（如二维码参数日期时间）。均三档制底部抽屉、24 小时制、取消返回 null。**嵌套抽屉安全写法**（从其他抽屉内打开）：`showFSheet` 走默认参数、**不传 `mainAxisMaxRatio`**（传了会让 ShiftedSheet 重入布局断言崩）；待办「新增/编辑-到期时间」消费 ③、习惯「提醒时刻」与提醒管理「时刻」均消费 ①。**间距优化**（forui `FPicker` 把每列包成 `Flexible` 均分整行 → 数字与中文单位被拉开；已用 `LayoutBuilder`+两端固定占位 `_textWidth` 量宽回压，见 changelog XLIII）|
 
 | 消费方 | 骨架构成（横幅统计 / Tab / 备注） |
 |---|---|
 | `todo_page.dart` | 全部/进行中/已完成/已取消 · Tab=状态范围 · 横幅纹理「卡11」+ 条件 chip 行（原子迁移，零视觉变化） |
-| `reminder_list_page.dart` | 全部/定点/周期/启用中 · Tab=全部/定点/周期/多状态 · 权限提示条（通知权限 / 「闹钟和提醒」，可点去设置）+ 搜索按标题/内容 + 编辑弹层走 `SheetScaffold` + **长按卡片 → `showSheetActionMenu`【编辑/停用·启用/删除】**（stateful 只读不响应），删除走 `showSheetConfirm` |
+| `reminder_list_page.dart` | 全部/定点/周期/启用中 · Tab=全部/定点/周期/多状态 · **提醒守护卡（常驻「N/4 项已就绪」→ 点开 `_ReminderGuardSheet` lg 抽屉：四项系统开关一键修复 + 后台保活开关 + 厂商路径引导 + 打开应用设置）** + 搜索按标题/内容 + 编辑弹层走 `SheetScaffold`（选「闹钟」且未授权时显示降级提示行）+ **长按卡片 → `showSheetActionMenu`【编辑/停用·启用/删除】**（stateful 只读不响应），删除走 `showSheetConfirm` |
 | `countdown_page.dart` | 全部/进行中/已暂停/已结束 · Tab=同四段 · 大计时器白卡主色环（横幅与搜索行之间，随滚动移出）+ 新建/编辑共用 `_CountdownFormSheet`（**设定方式对齐 PC（2026-09-12）**：指定时刻=复用待办 `showTodoDateTimeSheet` 月历选择器；指定时长=年/月/日/时/分/秒六小输入框（年=365 天、月=30 天折算），默认 1 小时；编辑未改时间设定保留原 timing，改了回到 running 并重排通知）+ **长按卡片 → `showSheetActionMenu`【编辑/删除】**，删除走 `showSheetConfirm` |
-| `pomodoro_page.dart` | **三种展示效果（存 basic_info 键 `pomodoro_display`，编辑弹层内 choiceChip 切换）**：`normal`=主色横幅 + 白卡进度环 + 操作条固定页底（⚙设置 + ▶重新开始；⟳ 横竖屏循环仅此模式）／`clean`=仅进度环内容卡（去说明文字）+ 头部 ⚙ + 「开始专注」文字钮（无底色不抢色，锁竖屏）／`landscape`=**七段数码管电子钟**（`_SegmentClock` CustomPainter 逐段绘制，外框 card + 内屏 muted + 数字 foreground 走主题；星期排今日高亮 + 右下角阶段小字；锁横屏）；`startRound()` 写 `reminders.startTime=now+enabled='1'`（行缺失落种子 work35/rest5，不做暂停语义）；阶段边界一次性通知 `reschedulePhaseNotifications()`；**长按整页 → 编辑配置弹层（md 档：专注/休息分钟 + 展示效果）**；横竖屏偏好持久化、离开页面恢复 auto |
-| `pomodoro_records_page.dart` | 今日专注/近 7 天/累计记录 · Tab=全部/专注/休息 · 流水卡（类型 SoftChip：专注红(6)/休息绿(2)） |
+| `pomodoro_page.dart` | **2026-09-13 重构：页面内本地计时（计时只在本页、离开/切后台即停并复位；原 startTime 持久状态机与原生阶段通知已删）**。头部统一 `‹ 番茄钟 [记录][设置]`（已删 ⟳ 横竖屏循环与 `pomodoro.orientation`）；底部统一 `[开始专注/暂停/继续] [重新开始]`。**三种展示效果**（basic_info 键 `pomodoro_display`，设置弹层 choiceChip 切换；展示效果即方向，离开页面恢复跟随系统）：`normal`=横幅 + 白卡进度环（**竖屏计时卡用 `Expanded` 撑满剩余高度、内容居中**；横屏=左横幅 + 右大环）／`clean`=仅进度环内容卡（无说明文字，锁竖屏）／`landscape`=**大字倒计时 HH:mm:ss**（`FittedBox(scaleDown)` 兜底，锁横屏）。阶段完成写 `pomodoro_status` 流水 + `NotificationService.showNow` 提示音 + `haptic(success)`；长按整页 → 编辑配置弹层（lg：专注/休息分钟 + 展示效果 + **周期规则**）。**周期规则**（basic_info 键 `pomodoro_cycle_rule`）：`未完成重新开始`（默认，丢弃进度）/ `未完成继续上一轮`（专注剩余写 `pomodoro_progress`，重进页面或切后台回前台还原为「已暂停」，点「继续」才走）；仅作用于专注阶段 |
+| `pomodoro_records_sheet.dart` | **2026-09-13 由独立页改为 80vh 抽屉**（`showPomodoroRecordsSheet`，lg 定高）：把手 + 「番茄钟记录」+ 统计行（专注 N ｜ 休息 N ｜ 共 M）+ 可滚周期列表（类型 SoftChip：专注红(6)/休息绿(2)）+ **底部固定【导出】**（→ `Download/渐离App导出/番茄钟记录_*.md`，`exportTextToDownloadDir`）。原 `pomodoro_records_page.dart` 与 `/pomodoro/records` 路由**已删除** |
 
 > 到点通知 / 权限 / 保活的横切约定（`POST_NOTIFICATIONS`、`SCHEDULE_EXACT_ALARM` 引导、
 > `AlarmBootstrap` 启动重排、`stableId` 通知 id）见 `modules/features.md` 功能域清单
@@ -455,3 +460,4 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
   ```
 - **要点**：① 两侧同为自绘容器 → 结构性必然等高，键盘弹起不漂移，与字号缩放无关；② 圆角与输入盒统一 10；③ 次要按钮（如「扫描」独立行）可继续用 FButton——本规则只约束「与输入框并排」的场景；④ 需要固定高度/并排对齐的输入框**一律 SheetInputBox，不要 SizedBox 套 FTextField**（forui 字段适合自适应高度场景）。
 - ⚠️ 禁止再写「SizedBox(height:X) 套 FTextField/FButton 求对齐」——2026-09-13 两轮截图实指后由自绘方案收口。
+- **消费方（2026-09-13 起）**：文件互传「手动填 IP + 添加」、同步页、以及**主题对话「对话记录」页底部输入条**（`SheetInputBox` + 40×40 主色渐变**方形**发送钮，圆角 10；该页原先用 `FTextField + FButton.icon` 必然不等高）。`SheetInputBox` 已加可选 **`onSubmitted`** —— 聊天式输入条（回车/软键盘「完成」即发送）传它，别再为了回车发送而退回 `FTextField`。

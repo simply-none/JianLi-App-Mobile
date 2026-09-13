@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../habit/models/habit.dart';
+import '../../pomodoro/models/pomodoro_state_machine.dart';
 import '../../todo/models/todo.dart';
 
 /// 首页聚合数据
@@ -13,6 +14,7 @@ class DashboardStats {
     required this.habitsDoneToday,
     required this.todosActive,
     required this.pomodoroToday,
+    required this.pomodoroWorkMinutes,
     required this.remindersEnabled,
     required this.nextCountdownName,
     required this.nextCountdownEndMs,
@@ -22,9 +24,15 @@ class DashboardStats {
   final int habitsDoneToday;
   final int todosActive;
   final int pomodoroToday;
+
+  /// 番茄钟单次专注时长（分钟；读 reminders(id='pomodoro').states，缺省 35）
+  final int pomodoroWorkMinutes;
   final int remindersEnabled;
   final String? nextCountdownName;
   final int? nextCountdownEndMs;
+
+  /// 今日专注总分钟 = 完成的专注轮数 × 单次时长
+  int get pomodoroTodayMinutes => pomodoroToday * pomodoroWorkMinutes;
 
   String get habitProgressLabel =>
       habitsTotal == 0 ? '0/0' : '$habitsDoneToday/$habitsTotal';
@@ -66,6 +74,21 @@ dashboardStatsProvider = FutureProvider<DashboardStats>((ref) async {
           .getSingle()
           .then((r) => r.read(db.pomodoroStatus.id.count()) ?? 0);
 
+  // 番茄钟单次专注时长（分钟）：读 reminders(id='pomodoro').states 的 work 段，
+  // 缺行/缺段回退 35（与移动端番茄钟默认值一致）。首页「今日 X 轮 · Y m」用真实时长，
+  // 不再硬编码 ×25（聚焦时长可在番茄钟设置里改）。
+  final pomodoroRow =
+      await (db.select(db.reminders)
+            ..where((t) => t.id.equals('pomodoro')))
+          .getSingleOrNull();
+  var pomodoroWorkMinutes = 35;
+  for (final s in parsePomodoroStates(pomodoroRow?.states)) {
+    if (s.key == 'work' && s.durationSeconds > 0) {
+      pomodoroWorkMinutes = (s.durationSeconds / 60).ceil();
+      break;
+    }
+  }
+
   // 活跃提醒：所有启用的提醒（含用户自建 / 习惯 / 待办），但排除番茄钟 stateful。
   // - stateful 由 App 前台驱动、不走系统通知，且 id='pomodoro' 单行不代表「一条提醒」，不能计入。
   // - 习惯(source='habit')/待办(source='todo')的启用提醒要计入（与用户预期一致）。
@@ -99,6 +122,7 @@ dashboardStatsProvider = FutureProvider<DashboardStats>((ref) async {
     habitsDoneToday: habitItems.where((h) => doneKeys.contains(h.key)).length,
     todosActive: activeTodos,
     pomodoroToday: pomodoroToday,
+    pomodoroWorkMinutes: pomodoroWorkMinutes,
     remindersEnabled: enabledReminders,
     nextCountdownName: nextCountdown?.name,
     nextCountdownEndMs: nextCountdown?.endTime,

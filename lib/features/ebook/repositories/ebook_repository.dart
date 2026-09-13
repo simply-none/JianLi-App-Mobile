@@ -401,6 +401,12 @@ class EbookRepository {
      ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])).watch();
   }
 
+  /// 全部批注流（跨书）——书架卡片统计「划线 / 笔记」数用。
+  /// 只开这一条流，前端按 content_hash 分桶，避免为每本书各开一条 watch。
+  Stream<List<EbookAnnotationData>> watchAllAnnotations() {
+    return _db.select(_db.ebookAnnotation).watch();
+  }
+
   /// 新增批注（type=markStrong 表示划线高亮；note 为可选笔记内容）
   Future<int> addAnnotation({
     required String filePath,
@@ -563,3 +569,29 @@ List<BookChapter> splitTxtChapters(String content) {
 
 String _escapeHtml(String s) =>
     s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+/// 批注分类口径（唯一判定源）：`type == 'note'` 记为「笔记」，
+/// 其余（highlight / underline / mark / markStrong / 未知）一律记为「划线」。
+///
+/// 书架卡片统计与笔记页「划线 N / 笔记 N」共用本函数，避免两处口径漂移。
+bool isNoteAnnotation(EbookAnnotationData a) =>
+    (a.type ?? '').trim() == 'note';
+
+/// 按 `content_hash` 汇总每本书的「划线 / 笔记」数量（返回 `hash -> (marks, notes)`）。
+///
+/// 书架卡片与「导出电子书」抽屉共用本函数，避免两处各写一份分桶逻辑。
+/// 无 `content_hash`（老数据）的批注会被跳过——它们无法归属到任何一本书。
+Map<String, ({int marks, int notes})> annotationCountsByHash(
+  Iterable<EbookAnnotationData> all,
+) {
+  final out = <String, ({int marks, int notes})>{};
+  for (final a in all) {
+    final hash = a.contentHash;
+    if (hash == null || hash.isEmpty) continue;
+    final cur = out[hash] ?? (marks: 0, notes: 0);
+    out[hash] = isNoteAnnotation(a)
+        ? (marks: cur.marks, notes: cur.notes + 1)
+        : (marks: cur.marks + 1, notes: cur.notes);
+  }
+  return out;
+}

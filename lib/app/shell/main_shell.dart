@@ -92,17 +92,7 @@ class _JianliBottomNav extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (selected) ...[
-            // 顶部渐变指示条（32×3 · r1.5）
-            Container(
-              width: 32,
-              height: 3,
-              margin: const EdgeInsets.only(bottom: 3),
-              decoration: BoxDecoration(
-                gradient: AppTokens.primaryGradient(context),
-                borderRadius: BorderRadius.circular(1.5),
-              ),
-            ),
-            // 渐变超椭圆底盘（64×44 · r22），竖向居中图标 + 标签
+            // 渐变超椭圆底盘（64×44 · r22），在 62px tab 高度内垂直居中
             Container(
               width: 64,
               height: 44,

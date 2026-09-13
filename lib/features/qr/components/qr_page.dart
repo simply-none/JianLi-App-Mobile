@@ -26,7 +26,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/datetime_pickers.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/gradient_button.dart';
@@ -139,7 +138,6 @@ class _QrPageState extends ConsumerState<QrPage> {
                 subtitle: '生成 / 识别 / 历史，一页搞定',
                 accentIndex: 3,
                 cornerRadius: 22,
-                textureAsset: CardTextures.texture11,
                 ringDecor: true,
                 shadow: false,
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 4),

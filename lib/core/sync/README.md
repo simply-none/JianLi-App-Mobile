@@ -3,7 +3,7 @@
 对应 `.zcode/skills/jianli-app/references/flutter-port.md` 第 7 节：
 
 - **同步模型**：所有业务表以 `key`/`id` 为主键 → 同步 = 按主键幂等 upsert。
-- **发现**：mDNS/NSD 同局域网找对端（借鉴 LocalSend，它本身就是 Flutter 项目）。
+- **发现**：mDNS/NSD 同局域网找对端（自研极简 UDP 发现协议，零额外依赖）。
 - **传输**：本端起本地 HTTP（`shelf`），选中表序列化 JSON 推送，对端按主键 upsert。
 - **冲突**：`updateTime`/`updated_at` 最后写入胜出（新表设计需带时间戳）。
 - **安全**：含 vault 字段的数据必须走会话密钥加密，禁止明文过局域网；

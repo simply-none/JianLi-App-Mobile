@@ -32,7 +32,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/scope_tab_bar.dart';
@@ -316,7 +315,6 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     // 画布渐变与首页英雄卡同源 → 走主色渐变（换外观色系时整屏跟着走）
     gradient: AppTokens.accentGradient(_accent),
     cornerRadius: 22,
-    textureAsset: CardTextures.texture11,
     ringDecor: true,
     shadow: false,
     margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),

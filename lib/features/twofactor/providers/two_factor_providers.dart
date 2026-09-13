@@ -20,6 +20,11 @@ final FutureProvider<String?> twoFactorVaultPathProvider =
       (ref) => ref.watch(twoFactorRepositoryProvider).getVaultPath(),
     );
 
+/// 是否已建库（有路径记录且文件存在）——门禁页据此在「新建」与「解锁」间分流
+final FutureProvider<bool> twoFactorVaultExistsProvider = FutureProvider<bool>(
+  (ref) => ref.watch(twoFactorRepositoryProvider).hasVault(),
+);
+
 /// 已解锁的 2FA 账户列表（未解锁时为空列表）
 class TwoFactorAccountsController
     extends AsyncNotifier<List<TwoFactorAccount>> {
@@ -28,12 +33,23 @@ class TwoFactorAccountsController
 
   String? _vaultPath;
 
+  /// 首次建库（空 vault），建库即解锁；成功后刷新 hasVault 状态
+  Future<void> createVault(String passphrase) async {
+    final repo = ref.read(twoFactorRepositoryProvider);
+    await repo.createVault(passphrase);
+    _vaultPath = await repo.getVaultPath();
+    state = const AsyncData([]);
+    ref.invalidate(twoFactorVaultExistsProvider);
+    ref.invalidate(twoFactorVaultPathProvider);
+  }
+
   /// 用口令解锁 vault；失败抛异常由 UI 捕获展示
   Future<void> unlock(String passphrase) async {
     final repo = ref.read(twoFactorRepositoryProvider);
     final accounts = await repo.unlockAccounts(passphrase);
     _vaultPath = await repo.getVaultPath();
     state = AsyncData(accounts);
+    ref.invalidate(twoFactorVaultExistsProvider);
   }
 
   /// 是否已解锁（有 vaultPath 记录即视为解锁过）

@@ -12,7 +12,6 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/squircle_box.dart';
@@ -130,10 +129,9 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                     PageBanner(
                       icon: FLucideIcons.refreshCw,
                       title: '数据同步',
-                      subtitle: '类 LocalSend 双端直连，数据不出内网',
+                      subtitle: '多端数据拉取/发送同步，数据不出内网',
                       accentIndex: 5,
                       cornerRadius: 22,
-                      textureAsset: CardTextures.texture11,
                       ringDecor: true,
                       shadow: false,
                       margin: EdgeInsets.zero,

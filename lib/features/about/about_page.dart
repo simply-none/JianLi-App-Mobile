@@ -180,7 +180,7 @@ class AboutPage extends StatelessWidget {
                             ('webview_flutter', '内嵌网页（隔空互传）'),
                           ]),
                           _depsGroup(context, '网络与同步', [
-                            ('同步协议', 'UDP 发现 + HTTP 数据面（类 LocalSend）'),
+                            ('同步协议', 'UDP 发现 + HTTP 数据面'),
                           ]),
                         ],
                       ),

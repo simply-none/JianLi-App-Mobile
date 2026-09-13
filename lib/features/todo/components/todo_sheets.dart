@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/datetime_pickers.dart';
 import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../conversation/repositories/conversation_repository.dart';
@@ -1538,15 +1539,18 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
             ],
           ),
           const SizedBox(height: 16),
-          // 到期时间
+          // 到期时间：点击 → forui 六列滚轮抽屉（年 / 月 / 日 / 时 / 分 / 秒 各一列），
+          // 落库格式本就是 'YYYY-MM-DD HH:mm:ss'（含秒），与这里的选择精度一致
           _fieldLabel('到期时间'),
           FTappable(
             onPress: () async {
-              final d = await showTodoDateTimeSheet(
+              final d = await showDateTimeWheelSheet(
                 context,
                 initial: _dueDate,
+                title: '到期时间',
               );
-              if (mounted) _setState(() => _dueDate = d);
+              // 取消（返回 null）保留原值；清空走字段右侧 x 按钮
+              if (d != null && mounted) _setState(() => _dueDate = d);
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

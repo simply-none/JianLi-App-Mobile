@@ -10,6 +10,7 @@ import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../core/android/system_actions.dart';
 import 'providers/theme_providers.dart';
 import 'security/vault_auto_lock.dart';
 import 'theme/app_theme.dart';
@@ -56,7 +57,41 @@ class _JianliAppState extends ConsumerState<JianliApp>
         state == AppLifecycleState.detached) {
       lockAllVaults(ref);
     }
+    // 回到前台 → 到点提醒自愈重排（节流 5 分钟）：
+    // 系统/ROM 在后台清理过原生 AlarmManager 计划后，用户随手打开一次 App 就自动恢复，
+    // 否则「不再进提醒页就永远不恢复」——那是提醒失效的主因。
+    if (state == AppLifecycleState.resumed) {
+      _healAlarms();
+    }
     super.didChangeAppLifecycleState(state);
+  }
+
+  /// 回前台自愈的节流间隔（避免频繁切前后台时反复查库 + 重排原生计划）
+  static const Duration _healThrottle = Duration(minutes: 5);
+
+  DateTime? _lastHealAt;
+  bool _healing = false;
+
+  /// 回到前台时自愈：重排全部启用提醒（防原生计划被清理）+ 确保保活服务在跑。
+  ///
+  /// ⚠️ 只做自愈、**不申请权限**（权限只在冷启动 bootstrapAlarms 里申请，回前台反复弹框会骚扰用户）。
+  /// 独立 try/catch 包住，任何失败都不影响前后台切换本身。
+  Future<void> _healAlarms() async {
+    if (_healing) return;
+    final now = DateTime.now();
+    final last = _lastHealAt;
+    if (last != null && now.difference(last) < _healThrottle) return;
+    _healing = true;
+    _lastHealAt = now;
+    try {
+      final db = ref.read(appDatabaseProvider);
+      await healAlarmSchedules(db);
+      await KeepAliveGuard(db).ensureRunning();
+    } catch (_) {
+      // 自愈失败不阻断：下次回前台/下次冷启动会再试
+    } finally {
+      _healing = false;
+    }
   }
 
   @override

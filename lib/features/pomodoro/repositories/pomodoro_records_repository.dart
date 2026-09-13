@@ -25,6 +25,14 @@ extension PomodoroRecordsQuery on AppDatabase {
         .watch();
   }
 
+  /// 一次性读取全部流水（最新在前；导出用，不常驻监听）
+  Future<List<PomodoroStatusData>> loadRecords({int limit = 2000}) {
+    return (select(pomodoroStatus)
+          ..orderBy([(t) => OrderingTerm.desc(t.id)])
+          ..limit(limit))
+        .get();
+  }
+
   /// 今日 / 本周 工作时段统计（value='work'）
   Future<PomodoroStats> loadStats() async {
     final now = DateTime.now();

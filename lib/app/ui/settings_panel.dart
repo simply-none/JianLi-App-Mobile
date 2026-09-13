@@ -13,6 +13,8 @@ import 'package:material_ui/material_ui.dart';
 import '../anim/jianli_haptics.dart';
 import '../providers/theme_providers.dart';
 import '../theme/app_theme.dart';
+import '../theme/card_textures.dart';
+import '../ui/banner_texture_sheet.dart';
 import 'segmented.dart';
 import 'squircle_box.dart';
 import 'ui_atoms.dart';
@@ -80,6 +82,8 @@ class _SettingsPanel extends ConsumerWidget {
     final modeIndex = AppThemeMode.values.indexOf(mode);
     final readingMode =
         ref.watch(readingModeProvider).value ?? ReadingMode.normal;
+    final bannerTexture =
+        ref.watch(bannerTextureProvider).value ?? CardTextures.texture11;
     final width = MediaQuery.of(context).size.width;
 
     // 面板铺满全屏高度：背景 Container 直接顶到状态栏与底部。
@@ -151,6 +155,48 @@ class _SettingsPanel extends ConsumerWidget {
                         },
                       ),
                       const SizedBox(height: 26),
+                      const _SectionLabel('横幅纹理', icon: FLucideIcons.image),
+                      GestureDetector(
+                        onTap: () => showBannerTextureSheet(
+                          context,
+                          currentAsset: bannerTexture,
+                          onPick: (asset) {
+                            ref.read(bannerTextureProvider.notifier).set(asset);
+                            haptic(HapticType.light, context);
+                          },
+                        ),
+                        child: Container(
+                          height: 64,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+                            border: Border.all(color: t.colors.border),
+                            image: DecorationImage(
+                              image: AssetImage(bannerTexture),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.42),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '点击选择横幅纹理',
+                              style: t.typography.body.sm.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 26),
                       const _SectionLabel('数据与同步', icon: FLucideIcons.refreshCw),
                       AppCard(
                         margin: EdgeInsets.zero,
@@ -173,6 +219,34 @@ class _SettingsPanel extends ConsumerWidget {
                               ),
                               title: const Text('数据同步'),
                               subtitle: const Text('在受信局域网内与其他设备互传数据'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 26),
+                      const _SectionLabel('用户手册', icon: FLucideIcons.bookOpen),
+                      AppCard(
+                        margin: EdgeInsets.zero,
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          spacing: 14,
+                          children: const [
+                            _ManualRow(
+                              icon: FLucideIcons.info,
+                              text: '单击列表项：查看该条目详情（底部抽屉，约 80% 屏高）',
+                            ),
+                            _ManualRow(
+                              icon: FLucideIcons.listChecks,
+                              text: '长按列表项：唤起操作菜单（约 50% 屏高），含编辑 / 删除等快捷操作',
+                            ),
+                            _ManualRow(
+                              icon: FLucideIcons.pencil,
+                              text: '新建 / 编辑：点右上角 ＋ 或详情里的「编辑习惯」，打开底部抽屉表单（约 80% 屏高）',
+                            ),
+                            _ManualRow(
+                              icon: FLucideIcons.circleCheck,
+                              text: '打卡：点卡片右侧圆点即可打卡 / 取消，近 7 天记录在卡片底部展示',
                             ),
                           ],
                         ),
@@ -258,6 +332,38 @@ class _SectionLabel extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 用户手册说明行（图标 + 文字）
+class _ManualRow extends StatelessWidget {
+  const _ManualRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 16, color: AppTokens.accent(0)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: t.typography.body.sm.copyWith(
+              fontSize: 13,
+              color: t.colors.foreground,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

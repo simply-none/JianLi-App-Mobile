@@ -15,7 +15,6 @@ import '../../features/notes/components/note_detail_page.dart';
 import '../../features/notes/components/note_editor_page.dart';
 import '../../features/notes/components/note_list_page.dart';
 import '../../features/pomodoro/components/pomodoro_page.dart';
-import '../../features/pomodoro/components/pomodoro_records_page.dart';
 import '../../features/todo/components/todo_page.dart';
 import '../../features/twofactor/components/two_factor_page.dart';
 import '../../features/countdown/components/countdown_page.dart';
@@ -89,11 +88,6 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/pomodoro',
       pageBuilder: (context, state) => slidePage(const PomodoroPage(), state),
-    ),
-    GoRoute(
-      path: '/pomodoro/records',
-      pageBuilder: (context, state) =>
-          slidePage(const PomodoroRecordsPage(), state),
     ),
     GoRoute(
       path: '/countdown',

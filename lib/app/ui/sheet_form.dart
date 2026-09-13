@@ -200,6 +200,7 @@ class SheetInputBox extends StatelessWidget {
     this.keyboardType,
     this.textAlign = TextAlign.start,
     this.onChanged,
+    this.onSubmitted,
   });
 
   final TextEditingController controller;
@@ -209,6 +210,9 @@ class SheetInputBox extends StatelessWidget {
 
   /// 输入回调（页内实时预览等场景；弹窗表单一般不传）
   final ValueChanged<String>? onChanged;
+
+  /// 回车（软键盘「完成」）回调——聊天类输入条用（如主题对话记录页「记录一下…」）
+  final ValueChanged<String>? onSubmitted;
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +235,7 @@ class SheetInputBox extends StatelessWidget {
                 keyboardType: keyboardType,
                 textAlign: textAlign,
                 onChanged: onChanged,
+                onSubmitted: onSubmitted,
                 style: t.typography.body.sm.copyWith(
                   fontSize: 14,
                   color: t.colors.foreground,
@@ -409,12 +414,17 @@ class SheetAction<T> {
   final bool destructive;
 }
 
-/// 底部操作菜单（sm 档）：条目长按 / ⋯ 菜单通用（对齐待办 `showTodoActionSheet` 先例）。
+/// 底部操作菜单（默认 sm 档）：条目长按 / ⋯ 菜单通用（对齐待办 `showTodoActionSheet` 先例）。
 /// 点任意项立即 pop 返回其 [SheetAction.value]；点遮罩/关闭返回 null。
+///
+/// [size] 默认 `SheetSize.sm`（30vh）—— 多数场景 2~3 项就够。
+/// 条目带说明、项数多、或按钮需要更大点击区时按三档制传 `md`(50vh) / `lg`(80vh)，
+/// **不要**为了「看起来气派」而无脑加大（默认值即全 App 既有观感，改默认会波及所有调用方）。
 Future<T?> showSheetActionMenu<T>(
   BuildContext context, {
   required String title,
   required List<SheetAction<T>> actions,
+  SheetSize size = SheetSize.sm,
 }) {
   final t = context.theme;
   return showFSheet<T>(
@@ -424,7 +434,7 @@ Future<T?> showSheetActionMenu<T>(
     resizeToAvoidBottomInset: false,
     builder: (c) => SheetScaffold(
       title: title,
-      size: SheetSize.sm,
+      size: size,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -23,7 +23,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../core/android/media_scan.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/sheet_form.dart';
@@ -328,7 +327,6 @@ class _FileTransferPageState extends ConsumerState<FileTransferPage> {
                       subtitle: '双端批量收发，局域网直连不出内网',
                       accentIndex: 4,
                       cornerRadius: 22,
-                      textureAsset: CardTextures.texture11,
                       ringDecor: true,
                       shadow: false,
                       margin: EdgeInsets.zero,

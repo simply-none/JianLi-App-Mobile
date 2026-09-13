@@ -15,12 +15,21 @@ class BookCell extends StatelessWidget {
     super.key,
     required this.book,
     this.categoryLabels = const [],
+    this.markCount = 0,
+    this.noteCount = 0,
     required this.onOpen,
     required this.onMenu,
   });
 
   final EbookBookshelfData book;
   final List<String> categoryLabels;
+
+  /// 划线（非 note 类批注）数量
+  final int markCount;
+
+  /// 笔记（note 类批注）数量
+  final int noteCount;
+
   final VoidCallback onOpen;
 
   /// 长按封面 → 动作菜单（查看笔记标注 / 移出书架）
@@ -61,7 +70,7 @@ class BookCell extends StatelessWidget {
                   const SizedBox(height: 10),
                   Text(
                     book.title ?? book.name ?? '未命名',
-                    maxLines: 3,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: t.typography.body.sm.copyWith(
@@ -75,6 +84,44 @@ class BookCell extends StatelessWidget {
                     '已读 ${percent.toStringAsFixed(0)}%',
                     style: t.typography.body.xs.copyWith(
                       color: Colors.white.withValues(alpha: 0.85),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // 划线 / 笔记数量（独立一行，居中）；
+                  // FittedBox 兜底：三位数计数也不会撑破窄格
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          FLucideIcons.highlighter,
+                          size: 11,
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$markCount',
+                          style: t.typography.body.xs.copyWith(
+                            fontSize: 10,
+                            color: Colors.white.withValues(alpha: 0.85),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Icon(
+                          FLucideIcons.notebookPen,
+                          size: 11,
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$noteCount',
+                          style: t.typography.body.xs.copyWith(
+                            fontSize: 10,
+                            color: Colors.white.withValues(alpha: 0.85),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   if (categoryLabels.isNotEmpty) ...[

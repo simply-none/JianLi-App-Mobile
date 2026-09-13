@@ -1,15 +1,24 @@
-// 番茄钟页 —— 三种展示效果（存 basic_info 基础键值表，用户拍板不与 reminders 混存）：
-//   normal   普通：主色横幅 + 白卡进度环 + 页底操作条（⚙设置 + ▶重新开始）；⟳ 可切横竖屏
-//   clean    清爽：仅内容卡片（进度环大字）+ 设置图标 + 「开始专注」文字按钮（不与时间区抢色）
-//   landscape 横屏：大字倒计时（当前字体放大占满全屏，固定 HH:mm:ss，2026-09-13
-//     像素级还原布局公式复杂且小屏易算出负尺寸导致进入卡顿闪退，改单 painter 轻量点阵）
+// 番茄钟页 —— **页面内本地计时**（2026-09-13 重构；用户定案：移动端逻辑独立于 PC，用主流番茄钟应用方案）
 //
-// 启动语义对齐 PC 持久版（restartStatefulRound）：写 reminders.startTime=now +
-// enabled='1'，状态机从专注重开；行不存在先落种子配置（专注 35 / 休息 5）。
-// 阶段到点通知由 reschedulePhaseNotifications 排原生 AlarmManager（App 被杀也能触发）。
-// 横竖屏：normal 模式头部 ⟳ 循环 auto（跟随系统）/竖/横（偏好持久化 pomodoro.orientation）；
-// clean 锁竖屏、landscape 锁横屏（模式即方向）；**离开页面一律恢复跟随系统**（不污染其他页）。
-// 长按整页仍可打开配置编辑（与设置按钮同一入口）。
+// 与旧版（持久状态机 + 原生 AlarmManager 阶段通知）最大的区别：
+//   1. 只有点「开始专注」才起表；**离开页面（dispose）或 App 切后台（paused/hidden）立即停表**；
+//      停表后按「周期规则」（basic_info 键 `pomodoro_cycle_rule`）处置**未完成的一轮**：
+//        · restart = 未完成重新开始（默认）→ 丢弃进度，下次从专注满时长起；
+//        · resume  = 未完成继续上一轮        → 记住**专注阶段**剩余秒数，下次进页面点「继续」接着走；
+//      ⚠️ 规则**仅作用于专注阶段**（休息阶段未完成一律丢弃）；进度只在离开时落盘（键 `pomodoro_progress`），
+//      走完一轮 / 点「重新开始」/ 规则切回 restart 时清除。
+//   2. 「开始专注 / 暂停 / 继续」+「重新开始」；阶段完成自动进入下一阶段（专注↔休息循环）；
+//   3. 阶段完成时写一条 `pomodoro_status` 流水（value = work/rest）+ 发提示音（走通知渠道，见下）+ 触感；
+//   4. 不再读/写 `reminders.startTime`，不再排任何原生阶段通知；
+//   5. 时长配置仍读 `reminders(id='pomodoro').states`（与桌面端同源，设置弹窗照旧读写）。
+//
+// 提示音：页面在前台时用 `NotificationService.showNow`（番茄钟渠道 playSound + 横幅）——
+//   比 `SystemSound.play` 可靠（后者依赖系统「触摸音效」开关，关了就无声）。
+//
+// 三种展示效果（basic_info 键 `pomodoro_display`）：normal 普通 / clean 清爽 / landscape 横屏大字；
+//   展示效果即方向（clean 锁竖 / landscape 锁横 / normal 跟随系统），**离开页面恢复跟随系统**。
+// 头部统一 `‹ 番茄钟 [记录][设置]`（已删 ⟳ 横竖屏循环与 `pomodoro.orientation` 偏好）。
+// 底部统一 `[开始专注/暂停/继续] [重新开始]`（三种展示效果一致）。
 import 'dart:async';
 
 import 'package:forui/forui.dart';
@@ -17,11 +26,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart' show DeviceOrientation, SystemChrome;
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../app/anim/jianli_haptics.dart';
 import '../../../app/di/app_providers.dart';
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/ring_progress.dart';
@@ -30,8 +38,10 @@ import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/soft_chip.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../models/pomodoro_state_machine.dart';
 import '../repositories/pomodoro_repository.dart';
+import 'pomodoro_records_sheet.dart';
 
 /// 展示效果中文标签（取值清单见仓库 kDisplayModes）
 const Map<String, String> kDisplayLabels = {
@@ -39,6 +49,24 @@ const Map<String, String> kDisplayLabels = {
   'clean': '清爽',
   'landscape': '横屏',
 };
+
+/// 周期规则中文标签（取值清单见仓库 kCycleRules）
+const Map<String, String> kCycleRuleLabels = {
+  'restart': '未完成重新开始',
+  'resume': '未完成继续上一轮',
+};
+
+/// 默认阶段（配置缺失/未落库时的兜底：专注 35 / 休息 5）
+const PomodoroStateDef _kDefaultWork = PomodoroStateDef(
+  key: 'work',
+  label: '专注',
+  durationSeconds: 35 * 60,
+);
+const PomodoroStateDef _kDefaultRest = PomodoroStateDef(
+  key: 'rest',
+  label: '休息',
+  durationSeconds: 5 * 60,
+);
 
 /// 番茄钟页
 class PomodoroPage extends ConsumerStatefulWidget {
@@ -48,57 +76,160 @@ class PomodoroPage extends ConsumerStatefulWidget {
   ConsumerState<PomodoroPage> createState() => _PomodoroPageState();
 }
 
-class _PomodoroPageState extends ConsumerState<PomodoroPage> {
-  PomodoroSnapshot? _snapshot;
-  String? _error;
-  Timer? _ticker;
-
+class _PomodoroPageState extends ConsumerState<PomodoroPage>
+    with WidgetsBindingObserver {
   /// 展示效果（basic_info 键值，normal/clean/landscape）
   String _display = 'normal';
 
-  /// 横竖屏偏好（仅 normal 生效）：auto=跟随系统 / portrait=锁竖 / landscape=锁横
-  String _orientationMode = 'auto';
+  /// 阶段定义 [work, rest]（时长配置源；页面内计时用）
+  List<PomodoroStateDef> _phases = const [_kDefaultWork, _kDefaultRest];
 
-  static const String _kOrientationPref = 'pomodoro.orientation';
+  /// 当前阶段下标（0=专注 / 1=休息）
+  int _phaseIndex = 0;
+
+  /// 当前阶段剩余秒数
+  int _remainingSeconds = _kDefaultWork.durationSeconds;
+
+  /// 是否已开始过一轮（区分「空闲」与「已暂停」）
+  bool _started = false;
+
+  /// 是否正在走表（false 且 _started = 已暂停）
+  bool _running = false;
+
+  /// 周期规则（basic_info 键 `pomodoro_cycle_rule`）：未完成的一轮「重新开始」还是「继续上一轮」
+  String _cycleRule = PomodoroRepository.kCycleRuleRestart;
+
+  /// 本轮是否「活跃」（已开始且尚未按规则处置）—— 保证「离开」只处置一次
+  /// （Android 切后台会连发 hidden + paused，用本开关幂等）
+  bool _roundActive = false;
+
+  /// 是否刚从后台返回（resumed 时按需还原未完成进度）
+  bool _wentBackground = false;
+
+  /// 离开时暂存的专注剩余秒数（内存兜底：防「切后台→立刻返回」时异步落盘还没写完，
+  /// 导致 `resumed` 读库读不到 → 还原失败）；被还原消费后置空，DB 里的值不动。
+  int? _pendingResumeSeconds;
+
+  Timer? _ticker;
+  String? _error;
+
+  /// 仓库实例缓存 —— `dispose()` 里不能再安全访问 `ref`，
+  /// 而离开页面需要落盘未完成进度，故首次取用后缓存复用（db 是全局单例，缓存无副作用）。
+  PomodoroRepository? _repoCache;
+
+  PomodoroRepository get _repo =>
+      _repoCache ??= PomodoroRepository(ref.read(appDatabaseProvider));
 
   @override
   void initState() {
     super.initState();
-    // initState 里不能 read provider，首次加载放到首帧后（见 build 前 didChangeDependencies）
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _reload();
-      _restoreSettings();
-      // 进页即重排下两个阶段边界通知（App 长驻后计划仍保鲜）
-      PomodoroRepository(ref.read(appDatabaseProvider))
-          .reschedulePhaseNotifications();
-    });
-    // 每秒重算快照（基于 startTime 的纯函数，无副作用）
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _reload());
+    WidgetsBinding.instance.addObserver(this);
+    // initState 里不能 read provider，首次加载放到首帧后
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadConfig());
   }
 
   @override
   void dispose() {
-    _ticker?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _stopTicker();
+    // 离开页面：按「周期规则」处置未完成的一轮（异步落盘，不阻塞退出）
+    _persistOnLeave();
     // ⚠️ 离开页面一律恢复「跟随系统」——横竖屏是页面级设置，不污染其他页面
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     super.dispose();
   }
 
-  /// 恢复展示效果 + 横竖屏偏好并应用
-  Future<void> _restoreSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedOrientation = prefs.getString(_kOrientationPref) ?? 'auto';
-    final display = await PomodoroRepository(ref.read(appDatabaseProvider))
-        .loadDisplay();
-    if (!mounted) return;
-    setState(() {
-      _orientationMode = savedOrientation;
-      _display = display;
-    });
-    await _applyOrientation();
+  /// App 切后台（paused/hidden）等同「离开页面」：停表 + 按规则处置未完成的一轮；
+  /// 回到前台（resumed）时重读配置 —— 规则为「继续上一轮」且进度有效时还原为「已暂停」，
+  /// 等用户点「继续」才接着走（仍遵守「手动开始才计时」）。
+  /// ⚠️ `inactive` 是瞬态（下拉通知栏/权限框），不触发，避免误停。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _wentBackground = true;
+      _persistOnLeave();
+      _stopAndReset();
+    } else if (state == AppLifecycleState.resumed && _wentBackground) {
+      _wentBackground = false;
+      _loadConfig();
+    }
   }
 
-  /// 按展示效果 + （normal 时的）横竖屏偏好算目标方向
+  // ===================== 配置 =====================
+
+  static PomodoroStateDef? _pick(List<PomodoroStateDef> states, String key) {
+    for (final s in states) {
+      if (s.key == key) return s;
+    }
+    return null;
+  }
+
+  /// 读取展示效果 + 周期规则 + 阶段时长配置，并应用方向。
+  ///
+  /// **不改动正在走的计时**（`_started == true` 时只刷新配置）；
+  /// 空闲时按周期规则决定「剩余时间」从哪来：规则=resume 且存在有效的未完成专注进度 →
+  /// 还原为「已暂停」（`_started = true, _running = false`，按钮显示「继续」），否则从专注满时长起。
+  Future<void> _loadConfig() async {
+    final repo = _repo;
+    try {
+      final display = await repo.loadDisplay();
+      final rule = await repo.loadCycleRule();
+      final states = await repo.loadStates();
+      final work = _pick(states, 'work') ?? _kDefaultWork;
+      final rest = _pick(states, 'rest') ?? _kDefaultRest;
+
+      int? restored;
+      if (!_started) {
+        if (rule == PomodoroRepository.kCycleRuleResume) {
+          // ① 先取「离开时暂存的内存值」（避免异步落盘未完成时的竞态）
+          final pending = _pendingResumeSeconds;
+          if (pending != null && pending > 0 && pending < work.durationSeconds) {
+            restored = pending;
+          } else {
+            // ② 跨页面/跨启动：读库
+            final p = await repo.loadProgress();
+            // 有效条件：剩余为正且小于当前专注时长（否则残局无意义 → 清除）
+            if (p != null && p.remainingSeconds < work.durationSeconds) {
+              restored = p.remainingSeconds;
+            } else if (p != null) {
+              await repo.clearProgress();
+            }
+          }
+        } else {
+          // 规则为「重新开始」：残留进度一律作废
+          await repo.clearProgress();
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _display = display;
+        _cycleRule = rule;
+        _phases = [work, rest];
+        _error = null;
+        if (!_started) {
+          _phaseIndex = 0;
+          if (restored != null) {
+            _remainingSeconds = restored;
+            _started = true; // 已还原 → 按钮显示「继续」
+            _running = false;
+            _roundActive = false; // 还原但未走表：离开时不覆盖已保存的进度
+            _pendingResumeSeconds = null; // 已消费（DB 值保留，供换页/重启后再取）
+          } else {
+            _remainingSeconds = work.durationSeconds;
+            _pendingResumeSeconds = null;
+          }
+        }
+      });
+      await _applyOrientation();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '$e');
+    }
+  }
+
+  /// 按展示效果应用方向（clean 锁竖 / landscape 锁横 / normal 跟随系统）
   Future<void> _applyOrientation() {
     final orientations = switch (_display) {
       'clean' => [DeviceOrientation.portraitUp],
@@ -106,68 +237,14 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ],
-      // normal：跟随 ⟳ 偏好；auto 全开 = 跟随系统重力，系统锁了旋转则保持当前方向
-      _ => switch (_orientationMode) {
-        'portrait' => [DeviceOrientation.portraitUp],
-        'landscape' => [
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ],
-        _ => DeviceOrientation.values,
-      },
+      _ => DeviceOrientation.values,
     };
     return SystemChrome.setPreferredOrientations(orientations);
   }
 
-  /// 头部 ⟳（仅 normal 展示效果）：自动 → 竖屏 → 横屏 → 自动，偏好持久化
-  Future<void> _cycleOrientation() async {
-    final next = switch (_orientationMode) {
-      'auto' => 'portrait',
-      'portrait' => 'landscape',
-      _ => 'auto',
-    };
-    setState(() => _orientationMode = next);
-    await _applyOrientation();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kOrientationPref, next);
-    if (!mounted) return;
-    showFToast(
-      context: context,
-      title: Text(switch (next) {
-        'portrait' => '已锁定竖屏',
-        'landscape' => '已锁定横屏',
-        _ => '跟随系统旋转',
-      }),
-    );
-  }
-
-  Future<void> _reload() async {
-    final repo = PomodoroRepository(ref.read(appDatabaseProvider));
-    try {
-      final snapshot = await repo.loadSnapshot();
-      if (!mounted) return;
-      setState(() {
-        _snapshot = snapshot;
-        _error = null;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = '$e');
-    }
-  }
-
-  /// 启动 / 重新开始一轮（写 startTime=now + enabled='1'，PC 持久版语义）
-  Future<void> _start() async {
-    final repo = PomodoroRepository(ref.read(appDatabaseProvider));
-    await repo.startRound();
-    if (!mounted) return;
-    showFToast(context: context, title: const Text('已开始专注'));
-    _reload();
-  }
-
-  /// 设置按钮 / 长按页面 → 编辑番茄钟配置（时长 + 展示效果，PC 同源）
+  /// 设置按钮 / 长按页面 → 编辑番茄钟配置（时长 + 展示效果，时长与 PC 同源）
   Future<void> _showConfigSheet() async {
-    final repo = PomodoroRepository(ref.read(appDatabaseProvider));
+    final repo = _repo;
     final states = await repo.loadStates();
     if (!mounted) return;
     int minutesOf(String key, int fallback) {
@@ -186,35 +263,177 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
         workMinutes: minutesOf('work', 35),
         restMinutes: minutesOf('rest', 5),
         display: _display,
+        cycleRule: _cycleRule,
       ),
     );
     if (!mounted) return;
-    // 展示效果可能被改：重读并应用（方向 + 布局）
-    final display = await repo.loadDisplay();
-    if (!mounted) return;
-    setState(() => _display = display);
-    await _applyOrientation();
-    _reload();
+    // 时长/展示效果/周期规则可能被改：重读并应用（方向 + 布局 + 未完成进度取舍）
+    await _loadConfig();
   }
 
-  /// 手动记一条流水（演示写路径；自动化记录随 P2 完整交互接入）
-  Future<void> _record() async {
-    final snapshot = _snapshot;
-    final repo = PomodoroRepository(ref.read(appDatabaseProvider));
-    await repo.recordStatus(
-      label: snapshot?.currentState.label ?? '手动记录',
-      value: snapshot?.currentState.key ?? 'work',
-      mode: 'mobile',
+  // ===================== 计时 =====================
+
+  PomodoroStateDef get _phase => _phases[_phaseIndex];
+
+  int get _phaseDuration => _phase.durationSeconds;
+
+  double get _progress => _phaseDuration <= 0
+      ? 0
+      : ((_phaseDuration - _remainingSeconds) / _phaseDuration).clamp(0.0, 1.0);
+
+  void _startTicker() {
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
+  }
+
+  void _stopTicker() {
+    _ticker?.cancel();
+    _ticker = null;
+  }
+
+  void _onTick() {
+    if (!mounted || !_running) return;
+    if (_remainingSeconds > 1) {
+      setState(() => _remainingSeconds--);
+      return;
+    }
+    _completePhase();
+  }
+
+  /// 当前阶段到点：写流水 + 提示音/触感，并自动进入下一阶段（继续走表）
+  Future<void> _completePhase() async {
+    final finished = _phase;
+    final nextIndex = (_phaseIndex + 1) % _phases.length;
+    final next = _phases[nextIndex];
+    setState(() {
+      _phaseIndex = nextIndex;
+      _remainingSeconds = next.durationSeconds;
+      _running = true;
+    });
+    // 到点反馈：通知渠道提示音 + 横幅（前台可靠发声）+ 触感
+    haptic(HapticType.success, context);
+    showFToast(
+      context: context,
+      title: Text('${finished.label}结束 · 进入${next.label}'),
     );
-    if (mounted) {
-      showFToast(context: context, title: const Text('已写入番茄钟流水'));
+    try {
+      await NotificationService.showNow(
+        id: NotificationService.stableId('pomodoro:now'),
+        channelKey: NotificationChannels.pomodoro,
+        title: '${finished.label}结束',
+        body: '进入「${next.label}」（约 ${next.durationSeconds ~/ 60} 分钟）',
+      );
+    } catch (_) {}
+    // 写一条流水（value = 完成的阶段 key）
+    try {
+      await _repo.recordStatus(
+        label: finished.label,
+        value: finished.key,
+        mode: 'mobile',
+      );
+    } catch (_) {}
+  }
+
+  /// 主按钮：空闲→开始 / 运行中→暂停 / 已暂停→继续
+  void _toggleRun() {
+    if (!_started) {
+      // 全新一轮：作废任何残留的未完成进度
+      _clearProgress();
+      setState(() {
+        _phaseIndex = 0;
+        _remainingSeconds = _phases.first.durationSeconds;
+        _started = true;
+        _running = true;
+        _roundActive = true;
+        _pendingResumeSeconds = null;
+      });
+      _startTicker();
+      return;
+    }
+    if (_running) {
+      setState(() {
+        _roundActive = true;
+        _running = false;
+      });
+      _stopTicker();
+    } else {
+      setState(() {
+        _roundActive = true;
+        _running = true;
+      });
+      _startTicker();
     }
   }
 
+  /// 重新开始：丢弃当前进度，回到「专注」满时长并立即走表（全新一轮）
+  void _restart() {
+    _stopTicker();
+    // 丢弃进度 = 已保存的未完成进度一并作废
+    _clearProgress();
+    setState(() {
+      _phaseIndex = 0;
+      _remainingSeconds = _phases.first.durationSeconds;
+      _started = true;
+      _running = true;
+      _roundActive = true;
+      _pendingResumeSeconds = null;
+    });
+    _startTicker();
+  }
+
+  /// 停表并复位到「空闲」（离开页面 / 切后台）
+  void _stopAndReset() {
+    _stopTicker();
+    _roundActive = false;
+    if (!mounted) return;
+    setState(() {
+      _started = false;
+      _running = false;
+      _phaseIndex = 0;
+      _remainingSeconds = _phases.first.durationSeconds;
+    });
+  }
+
+  // ===================== 周期规则：未完成进度的落盘 / 清除 =====================
+
+  /// 离开页面 / 切后台时按「周期规则」处置未完成的一轮（`_roundActive` 保证每轮只处置一次）。
+  /// 规则**仅作用于专注阶段**——休息阶段未完成一律丢弃。
+  void _persistOnLeave() {
+    if (!_roundActive) return;
+    _roundActive = false;
+    final repo = _repo;
+    final unfinishedWork = _phaseIndex == 0 && _remainingSeconds > 0;
+    final resume = _cycleRule == PomodoroRepository.kCycleRuleResume;
+    // 内存兜底（供「切后台→立刻返回」即时还原，不受异步落盘时序影响）
+    _pendingResumeSeconds = (resume && unfinishedWork) ? _remainingSeconds : null;
+    if (resume && unfinishedWork) {
+      unawaited(_saveProgress(repo, _remainingSeconds));
+    } else {
+      unawaited(_clearSavedProgress(repo));
+    }
+  }
+
+  Future<void> _saveProgress(PomodoroRepository repo, int remainingSeconds) async {
+    try {
+      await repo.saveProgress(remainingSeconds: remainingSeconds);
+    } catch (_) {}
+  }
+
+  Future<void> _clearSavedProgress(PomodoroRepository repo) async {
+    try {
+      await repo.clearProgress();
+    } catch (_) {}
+  }
+
+  /// 作废残留的未完成进度（全新一轮 / 重新开始）
+  void _clearProgress() {
+    unawaited(_clearSavedProgress(_repo));
+  }
+
+  // ===================== 构建 =====================
+
   @override
   Widget build(BuildContext context) {
-    final snapshot = _snapshot;
-
     return FScaffold(
       childPad: false,
       child: ColoredBox(
@@ -231,23 +450,21 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
                 child: GestureDetector(
                   onLongPress: _showConfigSheet,
                   behavior: HitTestBehavior.deferToChild,
-                  child: snapshot == null
-                      ? _emptyState(context)
+                  child: _error != null
+                      ? _errorState(context)
                       : switch (_display) {
-                          'clean' => _cleanBody(context, snapshot),
-                          'landscape' => _segmentBody(context, snapshot),
+                          'clean' => _cleanBody(context),
+                          'landscape' => _segmentBody(context),
                           _ =>
                             MediaQuery.of(context).orientation ==
                                     Orientation.landscape
-                                ? _normalLandscapeBody(context, snapshot)
-                                : _normalPortraitBody(context, snapshot),
+                                ? _normalLandscapeBody(context)
+                                : _normalPortraitBody(context),
                         },
                 ),
               ),
-              // ⚠️ normal 模式操作条固定页底（不随内容滚动，§1.8 同款心智）；
-              // 清爽/横屏模式的按钮在各自布局里（设置在头部、开始专注为文字钮）
-              if (snapshot != null && _display == 'normal')
-                _normalBottomBar(context),
+              // 底部操作条固定页底（不随内容滚动，§1.8 同款心智）；三种展示效果一致
+              _bottomBar(context),
             ],
           ),
         ),
@@ -255,13 +472,9 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
     );
   }
 
-  // ===================== 头部 =====================
-  // normal：‹ / 番茄钟 / ⟳ 横竖屏 / ⏱ 手动记录（⚙ 在页底操作条）
-  // clean·landscape：‹ / 番茄钟 / ⚙ 设置（模式即方向，无 ⟳；按钮不与时间区抢色）
-
+  /// 头部：统一 `‹ 番茄钟 [记录] [设置]`（三种展示效果一致；已删 ⟳ 横竖屏循环）
   Widget _header(BuildContext context) {
     final t = context.theme;
-    final normal = _display == 'normal';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
@@ -285,81 +498,39 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
               ),
             ),
           ),
-          if (normal)
-            TapScale(
-              onTap: _cycleOrientation,
-              child: Icon(
-                FLucideIcons.rotateCw,
-                size: 20,
-                color: _orientationMode == 'auto'
-                    ? t.colors.foreground
-                    : t.colors.primary,
-              ),
-            ),
-          if (normal && _snapshot != null)
-            TapScale(
-              onTap: _record,
-              child: Icon(
-                FLucideIcons.timer,
-                size: 20,
-                color: t.colors.foreground,
-              ),
-            ),
-          if (!normal)
-            TapScale(
-              onTap: _showConfigSheet,
-              child: Icon(
-                FLucideIcons.settings,
-                size: 20,
-                color: t.colors.foreground,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // ===================== normal：横幅 + 进度环（可滚动），操作条在页底 =====================
-
-  Widget _normalPortraitBody(BuildContext context, PomodoroSnapshot snapshot) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      children: [
-        _banner(context, snapshot),
-        const SizedBox(height: 8),
-        _ringCard(context, snapshot),
-      ],
-    );
-  }
-
-  /// normal 横屏：左列横幅 + 右列大进度环
-  Widget _normalLandscapeBody(BuildContext context, PomodoroSnapshot snapshot) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            flex: 5,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [_banner(context, snapshot)],
+          // 记录 → 番茄钟周期弹窗（底部固定导出）
+          TapScale(
+            onTap: () => showPomodoroRecordsSheet(context),
+            child: Icon(
+              FLucideIcons.history,
+              size: 20,
+              color: t.colors.foreground,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 7,
-            child: Center(child: _ringCard(context, snapshot, compact: true)),
+          // 设置 → 时长 + 展示效果（原页底 ⚙ 移到头部）
+          TapScale(
+            onTap: _showConfigSheet,
+            child: Icon(
+              FLucideIcons.settings,
+              size: 20,
+              color: t.colors.foreground,
+            ),
           ),
         ],
       ),
     );
   }
 
-  /// normal 页底操作条：「⚙ 设置」+「▶ 重新开始」
-  Widget _normalBottomBar(BuildContext context) {
-    final t = context.theme;
+  /// 底部操作条：[开始专注/暂停/继续] + [重新开始]
+  Widget _bottomBar(BuildContext context) {
+    final primaryLabel = !_started
+        ? '开始专注'
+        : _running
+        ? '暂停'
+        : '继续';
+    final primaryIcon = (!_started || !_running)
+        ? FLucideIcons.play
+        : FLucideIcons.pause;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         AppTokens.pagePadding,
@@ -370,29 +541,62 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
       child: Row(
         spacing: 10,
         children: [
-          TapScale(
-            onTap: _showConfigSheet,
-            child: Container(
-              height: 48,
-              width: 56,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: t.colors.muted,
-                borderRadius: BorderRadius.circular(AppTokens.radiusMd),
-              ),
-              child: Icon(
-                FLucideIcons.settings,
-                size: 20,
-                color: t.colors.foreground,
-              ),
+          Expanded(
+            child: GradientButton(
+              label: primaryLabel,
+              icon: primaryIcon,
+              onPress: _toggleRun,
             ),
           ),
           Expanded(
-            child: GradientButton(
-              label: '重新开始',
-              icon: FLucideIcons.play,
-              onPress: _start,
+            child: FButton(
+              variant: FButtonVariant.outline,
+              onPress: _restart,
+              child: const Text('重新开始'),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===================== normal：横幅 + 进度环（计时卡占满剩余高度），操作条在页底 =====================
+
+  /// normal 竖屏：横幅固定在上，**计时卡占满剩余高度**、卡内内容垂直居中（2026-09-13 用户实指）。
+  /// ⚠️ 用 `Expanded`（拿到紧约束）而非 `ListView`——旧写法卡片只按内容 hug，下方留大片空白。
+  Widget _normalPortraitBody(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Column(
+        children: [
+          _banner(context),
+          const SizedBox(height: 8),
+          // AppCard = Container(width:∞) + Padding(margin)，在紧约束下会撑满；卡内 Column 已 center
+          Expanded(child: _ringCard(context)),
+        ],
+      ),
+    );
+  }
+
+  /// normal 横屏：左列横幅 + 右列大进度环
+  Widget _normalLandscapeBody(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            flex: 5,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [_banner(context)],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 7,
+            child: Center(child: _ringCard(context, compact: true)),
           ),
         ],
       ),
@@ -401,36 +605,22 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
 
   // ===================== clean 清爽：仅内容卡片 + 低调按钮 =====================
 
-  Widget _cleanBody(BuildContext context, PomodoroSnapshot snapshot) {
-    return Column(
-      children: [
-        Expanded(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppTokens.pagePadding,
-              ),
-              child: _ringCard(context, snapshot, showCaption: false),
-            ),
-          ),
-        ),
-        // 「开始专注」文字按钮（无底色，不与时间区抢色）
-        Padding(
-          padding: EdgeInsets.only(bottom: AppTokens.pageBottomGapOf(context)),
-          child: _textAction(context, label: '开始专注', onTap: _start),
-        ),
-      ],
+  Widget _cleanBody(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppTokens.pagePadding),
+        child: _ringCard(context, showCaption: false),
+      ),
     );
   }
 
-  // ===================== landscape 横屏：大字倒计时（2026-09-13 定案） =====================
+  // ===================== landscape 横屏：大字倒计时 =====================
 
   /// 横屏展示主体：当前字体放大、固定 HH:mm:ss、占满全屏。
-  /// ⚠️ 不再使用任何自绘时钟（七段数码管 / 点阵两版均在小屏约束下闪退）——
   /// 纯 Text + FittedBox(scaleDown) 兜底：字号给足，超宽只缩小显示，绝无溢出崩溃。
-  Widget _segmentBody(BuildContext context, PomodoroSnapshot snapshot) {
+  Widget _segmentBody(BuildContext context) {
     final t = context.theme;
-    final s = snapshot.remainingSeconds;
+    final s = _remainingSeconds;
     final h = s ~/ 3600;
     final m = (s % 3600) ~/ 60;
     final sec = s % 60;
@@ -441,7 +631,6 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 大字时间：占满全屏宽（FittedBox 只缩不放，安全兜底）
           SizedBox(
             width: double.infinity,
             child: FittedBox(
@@ -460,41 +649,38 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
           ),
           const SizedBox(height: 10),
           Text(
-            snapshot.currentState.label,
+            _phase.label,
             style: t.typography.body.sm.copyWith(
               color: t.colors.mutedForeground,
             ),
           ),
-          const SizedBox(height: 22),
-          _textAction(context, label: '开始专注', onTap: _start),
         ],
       ),
     );
   }
 
   /// 统计横幅（normal 模式；主色渐变，与待办同款；title = 当前阶段）
-  Widget _banner(BuildContext context, PomodoroSnapshot snapshot) => PageBanner(
+  Widget _banner(BuildContext context) => PageBanner(
     icon: FLucideIcons.timer,
-    title: snapshot.currentState.label,
+    title: _phase.label,
     subtitle: '完成后自动进入下一阶段',
     gradient: AppTokens.accentGradient(AppTokens.accent(6)),
     cornerRadius: 22,
-    textureAsset: CardTextures.texture11,
     ringDecor: true,
     shadow: false,
     margin: EdgeInsets.zero,
     stats: [
-      (_formatSeconds(snapshot.remainingSeconds), '本阶段剩余'),
-      ('${snapshot.cycleSeconds ~/ 60}', '周期(分钟)'),
+      (_formatSeconds(_remainingSeconds), '本阶段剩余'),
+      ('${_phaseDuration ~/ 60}', '本阶段(分钟)'),
     ],
   );
 
-  /// 阶段语义色：专注=番茄红 / 休息=绿（记录页同口径）；其余走主色
-  Color _phaseColor(BuildContext context, PomodoroSnapshot snapshot) {
+  /// 阶段语义色：专注=番茄红 / 休息=绿（记录弹窗同口径）；其余走主色
+  Color _phaseColor(BuildContext context) {
     final t = context.theme;
-    return snapshot.currentState.key == 'work'
+    return _phase.key == 'work'
         ? AppTokens.accent(6)
-        : snapshot.currentState.key == 'rest'
+        : _phase.key == 'rest'
         ? AppTokens.accent(2)
         : t.colors.primary;
   }
@@ -503,30 +689,31 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
   /// [compact]=normal 横屏：环径按卡片可用高度自适应（竖屏/清爽固定 200，ListView 高度无界）；
   /// [showCaption]=底部说明文字（清爽模式关闭，界面更净）。
   Widget _ringCard(
-    BuildContext context,
-    PomodoroSnapshot snapshot, {
+    BuildContext context, {
     bool compact = false,
     bool showCaption = true,
   }) {
     final t = context.theme;
-    final phaseColor = _phaseColor(context, snapshot);
+    final phaseColor = _phaseColor(context);
     return AppCard(
       margin: EdgeInsets.zero,
       padding: EdgeInsets.symmetric(vertical: compact ? 12 : 24),
       child: LayoutBuilder(
         builder: (context, cons) {
-          // 横屏：环径 = 卡片高 - 芯片/说明文字的预留（钳在 120~200）
-          final ringSize = compact
-              ? (cons.maxHeight - 92).clamp(120.0, 200.0)
-              : 200.0;
+          // 环径自适应卡片可用高度（钳 120~200）：高卡取上限 200（观感稳定），
+          // 矮卡（小屏 / 横屏）自动缩小，避免内容超出卡片（卡已撑满剩余高度，溢出即红屏）。
+          final ringSize = (cons.maxHeight - (compact ? 92 : 110)).clamp(
+            120.0,
+            200.0,
+          );
           return Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               SoftChip(
-                label: snapshot.currentState.label,
+                label: _phase.label,
                 color: phaseColor,
                 leading: Icon(
-                  snapshot.currentState.key == 'rest'
+                  _phase.key == 'rest'
                       ? FLucideIcons.coffee
                       : FLucideIcons.briefcase,
                   size: 11,
@@ -535,13 +722,13 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
               ),
               SizedBox(height: compact ? 10 : 14),
               RingProgress(
-                progress: snapshot.progress,
+                progress: _progress,
                 size: ringSize,
                 strokeWidth: 10,
                 color: phaseColor,
                 trackColor: t.colors.muted,
                 child: Text(
-                  _formatSeconds(snapshot.remainingSeconds),
+                  _formatSeconds(_remainingSeconds),
                   style: t.typography.body.lg.copyWith(
                     fontSize: compact ? 34 : 44,
                     fontWeight: FontWeight.w700,
@@ -552,7 +739,11 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
               if (showCaption) ...[
                 SizedBox(height: compact ? 10 : 16),
                 Text(
-                  '点「重新开始」从专注阶段重开一轮',
+                  _running
+                      ? '到点自动进入下一阶段'
+                      : _started
+                      ? '已暂停，点「继续」接着走'
+                      : '点「开始专注」，到点自动进入下一阶段',
                   style: t.typography.body.sm.copyWith(
                     color: t.colors.mutedForeground,
                   ),
@@ -565,47 +756,24 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
     );
   }
 
-  /// 清爽/横屏模式的低调文字按钮（无底色、主题前景色，不与时间区抢色）
-  Widget _textAction(
-    BuildContext context, {
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    final t = context.theme;
-    return TapScale(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        child: Text(
-          label,
-          style: t.typography.body.sm.copyWith(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: t.colors.foreground,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 配置缺失 / 未启用的空态：直接给「启动」入口（种子配置由 startRound 落库）
-  Widget _emptyState(BuildContext context) {
+  /// 配置读取失败态（正常流程不会出现）
+  Widget _errorState(BuildContext context) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           EmptyState(
             icon: FLucideIcons.timer,
-            title: _error ?? '番茄钟未启动',
-            subtitle: '启动后按「专注 35 分钟 / 休息 5 分钟」循环，到点弹系统通知',
+            title: _error ?? '番茄钟加载失败',
+            subtitle: '下拉重试，或进入设置检查时长配置',
           ),
           const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: GradientButton(
-              label: '启动',
-              icon: FLucideIcons.play,
-              onPress: _start,
+              label: '重试',
+              icon: FLucideIcons.refreshCw,
+              onPress: _loadConfig,
             ),
           ),
         ],
@@ -620,19 +788,23 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage> {
   }
 }
 
-/// 编辑番茄钟配置弹层（md 档输入类）：专注/休息时长 + 展示效果。
+/// 编辑番茄钟配置弹层（lg 80vh 定高）：专注/休息时长 + 展示效果 + 周期规则。
 /// 时长与桌面端同源 —— 写 reminders.id='pomodoro' 行的 states JSON；
-/// 展示效果存 basic_info 基础键值表（用户拍板：不与计时字段混存一表）。
+/// 展示效果与周期规则存 basic_info 基础键值表（用户拍板：不与计时字段混存一表）。
 class _PomodoroConfigSheet extends ConsumerStatefulWidget {
   const _PomodoroConfigSheet({
     required this.workMinutes,
     required this.restMinutes,
     required this.display,
+    required this.cycleRule,
   });
 
   final int workMinutes;
   final int restMinutes;
   final String display;
+
+  /// 周期规则：未完成的一轮如何处置（restart / resume）
+  final String cycleRule;
 
   @override
   ConsumerState<_PomodoroConfigSheet> createState() =>
@@ -643,6 +815,7 @@ class _PomodoroConfigSheetState extends ConsumerState<_PomodoroConfigSheet> {
   late final TextEditingController _work;
   late final TextEditingController _rest;
   late String _display;
+  late String _rule;
 
   @override
   void initState() {
@@ -650,6 +823,7 @@ class _PomodoroConfigSheetState extends ConsumerState<_PomodoroConfigSheet> {
     _work = TextEditingController(text: '${widget.workMinutes}');
     _rest = TextEditingController(text: '${widget.restMinutes}');
     _display = widget.display;
+    _rule = widget.cycleRule;
   }
 
   @override
@@ -667,9 +841,10 @@ class _PomodoroConfigSheetState extends ConsumerState<_PomodoroConfigSheet> {
       return;
     }
     final repo = PomodoroRepository(ref.read(appDatabaseProvider));
-    repo.updateDurations(workMinutes: work, restMinutes: rest);
-    // ⚠️ 必须 await：页面在弹层关闭后立即 loadDisplay 读回展示效果，晚写会读到旧值
+    await repo.updateDurations(workMinutes: work, restMinutes: rest);
+    // ⚠️ 必须 await：页面在弹层关闭后立即 loadDisplay/loadCycleRule 读回，晚写会读到旧值
     await repo.saveDisplay(_display);
+    await repo.saveCycleRule(_rule);
     if (mounted) Navigator.pop(context);
   }
 
@@ -711,8 +886,33 @@ class _PomodoroConfigSheetState extends ConsumerState<_PomodoroConfigSheet> {
             ],
           ),
           const SizedBox(height: 16),
+          // 周期规则：未完成的一轮如何处置（存 basic_info 基础键值表）
+          const SheetFieldLabel('周期规则'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final rule in PomodoroRepository.kCycleRules)
+                SheetChoiceChip(
+                  label: kCycleRuleLabels[rule] ?? rule,
+                  selected: _rule == rule,
+                  onTap: () => setState(() => _rule = rule),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
           Text(
-            '时长与桌面端同源；横屏为大字倒计时（HH:mm:ss 占满全屏），清爽仅保留时间卡片',
+            '「未完成」= 一轮结束前离开页面或切到其他应用',
+            style: context.theme.typography.body.xs.copyWith(
+              color: context.theme.colors.mutedForeground,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '计时只在进入本页并点「开始专注」后进行，离开页面即停止。\n'
+            '「未完成重新开始」= 丢弃进度，下次从专注满时长重来；'
+            '「未完成继续上一轮」= 记住专注阶段的剩余时间（不限时长），下次进页面点「继续」接着走。'
+            '规则仅作用于专注阶段；时长与桌面端同源，横屏为大字倒计时（HH:mm:ss 占满全屏）',
             style: context.theme.typography.body.xs.copyWith(
               color: context.theme.colors.mutedForeground,
             ),

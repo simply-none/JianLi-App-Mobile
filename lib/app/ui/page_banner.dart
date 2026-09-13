@@ -5,16 +5,21 @@
 // 与 Hub 分组页入口色对齐（见 hub_pages.dart 的 accentIndex）。
 // 取色：渐变走 AppTokens.accentGradient；渐变上的前景固定白色系（装饰色，
 // 非主题语义色）；其余排版走 forui token。
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/card_textures.dart';
+import '../providers/theme_providers.dart';
 import 'animated_stat.dart';
 import 'squircle_box.dart';
 
 /// 功能页渐变横幅：图标 + 标题 + 副标题 + 可选统计行
-class PageBanner extends StatelessWidget {
+///
+/// 背景纹理统一由 [bannerTextureProvider]（设置面板可切换）驱动；
+/// 传 [textureAsset] 可覆盖（如首页英雄卡等特例）。
+class PageBanner extends ConsumerWidget {
   const PageBanner({
     super.key,
     required this.icon,
@@ -61,8 +66,12 @@ class PageBanner extends StatelessWidget {
   final bool shadow;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = context.theme;
+    // 背景纹理：优先用显式传入值，否则跟随全局设置（bannerTextureProvider）
+    final tex = textureAsset ??
+        ref.watch(bannerTextureProvider).value ??
+        CardTextures.texture11;
     final accent = AppTokens.accent(accentIndex);
     final radius = cornerRadius ?? AppTokens.radiusLg;
     return Padding(
@@ -85,21 +94,21 @@ class PageBanner extends StatelessWidget {
           child: Stack(
             children: [
               // 背景纹理（画布：600×600 @ (-100,-100)，fill 0.56 × node 0.35）
-              if (textureAsset != null)
-                Positioned(
-                  left: -100,
-                  top: -100,
-                  width: 600,
-                  height: 600,
-                  child: Opacity(
-                    opacity: CardTextures.composedOpacity,
-                    child: Image.asset(
-                      textureAsset!,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                    ),
+              // tex 总非空（textureAsset 缺省时回落到默认纹理），故恒渲染
+              Positioned(
+                left: -100,
+                top: -100,
+                width: 600,
+                height: 600,
+                child: Opacity(
+                  opacity: CardTextures.composedOpacity,
+                  child: Image.asset(
+                    tex,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
                   ),
                 ),
+              ),
               if (ringDecor) ..._ringDecor() else ..._softDeco(),
               Padding(
                 padding: const EdgeInsets.all(18),

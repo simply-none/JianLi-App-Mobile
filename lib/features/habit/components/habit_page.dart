@@ -1,7 +1,8 @@
 // 习惯打卡页（forui 化）—— 今日待打卡列表 + 点击打卡 + 近 7 天记录条
 //
 // 交互：点右侧打卡圆点切换打卡；点卡片其他区域查看详情；底部 7 格小圆点展示近 7 天记录（今天在最右）。
-// 结构对齐待办页：自绘头部（_header，18/Bold 标题 + 退回/新建图标）+ 统计横幅 + 卡片列表；
+// 结构对齐待办页：自绘头部（_header，18/Bold 标题 + 退回/导出/新建图标）+ 统计横幅
+// + 吸顶搜索行（红线 #13：锚点＝搜索框，横幅随滚动移出）+ 卡片列表；
 // 弹层走 _habitSheetPanel（卡色底 + r24 顶圆角 + 顶部把手 + sheetTitleStyle 标题 + _sheetButton 按钮），
 // 与 todo_sheets 的 _sheetPanel 同源；取色/字体全部走 forui token。
 import 'package:forui/forui.dart';
@@ -10,11 +11,12 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/animated_check.dart';
 import '../../../app/ui/datetime_pickers.dart';
 import '../../../app/ui/page_banner.dart';
+import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/sheet_surface.dart';
+import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/tap_scale.dart';
@@ -22,13 +24,28 @@ import '../../../app/ui/ui_atoms.dart';
 import '../../todo/components/todo_chips.dart';
 import '../models/habit.dart';
 import '../providers/habit_providers.dart';
+import 'habit_export_sheet.dart';
 
 /// 习惯打卡页
-class HabitPage extends ConsumerWidget {
+class HabitPage extends ConsumerStatefulWidget {
   const HabitPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HabitPage> createState() => _HabitPageState();
+}
+
+class _HabitPageState extends ConsumerState<HabitPage> {
+  final _searchController = TextEditingController();
+  String _keyword = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final habitsAsync = ref.watch(habitListProvider);
     final checkedAsync = ref.watch(todayCheckedProvider);
 
@@ -42,7 +59,7 @@ class HabitPage extends ConsumerWidget {
           bottom: false,
           child: Column(
             children: [
-              _header(context, ref),
+              _header(context),
               Expanded(
                 child: habitsAsync.when(
                   loading: () => const Center(child: FCircularProgress()),
@@ -77,7 +94,7 @@ class HabitPage extends ConsumerWidget {
   }
 
   /// 头部（对齐待办页头部设计：左右 16 / 上下 12 / 间距 10；标题 18/Bold）
-  Widget _header(BuildContext context, WidgetRef ref) {
+  Widget _header(BuildContext context) {
     final t = context.theme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -103,6 +120,14 @@ class HabitPage extends ConsumerWidget {
             ),
           ),
           TapScale(
+            onTap: () => showHabitExportSheet(context),
+            child: Icon(
+              FLucideIcons.download,
+              size: 18,
+              color: t.colors.foreground,
+            ),
+          ),
+          TapScale(
             onTap: () => _showCreateSheet(context, ref),
             child: Icon(
               FLucideIcons.plus,
@@ -115,7 +140,7 @@ class HabitPage extends ConsumerWidget {
     );
   }
 
-  /// 列表主体（统计横幅 + 习惯卡片）
+  /// 列表主体（统计横幅 + 吸顶搜索行 + 习惯卡片）
   Widget _habitList(
     BuildContext context,
     WidgetRef ref,
@@ -129,58 +154,102 @@ class HabitPage extends ConsumerWidget {
         subtitle: '点右上角新建，或等桌面端同步',
       );
     }
-    return ListView(
-      // childPad:false 接管了横向内距，这里须自行补齐左右 16；
-      // top 给 0，让 PageBanner 与 todo 横幅一样贴着 header 底边（header 自身有 12 底距）。
-      padding: EdgeInsets.fromLTRB(
-        AppTokens.pagePadding,
-        0,
-        AppTokens.pagePadding,
-        AppTokens.pageBottomGapOf(context),
-      ),
-      children: [
-        StaggerList(
-          children: [
+    final filtered = _filterHabits(habits);
+    // 卡片色盘按「全部习惯」中的位置取 → 筛选时同一习惯颜色不跳
+    final orderByKey = {
+      for (var i = 0; i < habits.length; i++) habits[i].key: i,
+    };
+    return CustomScrollView(
+      slivers: [
+        // 头部横幅（随滚动移出）
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTokens.pagePadding,
+            ),
             // 头部横幅：与待办统计横幅同构（主题紫渐变 + 纹理 + 同心环装饰）
-            PageBanner(
+            child: PageBanner(
               icon: FLucideIcons.calendarCheck,
               title: '习惯打卡',
               subtitle: '每天进步一点点，坚持带来大改变',
               gradient: AppTokens.accentGradient(AppTokens.accent(2)),
-              textureAsset: CardTextures.texture11,
               ringDecor: true,
               shadow: false,
-              // PageBanner 默认自带 pagePadding 外边距；ListView 已给左右 16，
-              // 这里覆写为 zero，避免横幅双 padding 变窄，且上下距与 todo 横幅（margin top/bottom 0）对齐。
+              // 横向内距由外层 Padding 提供，此处置零避免双 padding 变窄
               margin: EdgeInsets.zero,
               stats: [
                 ('${habits.length}', '启用习惯'),
                 ('${checked.length}', '今日已完成'),
               ],
             ),
-            for (var i = 0; i < habits.length; i++)
-              _HabitCard(
-                habit: habits[i],
-                accentIndex: i,
-                checked: checked.contains(habits[i].key),
-                onToggle: () async {
-                  await ref
-                      .read(habitRepositoryProvider)
-                      .toggleCheckin(habits[i].key, DateTime.now());
-                },
-                onDelete: () => ref
-                    .read(habitRepositoryProvider)
-                    .deleteHabit(habits[i]),
-                onTapDetails: () => _showDetailSheet(
-                  context,
-                  ref,
-                  habits[i],
-                ),
-              ),
-          ],
+          ),
         ),
+        // ★吸顶锚点：搜索行常驻视口顶部（横幅随滚动移出，红线 #13）
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: PinnedSearchHeader(
+            extent: kSearchRowExtent,
+            child: PinnedSearchRow(
+              controller: _searchController,
+              hintText: '搜索习惯…',
+              onChanged: (v) => setState(() => _keyword = v),
+            ),
+          ),
+        ),
+        if (filtered.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: EmptyState(
+              icon: FLucideIcons.searchX,
+              title: '没有匹配的习惯',
+              subtitle: '换个关键词试试',
+            ),
+          )
+        else
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              AppTokens.pagePadding,
+              AppTokens.listTopGapOf(context),
+              AppTokens.pagePadding,
+              AppTokens.pageBottomGapOf(context),
+            ),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                StaggerList(
+                  children: [
+                    for (final habit in filtered)
+                      _HabitCard(
+                        habit: habit,
+                        accentIndex: orderByKey[habit.key] ?? 0,
+                        checked: checked.contains(habit.key),
+                        onToggle: () async {
+                          await ref
+                              .read(habitRepositoryProvider)
+                              .toggleCheckin(habit.key, DateTime.now());
+                        },
+                        onTapDetails: () =>
+                            _showDetailSheet(context, ref, habit),
+                        onLongPress: () =>
+                            _showActionMenu(context, ref, habit),
+                      ),
+                  ],
+                ),
+              ]),
+            ),
+          ),
       ],
     );
+  }
+
+  /// 关键词过滤：名称 / 频次 / 提醒时间（习惯无分类标签，仅关键词匹配）
+  List<HabitItem> _filterHabits(List<HabitItem> habits) {
+    final kw = _keyword.trim().toLowerCase();
+    if (kw.isEmpty) return habits;
+    return habits.where((h) {
+      final hay = '${h.name} ${h.freqLabel} ${h.reminderTimes.join(' ')}'
+          .toLowerCase();
+      return hay.contains(kw);
+    }).toList();
   }
 
   /// 新建习惯弹层（名称 / 提醒时刻 / 生效星期）
@@ -433,12 +502,9 @@ class HabitPage extends ConsumerWidget {
     WidgetRef ref,
     HabitItem habit,
   ) async {
+    final pageContext = context; // 页面级 context：本弹窗关闭后仍可用于再开编辑弹窗
     final t = context.theme;
-    final freqLabel = switch (habit.freqType) {
-      'daily' => '每天',
-      'weekly' => '每周',
-      _ => habit.freqType,
-    };
+    final freqLabel = habit.freqLabel;
     final weekLabel = habit.weekDays.isEmpty
         ? '每天'
         : habit.weekDays
@@ -473,13 +539,310 @@ class HabitPage extends ConsumerWidget {
             ),
             const SizedBox(height: 20),
           ],
+          bottomBar: Row(
+            children: [
+              Expanded(
+                child: _sheetButton(
+                  context,
+                  label: '编辑习惯',
+                  bg: AppTokens.accent(2),
+                  fg: t.colors.primaryForeground,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showEditSheet(pageContext, ref, habit);
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _sheetButton(
+                  context,
+                  label: '删除习惯',
+                  bg: t.colors.destructive,
+                  fg: t.colors.primaryForeground,
+                  onTap: () async {
+                    final ok = await showSheetConfirm(
+                      context,
+                      title: '删除习惯',
+                      message: '确定删除「${habit.name}」？打卡记录将一并清除，且不可恢复。',
+                      confirmLabel: '删除',
+                    );
+                    if (ok && mounted) {
+                      ref.read(habitRepositoryProvider).deleteHabit(habit);
+                      if (context.mounted) Navigator.pop(context);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 长按列表项 → 50vh 操作菜单（编辑 / 删除）
+  Future<void> _showActionMenu(
+    BuildContext context,
+    WidgetRef ref,
+    HabitItem habit,
+  ) async {
+    final action = await showSheetActionMenu<String>(
+      context,
+      title: habit.name,
+      size: SheetSize.md,
+      actions: const [
+        SheetAction('edit', '编辑', icon: FLucideIcons.pencil),
+        SheetAction('delete', '删除', icon: FLucideIcons.trash2, destructive: true),
+      ],
+    );
+    if (!context.mounted) return;
+    if (action == 'edit') {
+      await _showEditSheet(context, ref, habit);
+    } else if (action == 'delete') {
+      final ok = await showSheetConfirm(
+        context,
+        title: '删除习惯',
+        message: '确定删除「${habit.name}」？打卡记录将一并清除，且不可恢复。',
+        confirmLabel: '删除',
+      );
+      if (ok && context.mounted) {
+        ref.read(habitRepositoryProvider).deleteHabit(habit);
+      }
+    }
+  }
+
+  /// 编辑习惯弹层（80vh）—— 与新建同构，预填当前值；保存调 updateHabit。
+  Future<void> _showEditSheet(
+    BuildContext context,
+    WidgetRef ref,
+    HabitItem habit,
+  ) async {
+    final nameController = TextEditingController(text: habit.name);
+    TimeOfDay? timeValue = habit.reminderTimes.isNotEmpty
+        ? _parseHHmm(habit.reminderTimes.first)
+        : null;
+    final weekDays = <int>{...habit.weekDays};
+    final t = context.theme;
+
+    await showFSheet<void>(
+      context: context,
+      side: FLayout.btt,
+      // 固定 80vh（不随键盘收缩）：与新建/详情弹层一致。
+      mainAxisMaxRatio: AppTokens.sheetHeightLg,
+      resizeToAvoidBottomInset: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => _habitSheetPanel(
+          context,
+          gap: 12,
+          children: [
+            _sheetHandle(context),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('编辑习惯', style: sheetTitleStyle(context)),
+                FTappable(
+                  onPress: () => Navigator.pop(context),
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Icon(
+                      FLucideIcons.x,
+                      size: 18,
+                      color: t.colors.mutedForeground,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // 习惯名称
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 6,
+              children: [
+                Text(
+                  '习惯名称',
+                  style: t.typography.body.sm.copyWith(
+                    fontSize: 14,
+                    color: t.colors.mutedForeground,
+                  ),
+                ),
+                Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: t.colors.card,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: t.colors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: TextField(
+                            controller: nameController,
+                            style: t.typography.body.sm.copyWith(
+                              fontSize: 14,
+                              color: t.colors.foreground,
+                            ),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              contentPadding: EdgeInsets.zero,
+                              border: InputBorder.none,
+                              hintText: '输入习惯名称',
+                              hintStyle: t.typography.body.sm.copyWith(
+                                fontSize: 14,
+                                color: t.colors.mutedForeground,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // 提醒时刻
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 6,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '提醒时刻',
+                      style: t.typography.body.sm.copyWith(
+                        fontSize: 14,
+                        color: t.colors.mutedForeground,
+                      ),
+                    ),
+                    Text(
+                      '留空不提醒',
+                      style: t.typography.body.sm.copyWith(
+                        fontSize: 12,
+                        color: t.colors.mutedForeground,
+                      ),
+                    ),
+                  ],
+                ),
+                FTappable(
+                  onPress: () async {
+                    final picked = await showTimePickerSheet(
+                      context,
+                      initial: timeValue,
+                      title: '选择提醒时刻',
+                    );
+                    if (picked != null) setSheetState(() => timeValue = picked);
+                  },
+                  child: Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: t.colors.card,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: t.colors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          FLucideIcons.clock,
+                          size: 15,
+                          color: AppTokens.accent(2),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            timeValue == null
+                                ? '不提醒'
+                                : '${timeValue!.hour.toString().padLeft(2, '0')}:${timeValue!.minute.toString().padLeft(2, '0')}',
+                            style: t.typography.body.sm.copyWith(
+                              fontSize: 14,
+                              color: timeValue == null
+                                  ? t.colors.mutedForeground
+                                  : t.colors.foreground,
+                            ),
+                          ),
+                        ),
+                        if (timeValue != null)
+                          GestureDetector(
+                            onTap: () => setSheetState(() => timeValue = null),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(
+                                FLucideIcons.x,
+                                size: 14,
+                                color: t.colors.mutedForeground,
+                              ),
+                            ),
+                          )
+                        else
+                          Icon(
+                            FLucideIcons.chevronDown,
+                            size: 16,
+                            color: t.colors.mutedForeground,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // 重复周期
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 10,
+              children: [
+                Text(
+                  '重复周期',
+                  style: t.typography.body.sm.copyWith(
+                    fontSize: 14,
+                    color: t.colors.mutedForeground,
+                  ),
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var d = 1; d <= 7; d++)
+                      _weekChip(
+                        context,
+                        label: '周${'一二三四五六日'[d - 1]}',
+                        selected: weekDays.contains(d),
+                        onTap: () => setSheetState(
+                          () => weekDays.contains(d)
+                              ? weekDays.remove(d)
+                              : weekDays.add(d),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ],
           bottomBar: _sheetButton(
             context,
-            label: '删除习惯',
-            bg: t.colors.destructive,
+            label: '保存',
+            bg: t.colors.primary,
             fg: t.colors.primaryForeground,
             onTap: () {
-              ref.read(habitRepositoryProvider).deleteHabit(habit);
+              final name = nameController.text.trim();
+              if (name.isEmpty) return;
+              final reminderTime = timeValue == null
+                  ? ''
+                  : '${timeValue!.hour.toString().padLeft(2, '0')}:${timeValue!.minute.toString().padLeft(2, '0')}';
+              ref.read(habitRepositoryProvider).updateHabit(
+                    habit: habit,
+                    name: name,
+                    weekDays: weekDays.toList()..sort(),
+                    reminderTime: reminderTime,
+                  );
               Navigator.pop(context);
             },
           ),
@@ -492,23 +855,23 @@ class HabitPage extends ConsumerWidget {
 /// 单个习惯卡片 —— 对齐待办卡片设计语言：
 /// 白底 + 1px 边框 + 阴影(level2) + 14 内距；标题 15/SemiBold；
 /// 底部补「近 7 天记录条」+「今日状态 chip」（与待办共享 TodoStatusChip）。
-/// 交互：点右侧打卡圆点 = 切换打卡；点卡片其余区域 = 查看详情。
+/// 交互：点右侧打卡圆点 = 切换打卡；点卡片其余区域 = 查看详情（删除在详情弹层内）。
 class _HabitCard extends ConsumerWidget {
   const _HabitCard({
     required this.habit,
     required this.accentIndex,
     required this.checked,
     required this.onToggle,
-    required this.onDelete,
     required this.onTapDetails,
+    this.onLongPress,
   });
 
   final HabitItem habit;
   final int accentIndex;
   final bool checked;
   final Future<void> Function() onToggle;
-  final Future<void> Function() onDelete;
   final VoidCallback onTapDetails;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -529,6 +892,7 @@ class _HabitCard extends ConsumerWidget {
       elevation: 2,
       padding: const EdgeInsets.all(14),
       onTap: onTapDetails,
+      onLongPress: onLongPress,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -566,7 +930,7 @@ class _HabitCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '频次 ${habit.freqType}${habit.reminderTimes.isEmpty ? '' : ' · 提醒 ${habit.reminderTimes.join('/')}'}',
+                      '频次 ${habit.freqLabel}${habit.reminderTimes.isEmpty ? '' : ' · 提醒 ${habit.reminderTimes.join('/')}'}',
                       style: t.typography.body.sm.copyWith(
                         color: t.colors.mutedForeground,
                       ),
@@ -574,25 +938,14 @@ class _HabitCard extends ConsumerWidget {
                   ],
                 ),
               ),
-              // 右侧打卡圆点：点它才切换打卡（独立手势，不触发卡片详情）
+              // 右侧打卡圆点：点它才切换打卡（独立手势，不触发卡片详情）。
+              // 卡片内不再放删除入口（2026-09-13 用户定），删除统一走详情弹层底栏。
               GestureDetector(
                 onTap: onToggle,
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: AnimatedCheck(checked: checked, size: 28),
-                ),
-              ),
-              const SizedBox(width: 4),
-              FButton.icon(
-                variant: FButtonVariant.ghost,
-                size: FButtonSizeVariant.sm,
-                onPress: onDelete,
-                semanticsLabel: '删除',
-                child: Icon(
-                  FLucideIcons.trash2,
-                  size: 18,
-                  color: t.colors.mutedForeground,
+                  child: AnimatedCheck(checked: checked, size: 24),
                 ),
               ),
             ],
@@ -706,6 +1059,15 @@ class _DetailRow extends StatelessWidget {
 // 与 todo_sheets.dart 的 _sheetPanel / _sheetHandle / _pill / _sheetButton 同源：
 // 卡色底 + r24 顶圆角 + 顶部把手 + pagePadding 内距 + 滚动 + sheetTitleStyle 标题 +
 // _sheetButton 底部按钮。集中放此处是因为习惯模块是第二个消费这套规范的模块。
+
+/// 解析 'HH:mm' → TimeOfDay；失败返回 null（视为不提醒）。供编辑弹窗预填提醒时刻。
+TimeOfDay? _parseHHmm(String s) {
+  final parts = s.split(':');
+  final h = int.tryParse(parts[0]);
+  final m = parts.length > 1 ? int.tryParse(parts[1]) : null;
+  if (h == null || m == null) return null;
+  return TimeOfDay(hour: h, minute: m);
+}
 
 /// 顶部把手（画布 8:16 / 8:92：36×4 · r2 · 居中），底色走 [_stepUp]
 ///（t.colors.border 与卡底同系，直接用会淡到看不见）。

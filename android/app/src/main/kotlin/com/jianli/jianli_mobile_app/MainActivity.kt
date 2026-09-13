@@ -80,6 +80,10 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // 到点提醒保活（2026-09-13）：系统能力通道 —— 忽略电池优化查询 / 全屏通知授权跳转 /
+        // 常驻前台服务开关（见 SystemActionsChannel.kt 与 ReminderKeepAliveService.kt）。
+        SystemActionsChannel.register(this, flutterEngine.dartExecutor.binaryMessenger)
     }
 
     /** 用本应用自持 FileProvider 把文件/目录包装成 content://（避免 file:// 触发 FileUriExposedException） */

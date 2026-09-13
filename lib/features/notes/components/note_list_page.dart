@@ -17,7 +17,6 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/filter_sheet.dart';
 import '../../../app/ui/pinned_search_row.dart';
@@ -30,6 +29,7 @@ import '../../../app/ui/ui_atoms.dart';
 import '../models/note_item.dart';
 import '../models/note_tag.dart';
 import '../providers/note_providers.dart';
+import 'note_export_sheet.dart';
 import 'note_sheets.dart';
 import 'note_tag_chip.dart';
 
@@ -140,6 +140,14 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
           TapScale(
             onTap: () => showNoteTagManagerSheet(context, ref),
             child: Icon(FLucideIcons.tags, size: 18, color: t.colors.foreground),
+          ),
+          TapScale(
+            onTap: () => showNoteExportSheet(context),
+            child: Icon(
+              FLucideIcons.download,
+              size: 18,
+              color: t.colors.foreground,
+            ),
           ),
           TapScale(
             onTap: () => context.push('/notes/edit'),
@@ -253,7 +261,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         subtitle: '随手记录，分类收纳',
         accentIndex: 3,
         cornerRadius: 22,
-        textureAsset: CardTextures.texture11,
         ringDecor: true,
         shadow: false,
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),

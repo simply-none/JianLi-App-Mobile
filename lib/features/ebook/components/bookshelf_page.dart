@@ -22,7 +22,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/segmented.dart';
@@ -39,6 +38,7 @@ import '../providers/ebook_providers.dart';
 import '../repositories/ebook_repository.dart';
 import '../services/ebook_transfer.dart';
 import 'book_cell.dart';
+import 'book_export_sheet.dart';
 
 /// 书架页
 class BookshelfPage extends ConsumerStatefulWidget {
@@ -103,7 +103,14 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
     final shelfAsync = ref.watch(bookshelfStreamProvider);
     final catsAsync = ref.watch(categoriesStreamProvider);
     final bookCatsAsync = ref.watch(bookCategoriesStreamProvider);
+    // 全量批注流（跨书）——卡片上的「划线 / 笔记」数量
+    final annoAsync = ref.watch(allAnnotationsStreamProvider);
     final t = context.theme;
+
+    // content_hash -> 划线/笔记数量（共享判据与分桶，见 ebook_repository.dart）
+    final annoByHash = annotationCountsByHash(
+      annoAsync.value ?? const <EbookAnnotationData>[],
+    );
 
     // book_path -> categoryIds
     final bookToCats = <String, Set<int>>{};
@@ -146,6 +153,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                     cats,
                     bookToCats,
                     catMap,
+                    annoByHash,
                   ),
                 ),
               ),
@@ -196,6 +204,14 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
             child: Icon(FLucideIcons.tags, size: 18, color: t.colors.foreground),
           ),
           TapScale(
+            onTap: () => showBookExportSheet(context),
+            child: Icon(
+              FLucideIcons.download,
+              size: 18,
+              color: t.colors.foreground,
+            ),
+          ),
+          TapScale(
             onTap: () => _import(context, ref),
             child: Icon(FLucideIcons.plus, size: 22, color: t.colors.foreground),
           ),
@@ -212,6 +228,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
     List<EbookCategoryData> cats,
     Map<String, Set<int>> bookToCats,
     Map<int, EbookCategoryData> catMap,
+    Map<String, ({int marks, int notes})> annoByHash,
   ) {
     final kw = _search.trim().toLowerCase();
     final filtered = _sortBooks([
@@ -296,7 +313,8 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
               gridDelegate:
                   const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
-                    childAspectRatio: 0.62,
+                    // 0.62 → 0.58：书格多了一行「划线/笔记」，放宽高度保证小屏（360dp）不溢出
+                    childAspectRatio: 0.58,
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
                   ),
@@ -306,9 +324,14 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                     .map((id) => catMap[id]?.name ?? '')
                     .where((n) => n.isNotEmpty)
                     .toList();
+                final stats =
+                    annoByHash[book.contentHash ?? ''] ??
+                    (marks: 0, notes: 0);
                 return BookCell(
                   book: book,
                   categoryLabels: labels,
+                  markCount: stats.marks,
+                  noteCount: stats.notes,
                   onOpen: () => _openBook(book),
                   onMenu: () => _showBookActionsSheet(book),
                 );
@@ -330,11 +353,16 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                     .map((id) => catMap[id]?.name ?? '')
                     .where((n) => n.isNotEmpty)
                     .toList();
+                final stats =
+                    annoByHash[book.contentHash ?? ''] ??
+                    (marks: 0, notes: 0);
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _BookRow(
                     book: book,
                     categoryLabels: labels,
+                    markCount: stats.marks,
+                    noteCount: stats.notes,
                     onOpen: () => _openBook(book),
                     onMenu: () => _showBookActionsSheet(book),
                   ),
@@ -358,7 +386,6 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
         subtitle: 'EPUB / TXT 随身阅读',
         accentIndex: 5,
         cornerRadius: 22,
-        textureAsset: CardTextures.texture11,
         ringDecor: true,
         shadow: false,
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -549,7 +576,8 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
     }
   }
 
-  /// 长按封面的动作菜单（sm 档共享操作菜单）：「笔记标注」/「移出书架」
+  /// 长按封面的动作菜单（**md 档 = 50vh**，2026-09-13 用户定；共享操作菜单默认 sm 30vh，
+  /// 此处显式提档以留出更宽松的点击区）：「笔记标注」/「移出书架」
   ///
   /// 笔记标注 → push `/ebook/notes`（独立页面全量展示，不折叠省略）；
   /// 移出书架 → 仍走 `_confirmRemove` 的 sm 确认抽屉。
@@ -558,6 +586,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
     final action = await showSheetActionMenu<String>(
       context,
       title: '《${book.title ?? book.name ?? '未命名'}》',
+      size: SheetSize.md,
       actions: const [
         SheetAction('notes', '笔记标注', icon: FLucideIcons.highlighter),
         SheetAction(
@@ -1570,12 +1599,21 @@ class _BookRow extends StatelessWidget {
   const _BookRow({
     required this.book,
     required this.categoryLabels,
+    this.markCount = 0,
+    this.noteCount = 0,
     required this.onOpen,
     required this.onMenu,
   });
 
   final EbookBookshelfData book;
   final List<String> categoryLabels;
+
+  /// 划线（非 note 类批注）数量
+  final int markCount;
+
+  /// 笔记（note 类批注）数量
+  final int noteCount;
+
   final VoidCallback onOpen;
   final VoidCallback onMenu;
 
@@ -1623,24 +1661,55 @@ class _BookRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    if (author.isNotEmpty) ...[
-                      Flexible(
-                        child: Text(
-                          author,
-                          style: t.typography.body.xs.copyWith(
-                            color: t.colors.mutedForeground,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                    // 作者靠左、已读/笔记/标注靠右 → 两端对齐。
+                    // 无作者时 Expanded 仍占满左半，右侧统计列保持对齐（不左右横跳）。
+                    Expanded(
+                      child: Text(
+                        author,
+                        style: t.typography.body.xs.copyWith(
+                          color: t.colors.mutedForeground,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(width: 8),
-                    ],
+                    ),
+                    const SizedBox(width: 8),
                     Text(
                       '已读 ${(percent * 100).toStringAsFixed(0)}%',
                       style: t.typography.body.xs.copyWith(
                         fontSize: 11,
                         color: accent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    // 划线 / 笔记数量（与笔记页同口径，见 isNoteAnnotation）
+                    const SizedBox(width: 10),
+                    Icon(
+                      FLucideIcons.highlighter,
+                      size: 12,
+                      color: t.colors.mutedForeground,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      '$markCount',
+                      style: t.typography.body.xs.copyWith(
+                        fontSize: 11,
+                        color: t.colors.mutedForeground,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 9),
+                    Icon(
+                      FLucideIcons.notebookPen,
+                      size: 12,
+                      color: t.colors.mutedForeground,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      '$noteCount',
+                      style: t.typography.body.xs.copyWith(
+                        fontSize: 11,
+                        color: t.colors.mutedForeground,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

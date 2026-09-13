@@ -18,7 +18,6 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/ring_progress.dart';
@@ -29,7 +28,7 @@ import '../../../app/ui/soft_chip.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
-import '../../todo/components/todo_sheets.dart';
+import '../../../app/ui/datetime_pickers.dart';
 import '../repositories/countdown_repository.dart';
 
 /// Tab 状态范围
@@ -276,7 +275,6 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
     // 统一主题色（与待办横幅同源渐变，换外观色系时整屏跟着走）
     gradient: AppTokens.accentGradient(AppTokens.accent(0)),
     cornerRadius: 22,
-    textureAsset: CardTextures.texture11,
     ringDecor: true,
     shadow: false,
     margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -298,7 +296,7 @@ class _CountdownPageState extends ConsumerState<CountdownPage> {
 /// 新建 / 编辑倒计时弹层（对齐 PC CountdownDialog：名称 + 设定方式 + 时间设定）。
 ///
 /// 设定方式（2026-09-12 对齐 PC 交互）：
-/// - **指定时刻**（datetime）：点行打开待办的日期时间选择抽屉 `showTodoDateTimeSheet`；
+/// - **指定时刻**（datetime）：点行打开 forui 六列中文单位滚轮 `showDateTimeWheelSheet`（年/月/日/时/分/秒，含秒）；
 /// - **指定时长**（duration）：年/月/日/时/分/秒 6 个小输入框（年=365 天、月=30 天折算），默认 1 小时。
 ///
 /// controller 归本 State 持有（不走「await 后 dispose」雷区 #14）。
@@ -452,9 +450,9 @@ class _CountdownFormSheetState extends ConsumerState<_CountdownFormSheet> {
     Navigator.pop(context);
   }
 
-  /// 指定时刻：打开待办的日期时间选择抽屉（月历 + 时分 stepper）
+  /// 指定时刻：打开 forui 六列中文单位滚轮（年/月/日/时/分/秒，含秒）
   Future<void> _pickTarget() async {
-    final picked = await showTodoDateTimeSheet(context, initial: _target);
+    final picked = await showDateTimeWheelSheet(context, initial: _target);
     if (!mounted) return;
     setState(() => _target = picked);
   }

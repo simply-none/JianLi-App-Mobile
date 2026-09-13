@@ -22,7 +22,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
@@ -243,7 +242,6 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
                 subtitle: 'AES-256 加密存储，随开随取',
                 accentIndex: 2,
                 cornerRadius: 22,
-                textureAsset: CardTextures.texture11,
                 ringDecor: true,
                 shadow: false,
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),

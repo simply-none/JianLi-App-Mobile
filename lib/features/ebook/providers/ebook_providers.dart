@@ -27,6 +27,13 @@ final annotationsStreamProvider =
           ref.watch(ebookRepositoryProvider).watchAnnotations(contentHash),
     );
 
+/// 全部批注流（跨书）——书架卡片统计每本书的「划线 / 笔记」数，
+/// 页面按 content_hash 分桶即可，避免为每本书各开一条 family 流。
+final StreamProvider<List<EbookAnnotationData>> allAnnotationsStreamProvider =
+    StreamProvider<List<EbookAnnotationData>>(
+      (ref) => ref.watch(ebookRepositoryProvider).watchAllAnnotations(),
+    );
+
 /// 全部分类流
 final StreamProvider<List<EbookCategoryData>> categoriesStreamProvider =
     StreamProvider<List<EbookCategoryData>>(

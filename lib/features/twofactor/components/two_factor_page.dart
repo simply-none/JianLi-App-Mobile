@@ -1,20 +1,22 @@
 // 2FA 页面 —— 对齐待办列表页骨架（专属色横幅统计 + 吸顶搜索行 + 账户码卡片）
 //
 // 骨架（interaction-patterns.md §三 / todo_page.dart 先例）：
-//   头部    ‹22 · 2FA 验证器18/Bold · ＋新增 · 锁定（解锁态）
+//   头部    ‹22 · 2FA 验证器18/Bold · ＋新增 · ⋯菜单（导出/锁定）（解锁态）
 //   统计横幅 PageBanner 紫专属渐变 · stats 账户/强算法/周期（随滚动移出）
 //   搜索行  ★吸顶锚点（搜索服务名与账户）
 //   列表    账户码卡片（当前码 + 下一码 + 周期倒计时），单击复制、长按菜单
 //
 // 能力对齐 PC 端 twoFactor：添加三方式（手动 / 相机扫码 / 粘贴 otpauth URI）、
 // 编辑账户（算法/位数/周期全参数）、导出 otpauth 二维码（迁移用）、删除、立即锁定。
-// 解锁门禁沿用既有 vault 流（口令 + 文件选择），业务逻辑与原实现一致。
+// 门禁页双模式（对齐桌面端 open-vault / create-vault）：
+//   - 未建库 → 「设置主口令 + 二次确认」新建本机 vault（沙盒 twofactor-vault.jlv）；
+//   - 已有库 → 口令解锁，或再次选择 vault 文件导入（切换/迁移）。
+// 另支持「导出本机 vault」到 `Download/渐离App 备份/`（未授权回退沙盒），供迁移/备份。
 //
 // 安全约定：
 // - 口令只在解锁瞬间使用，不进任何状态/日志；
 // - 解锁后账户明文驻留内存（与桌面端「明文仅驻留内存」策略一致）；
 // - 右上角锁按钮可立即清空内存态。
-import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -23,20 +25,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:path/path.dart' as p;
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/tap_scale.dart';
+import '../../../core/android/media_scan.dart';
+import '../../../core/storage/public_downloads.dart';
 import '../models/two_factor_account.dart';
 import '../providers/two_factor_providers.dart';
 import '../services/otpauth_parser.dart';
-import '../services/totp_service.dart';
 import 'account_code_tile.dart';
 import 'two_factor_sheets.dart';
+
+/// 2FA 导出目录名（`Download/渐离App 备份/`，与文件互传同一 Download 根下；
+/// 未授权或创建失败时回退沙盒 `Documents/渐离App 备份/`）。
+const String kTwoFactorBackupDirName = '渐离App 备份';
 
 /// 2FA 主页面
 class TwoFactorPage extends ConsumerStatefulWidget {
@@ -51,6 +58,8 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
   static final Color _accent = AppTokens.accent(0);
 
   final TextEditingController _passphraseController = TextEditingController();
+  /// 新建模式下的二次确认口令
+  final TextEditingController _confirmController = TextEditingController();
   bool _unlocking = false;
   String? _error;
   String? _pickedVaultPath;
@@ -62,21 +71,26 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
   String _search = '';
   final _searchController = TextEditingController();
 
-  /// 每秒 tick，驱动剩余秒数与出码刷新
-  Timer? _ticker;
-  int _tick = 0;
+  @override
+  void deactivate() {
+    // 路由切走即锁定（清空内存态 + 置反开关），满足「路由切换时锁住」。
+    // ⚠️ 用 deactivate 而非 dispose：dispose 时 widget 已卸载，Riverpod 3.x 禁止再读 ref
+    // （抛 "Using ref when ... unmounted is unsafe"）；deactivate 时 widget 仍 mounted，
+    // 且打开子 sheet（showFSheet 是覆盖式 ModalRoute，不触发本页 deactivate）不受影响。
+    ref.read(twoFactorAccountsProvider.notifier).lock();
+    ref.read(twoFactorUnlockedProvider.notifier).lock();
+    super.deactivate();
+  }
 
   @override
   void dispose() {
-    _ticker?.cancel();
     _passphraseController.dispose();
+    _confirmController.dispose();
     _searchController.dispose();
-    // 路由切走即锁定（清空内存态 + 置反开关），满足「路由切换时锁住」
-    ref.read(twoFactorAccountsProvider.notifier).lock();
-    ref.read(twoFactorUnlockedProvider.notifier).lock();
     super.dispose();
   }
 
+  /// 解锁（含「选择新 vault 文件后解锁」的路径写入）
   Future<void> _unlock() async {
     setState(() {
       _unlocking = true;
@@ -97,7 +111,6 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
         _passphraseController.clear();
       });
       ref.read(twoFactorUnlockedProvider.notifier).unlock();
-      _startTicker();
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = '口令错误或 vault 不可达\n$e');
@@ -106,20 +119,86 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
     }
   }
 
+  /// 首次建库（新建本机 vault：设置主口令 + 二次确认；建库即解锁进入列表）
+  Future<void> _createVault() async {
+    final pass = _passphraseController.text;
+    final confirm = _confirmController.text;
+    if (pass.isEmpty) {
+      setState(() => _error = '主口令不能为空');
+      return;
+    }
+    if (pass != confirm) {
+      setState(() => _error = '两次输入的口令不一致');
+      return;
+    }
+    setState(() {
+      _unlocking = true;
+      _error = null;
+    });
+    try {
+      await ref.read(twoFactorAccountsProvider.notifier).createVault(pass);
+      if (!mounted) return;
+      setState(() {
+        _sessionPassphrase = pass;
+        _passphraseController.clear();
+        _confirmController.clear();
+      });
+      ref.read(twoFactorUnlockedProvider.notifier).unlock();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '创建失败：$e');
+    } finally {
+      if (mounted) setState(() => _unlocking = false);
+    }
+  }
+
+  /// 导出本机 vault 加密文件到 `Download/渐离App 备份/`（未授权回退沙盒）
+  Future<void> _exportVault() async {
+    try {
+      final path = await ref.read(twoFactorRepositoryProvider).getVaultPath();
+      if (!mounted) return;
+      if (path == null || !File(path).existsSync()) {
+        showFToast(context: context, title: const Text('尚无 vault 文件可导出'));
+        return;
+      }
+      await ensurePublicDownloadsPermission();
+      final isPublic = await hasPublicDownloadsAccess();
+      final dir = await moduleDownloadDir(kTwoFactorBackupDirName);
+      final stamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(RegExp(r'[:.]'), '-')
+          .substring(0, 19);
+      final file = File(
+        p.join(dir.path, 'twofactor-vault_$stamp.jlv'),
+      );
+      await File(path).copy(file.path);
+      // 触发 MediaStore 索引，文件管理器立即可见（静默，失败不影响已写入）
+      await scanFileInMediaStore(file.path);
+      if (!mounted) return;
+      showFToast(
+        context: context,
+        title: const Text('已导出 vault'),
+        description: Text(
+          '已保存到 ${file.path}${isPublic ? '' : '（未授权存储，暂存应用沙盒）'}',
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        showFToast(
+          context: context,
+          variant: FToastVariant.destructive,
+          title: const Text('导出失败'),
+          description: Text('$e'),
+        );
+      }
+    }
+  }
+
   void _lock() {
-    _ticker?.cancel();
     ref.read(twoFactorAccountsProvider.notifier).lock();
     ref.read(twoFactorUnlockedProvider.notifier).lock();
     setState(() {
-      _tick = 0;
       _sessionPassphrase = '';
-    });
-  }
-
-  void _startTicker() {
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _tick++);
     });
   }
 
@@ -246,7 +325,13 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
         const <TwoFactorAccount>[];
     final unlocked = ref.watch(twoFactorUnlockedProvider);
 
-    if (!unlocked) return _buildUnlockScaffold(context);
+    if (!unlocked) {
+      // 已建库 → 解锁；未建库 → 新建。异步未就绪时按「解锁」兜底渲染（与历史行为一致，
+      // 避免已建库用户瞬间闪到新建模式）。
+      final exists =
+          ref.watch(twoFactorVaultExistsProvider).value ?? true;
+      return _buildUnlockScaffold(context, vaultExists: exists);
+    }
     return _buildCodesScaffold(context, accounts);
   }
 
@@ -303,12 +388,39 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
             child: Icon(FLucideIcons.plus, size: 22, color: t.colors.foreground),
           ),
           TapScale(
+            onTap: _vaultMenu,
+            child: Icon(
+              FLucideIcons.ellipsisVertical,
+              size: 20,
+              color: t.colors.foreground,
+            ),
+          ),
+          TapScale(
             onTap: _lock,
             child: Icon(FLucideIcons.lock, size: 18, color: t.colors.foreground),
           ),
         ],
       ),
     );
+  }
+
+  /// 头部溢出菜单（解锁态）：导出 vault / 立即锁定
+  Future<void> _vaultMenu() async {
+    final action = await showSheetActionMenu<String>(
+      context,
+      title: '2FA 验证器',
+      actions: const [
+        SheetAction('export', '导出 vault 文件', icon: FLucideIcons.download),
+        SheetAction('lock', '立即锁定', icon: FLucideIcons.lock),
+      ],
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'export':
+        await _exportVault();
+      case 'lock':
+        _lock();
+    }
   }
 
   Widget _body(BuildContext context, List<TwoFactorAccount> accounts) {
@@ -336,7 +448,6 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
             subtitle: 'TOTP 实时出码，点击卡片复制',
             accentIndex: 0,
             cornerRadius: 22,
-            textureAsset: CardTextures.texture11,
             ringDecor: true,
             shadow: false,
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -379,17 +490,8 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate((context, i) {
                 final account = filtered[i];
-                final meta = generateTotpWithMeta(
-                  account.secret,
-                  options: TotpOptions(
-                    algorithm: account.algorithm,
-                    digits: account.digits,
-                    period: account.period,
-                  ),
-                );
                 return AccountCodeTile(
                   account: account,
-                  meta: meta,
                   onMenu: () => _accountMenu(account),
                 );
               }, childCount: filtered.length),
@@ -441,8 +543,13 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
     );
   }
 
-  /// 解锁门禁（专属紫渐变图标盘；口令 + vault 文件选择，业务逻辑不变）
-  Widget _buildUnlockScaffold(BuildContext context) {
+  /// 门禁页（专属紫渐变图标盘）。
+  /// [vaultExists] = 本机已有 vault → 解锁模式；否则 → 新建模式（设置主口令 + 二次确认）。
+  /// 两模式均保留「选择 vault 文件」入口（新建时为备选路径，解锁时用于切换/迁移）。
+  Widget _buildUnlockScaffold(
+    BuildContext context, {
+    required bool vaultExists,
+  }) {
     final t = context.theme;
     return FScaffold(
       childPad: false,
@@ -501,7 +608,7 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
                         ),
                         const SizedBox(height: 14),
                         Text(
-                          '输入 2FA 口令解锁验证器',
+                          vaultExists ? '输入 2FA 口令解锁验证器' : '首次使用：设置一个主口令',
                           textAlign: TextAlign.center,
                           style: t.typography.body.lg.copyWith(
                             fontWeight: FontWeight.w600,
@@ -512,14 +619,32 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
                           control: FTextFieldControl.managed(
                             controller: _passphraseController,
                           ),
-                          label: const Text('口令'),
-                          hint: '与桌面端 2FA 保险库口令一致',
+                          label: Text(vaultExists ? '口令' : '主口令'),
+                          hint: vaultExists
+                              ? '与桌面端 2FA 保险库口令一致'
+                              : '仅驻留内存，锁定即清除',
                           onSubmit: (_) {
-                            if (!_unlocking) _unlock();
+                            if (!_unlocking) {
+                              vaultExists ? _unlock() : _createVault();
+                            }
                           },
                         ),
+                        // 新建模式：二次确认口令（防手误导致自建库打不开）
+                        if (!vaultExists) ...[
+                          const SizedBox(height: 10),
+                          FTextField.password(
+                            control: FTextFieldControl.managed(
+                              controller: _confirmController,
+                            ),
+                            label: const Text('确认口令'),
+                            hint: '再次输入以确认',
+                            onSubmit: (_) {
+                              if (!_unlocking) _createVault();
+                            },
+                          ),
+                        ],
                         const SizedBox(height: 10),
-                        // 选择桌面端导出的 vault 文件（写入 basic_info.twoFactorVaultPath）
+                        // 选择 vault 文件（写入 basic_info.twoFactorVaultPath）
                         // 注意：FButton 内部 Row 不带 Flexible，长文案会横向溢出 → raw 自组 Row + Expanded 截断
                         FButton.raw(
                           variant: FButtonVariant.outline,
@@ -551,7 +676,7 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
                                 Expanded(
                                   child: Text(
                                     _pickedVaultPath == null
-                                        ? '选择 vault 文件（桌面端导出的 2FA 保险库）'
+                                        ? '选择 vault 文件导入（桌面端导出的 2FA 保险库）'
                                         : '已选择：${_pickedVaultPath!.split(Platform.pathSeparator).last}',
                                     overflow: TextOverflow.ellipsis,
                                     maxLines: 1,
@@ -564,9 +689,20 @@ class _TwoFactorPageState extends ConsumerState<TwoFactorPage> {
                         ),
                         const SizedBox(height: 12),
                         FButton(
-                          onPress: _unlocking ? null : _unlock,
+                          // 未建库时若已选外部 vault 文件 → 走解锁（该文件即活动库）；否则走新建
+                          onPress: _unlocking
+                              ? null
+                              : (vaultExists || _pickedVaultPath != null
+                                    ? _unlock
+                                    : _createVault),
                           child: Text(
-                            _unlocking ? '解锁中（PBKDF2 运算约数秒）…' : '解锁',
+                            _unlocking
+                                ? '${vaultExists || _pickedVaultPath != null ? '解锁' : '创建'}中（PBKDF2 运算约数秒）…'
+                                : (vaultExists
+                                      ? '解锁'
+                                      : (_pickedVaultPath != null
+                                            ? '导入并解锁'
+                                            : '创建 2FA 保险库')),
                           ),
                         ),
                         if (_error != null) ...[

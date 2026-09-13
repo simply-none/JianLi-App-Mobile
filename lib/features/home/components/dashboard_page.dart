@@ -12,6 +12,8 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/theme/card_textures.dart';
+import '../../../app/providers/theme_providers.dart';
+import '../../../app/ui/banner_texture_sheet.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../core/sync/device_nickname.dart';
 import '../providers/dashboard_providers.dart';
@@ -107,7 +109,7 @@ List<(IconData, String, String, String)> _overviewEntries(DashboardStats s) => [
   (
     FLucideIcons.timer,
     '番茄钟',
-    '${s.pomodoroToday} 轮 · ${s.pomodoroToday * 25}m',
+    '${s.pomodoroToday} 轮 · ${s.pomodoroTodayMinutes}m',
     '/pomodoro',
   ),
   (FLucideIcons.listTodo, '待办', '${s.todosActive} 项待处理', '/todo'),
@@ -185,22 +187,31 @@ class _SectionHeader extends StatelessWidget {
 }
 
 /// 英雄卡（画布 hero：fill×168 · r22 · 渐变 + 背景纹理 · 阴影 y6/b16）
-class _HeroCard extends StatelessWidget {
+/// 整卡可点击切换背景纹理（独立于功能页横幅，走 homeHeroTextureProvider）。
+class _HeroCard extends ConsumerWidget {
   const _HeroCard({required this.stats});
 
   final DashboardStats stats;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = context.theme;
     final fg = t.colors.primaryForeground;
+    final tex = ref.watch(homeHeroTextureProvider).value ?? CardTextures.heroAsset;
     final total = stats.habitsTotal;
     final done = stats.habitsDoneToday;
     final progress = total == 0 ? 0.0 : (done / total).clamp(0.0, 1.0);
     final habitLeft = (total - done).clamp(0, total);
 
-    return Container(
-      height: 168,
+    return GestureDetector(
+      onTap: () => showBannerTextureSheet(
+        context,
+        currentAsset: tex,
+        onPick: (asset) =>
+            ref.read(homeHeroTextureProvider.notifier).set(asset),
+      ),
+      child: Container(
+        height: 168,
       decoration: BoxDecoration(
         gradient: AppTokens.primaryGradient(context),
         borderRadius: BorderRadius.circular(22),
@@ -219,10 +230,10 @@ class _HeroCard extends StatelessWidget {
           children: [
             // 背景纹理：画布节点 8:160「素材装饰」—— 358×168 · r22 · FILL 居中裁切；
             // 合成不透明度 = 填充 0.56 × 节点 0.35（见 CardTextures）
-            const Opacity(
+            Opacity(
               opacity: CardTextures.composedOpacity,
               child: Image(
-                image: AssetImage(CardTextures.heroAsset),
+                image: AssetImage(tex),
                 fit: BoxFit.cover,
                 alignment: Alignment.center,
               ),
@@ -257,7 +268,7 @@ class _HeroCard extends StatelessWidget {
               left: 20,
               top: 44,
               child: Text(
-                _fmtFocus(stats.pomodoroToday * 25),
+                _fmtFocus(stats.pomodoroTodayMinutes),
                 style: t.typography.body.lg.copyWith(
                   fontSize: 34,
                   fontWeight: FontWeight.w700,
@@ -299,6 +310,7 @@ class _HeroCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

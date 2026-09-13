@@ -13,6 +13,8 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/file_export.dart';
+import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/segmented.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -20,6 +22,7 @@ import '../../../core/db/app_database.dart';
 import '../providers/ebook_providers.dart';
 import '../repositories/ebook_repository.dart';
 import '../services/epub_service.dart';
+import '../utils/export_books_markdown.dart';
 
 /// 笔记/标注筛选档位
 enum _NotesTab { all, marks, notes }
@@ -74,7 +77,8 @@ class _BookNotesPageState extends ConsumerState<BookNotesPage> {
   }
 
   /// 是否为「笔记」类型（其余一律视作划线/标注）
-  bool _isNote(EbookAnnotationData a) => (a.type ?? '').trim() == 'note';
+  /// —— 走仓库里的唯一判据 [isNoteAnnotation]，与书架卡片统计同源。
+  bool _isNote(EbookAnnotationData a) => isNoteAnnotation(a);
 
   /// 类型标签 + 图标
   (String, IconData) _typeMeta(String? type) {
@@ -142,11 +146,21 @@ class _BookNotesPageState extends ConsumerState<BookNotesPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 批注流只取一次：底部固定导出条与正文列表共用同一份数据
+    final annoAsync = widget.contentHash.isEmpty
+        ? null
+        : ref.watch(annotationsStreamProvider(widget.contentHash));
+    final all = annoAsync?.value ?? const <EbookAnnotationData>[];
+
     return FScaffold(
       header: FHeader.nested(
         title: Text(widget.title ?? '笔记标注'),
         prefixes: [FHeaderAction.back(onPress: () => context.pop())],
       ),
+      // 底部固定导出条：导出本书**全部**标注与笔记（不受当前「全部/划线/笔记」档位影响）。
+      // 位置与底部安全区由 FScaffold.footer 管理（对齐 main_shell 悬浮底栏先例）；
+      // 加载中 / 无内容时不渲染（无可导出内容）。
+      footer: all.isEmpty ? null : _exportBar(all),
       child: ColoredBox(
         color: AppTokens.pageTint(context),
         child: widget.contentHash.isEmpty
@@ -155,8 +169,7 @@ class _BookNotesPageState extends ConsumerState<BookNotesPage> {
                 title: '该书暂无内容标识',
                 subtitle: '无法关联笔记，重新导入后可正常查看',
               )
-            : ref
-                  .watch(annotationsStreamProvider(widget.contentHash))
+            : annoAsync!
                   .when(
                     loading: () => const Center(child: FCircularProgress()),
                     error: (e, _) => EmptyState(
@@ -167,6 +180,53 @@ class _BookNotesPageState extends ConsumerState<BookNotesPage> {
                   ),
       ),
     );
+  }
+
+  /// 底部固定导出条（在 `SafeArea(top:false)` 内，避开系统导航栏）
+  Widget _exportBar(List<EbookAnnotationData> all) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppTokens.pagePadding,
+          10,
+          AppTokens.pagePadding,
+          12,
+        ),
+        child: GradientButton(
+          label: '导出全部（${all.length} 条）',
+          icon: FLucideIcons.download,
+          onPress: () => _exportAll(all),
+        ),
+      ),
+    );
+  }
+
+  /// 导出本书全部标注与笔记为 `.md`（落盘 `Download/渐离App导出/`，未授权回退沙盒）
+  Future<void> _exportAll(List<EbookAnnotationData> all) async {
+    if (all.isEmpty) {
+      showFToast(context: context, title: const Text('没有可导出的标注'));
+      return;
+    }
+    final md = buildBookAnnotationsMarkdown(all, title: widget.title ?? '笔记标注');
+    await exportTextToDownloadDir(
+      context: context,
+      text: md,
+      filename: '笔记标注_${_safeName(widget.title ?? '未命名')}_${_fileStamp()}.md',
+    );
+  }
+
+  /// 文件名安全化（`\ / : * ? " < > |` 与空白 → `_`），过长截断
+  static String _safeName(String s) {
+    final t = s.replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '_').trim();
+    if (t.isEmpty) return '未命名';
+    return t.length > 24 ? t.substring(0, 24) : t;
+  }
+
+  static String _fileStamp() {
+    final n = DateTime.now();
+    String p2(int v) => v.toString().padLeft(2, '0');
+    return '${n.year}${p2(n.month)}${p2(n.day)}_${p2(n.hour)}${p2(n.minute)}${p2(n.second)}';
   }
 
   /// 列表主体（筛选 + 统计 + 全量卡片）

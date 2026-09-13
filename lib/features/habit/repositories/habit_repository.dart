@@ -50,6 +50,11 @@ class HabitRepository {
         });
   }
 
+  /// 全部打卡记录（供导出使用；行含 habitKey / date / time / source）
+  Future<List<HabitCheckinData>> loadAllCheckins() {
+    return _db.select(_db.habitCheckin).get();
+  }
+
   /// 切换某习惯在指定日期的打卡状态（幂等）
   Future<void> toggleCheckin(String habitKey, DateTime date) async {
     final dateStr = _formatDate(date);
@@ -201,6 +206,66 @@ class HabitRepository {
     for (final r in rows) {
       await (_db.delete(_db.reminders)..where((t) => t.id.equals(r.id))).go();
       await NotificationService.cancel(r.id.hashCode);
+    }
+  }
+
+  /// 更新习惯定义（字段约定对齐 createHabit）：更新名称 / 星期 / 提醒时间，
+  /// 联动清理旧提醒行与通知后按新提醒时间重建（与 createHabit 同语义）。
+  Future<void> updateHabit({
+    required HabitItem habit,
+    required String name,
+    List<int> weekDays = const [],
+    String reminderTime = '',
+  }) async {
+    final nowStr = _formatDateTime(DateTime.now());
+    final nameU = name.trim();
+    await (_db.update(_db.habitDef)
+          ..where((t) => t.key.equals(habit.key)))
+        .write(
+          HabitDefCompanion(
+            name: Value(nameU),
+            remark: Value(nameU),
+            weekDays: Value(jsonEncode(weekDays)),
+            reminderTimes: Value(
+              jsonEncode(reminderTime.isEmpty ? <String>[] : [reminderTime]),
+            ),
+            updateTime: Value(nowStr),
+          ),
+        );
+
+    // 清理旧提醒行与通知
+    final rows = await (_db.select(_db.reminders)
+          ..where((t) => t.id.like('${habit.key}#%')))
+        .get();
+    for (final r in rows) {
+      await (_db.delete(_db.reminders)..where((t) => t.id.equals(r.id))).go();
+      await NotificationService.cancel(r.id.hashCode);
+    }
+
+    // 重建提醒（与 createHabit 同源）
+    if (reminderTime.isNotEmpty) {
+      final reminderId = '${habit.key}#1';
+      await _db
+          .into(_db.reminders)
+          .insert(
+            RemindersCompanion.insert(
+              id: reminderId,
+              mode: const Value('time'),
+              weekDays: Value(jsonEncode(weekDays)),
+              loop: const Value('1'),
+              title: Value(nameU),
+              content: const Value(''),
+              enabled: const Value('1'),
+              time: Value(reminderTime),
+              source: const Value('habit'),
+            ),
+          );
+      await _scheduleHabitNotification(
+        reminderId,
+        nameU,
+        reminderTime,
+        weekDays,
+      );
     }
   }
 

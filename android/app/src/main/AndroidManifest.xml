@@ -14,8 +14,18 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 通知振动（Android 13+ 为运行时权限）：提醒/闹钟到点的振动反馈 -->
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- 闹钟/高优通知锁屏全屏弹出所需（normal 权限） -->
+    <!-- 闹钟/高优通知锁屏全屏弹出所需（normal 权限）；Android 14+ 还需用户手动授予「全屏通知」 -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- 到点提醒保活（2026-09-13）：请求「忽略电池优化」。
+         有它才能用 ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 一键弹系统对话框（无需跳列表页手动找）。
+         关掉电池优化后，系统不再在 Doze 下把本 App 的 AlarmManager 计划延后/丢弃 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 到点提醒保活：常驻前台服务（ReminderKeepAliveService）。
+         FOREGROUND_SERVICE 为 Android 9+ 基础权限；Android 14+ 按类型再申一枚 —— 本 App 的守护
+         属于「无现成类型可归类」的场景，故用 specialUse（在 <service> 内附 PROPERTY_SPECIAL_USE_FGS_SUBTYPE 说明用途）。
+         ⚠️ 不用 dataSync：Android 15 起 dataSync 前台服务有 6 小时/天 上限，到点会被系统 onTimeout 掐掉 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- 文件互传接收目录 = 系统 Download/渐离App文件互传/：
          API 30+ 需「所有文件访问」（MANAGE_EXTERNAL_STORAGE，运行时引导授权）；
          API ≤12L 用 WRITE_EXTERNAL_STORAGE + application 的 requestLegacyExternalStorage -->
@@ -59,6 +69,19 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- 到点提醒保活：常驻前台服务（用户可在「提醒 → 提醒守护」里开关）。
+             作用 = 常驻一条低优先级通知把进程留在后台，降低 ROM 省电清理顺手取消 AlarmManager
+             计划（提醒到点不响）的概率。exported=false：只由本应用 MainActivity 启动 -->
+        <service
+            android:name=".ReminderKeepAliveService"
+            android:enabled="true"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="reminder_delivery_guard" />
+        </service>
         <!-- 文件互传「打开所在文件夹」/「用应用打开」：本应用自持 FileProvider，把文件/目录包装为 content:// -->
         <provider
             android:name="androidx.core.content.FileProvider"

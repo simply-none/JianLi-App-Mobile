@@ -48,6 +48,13 @@ class HabitItem {
   /// 链式动作 JSON 原文（移动端 P2 消费）
   final String chainActions;
 
+  /// 频次中文展示名（桌面端只产出 daily/weekly；未知值原样返回，避免吞掉信息）
+  String get freqLabel => switch (freqType) {
+        'daily' => '每天',
+        'weekly' => '每周',
+        _ => freqType,
+      };
+
   /// 今天是否应打卡（weekDays 为空视为每天）
   bool isScheduledOn(DateTime date) {
     if (weekDays.isEmpty) return true;
@@ -61,8 +68,9 @@ List<int> parseIntList(String? raw) {
   if (raw == null || raw.isEmpty) return const [];
   try {
     final decoded = jsonDecode(raw);
-    if (decoded is List)
+    if (decoded is List) {
       return decoded.whereType<num>().map((e) => e.toInt()).toList();
+    }
     return const [];
   } catch (_) {
     return const [];

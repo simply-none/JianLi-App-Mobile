@@ -12,18 +12,15 @@
 // 未做（桌面端有、移动端裁剪，记 SKILL.md 待办）：子主题发起、多选批量、情绪预设、LLM 回复。
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../../app/theme/card_textures.dart';
+import '../../../app/ui/file_export.dart';
 import '../../../app/ui/filter_sheet.dart';
 import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/page_banner.dart';
@@ -285,7 +282,6 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
       subtitle: '把情绪与想法安放进主题',
       accentIndex: 4,
       cornerRadius: 22,
-      textureAsset: CardTextures.texture11,
       ringDecor: true,
       shadow: false,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -813,7 +809,7 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
           ),
         const SizedBox(height: 12),
         GestureDetector(
-          onTap: () => _createThemeTag(context, ref, draft, refresh),
+          onTap: () => _createThemeTag(context, ref, draft, tagDefs, refresh),
           behavior: HitTestBehavior.opaque,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -847,11 +843,12 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
     );
   }
 
-  /// 新建主题标签（scope='theme'，创建后自动加入草稿并刷新选择区）
+  /// 新建主题标签（scope='theme'，创建后即时加入列表并刷新选择区，无需关闭重开）
   Future<void> _createThemeTag(
     BuildContext context,
     WidgetRef ref,
     Set<String> draft,
+    List<ConversationTagData> tagDefs,
     VoidCallback refresh,
   ) async {
     final name = await showConvPromptSheet(
@@ -867,11 +864,12 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
         .createThemeTag(name);
     if (context.mounted) {
       draft.add(tag.id.toString());
+      tagDefs.add(tag); // 直接补进快照列表，刷新即显示，不依赖 provider 时序
       refresh();
     }
   }
 
-  /// 导出单个主题为 Markdown 并分享
+  /// 导出单个主题为 Markdown（落盘到系统 Download/渐离App导出/，未授权回退沙盒）
   Future<void> _exportTheme(
     BuildContext context,
     WidgetRef ref,
@@ -886,14 +884,14 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
     };
     final md = buildThemeMarkdown(theme, msgs, tagById);
     if (!context.mounted) return;
-    await _shareMarkdown(
-      context,
-      md,
-      '主题-${_sanitize(theme.title)}_${_timestamp()}.md',
+    await exportTextToDownloadDir(
+      context: context,
+      text: md,
+      filename: '主题-${_sanitize(theme.title)}_${_timestamp()}.md',
     );
   }
 
-  /// 批量导出：底部多选抽屉（对齐 PC ExportThemesDialog），合并为单个 .md 分享
+  /// 批量导出：底部多选抽屉（对齐 PC ExportThemesDialog），合并为单个 .md 落盘 Download/渐离App导出/
   Future<void> _openExportPicker(BuildContext context, WidgetRef ref) async {
     final themes = ref.read(conversationThemesProvider).value ??
         const <ConversationThemeData>[];
@@ -907,6 +905,7 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
     final result = await showFilterSheet<Set<int>>(
       context: context,
       title: '导出主题',
+      size: SheetSize.lg,
       confirmLabel: '导出',
       resetLabel: '清空',
       body: (c, refresh) => _buildExportPickerBody(c, ref, refresh, themes, draft),
@@ -933,7 +932,11 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
     ];
     final md = buildThemesMarkdown(selectedThemes, messagesByTheme, tagById);
     if (!context.mounted) return;
-    await _shareMarkdown(context, md, '主题对话导出_${_timestamp()}.md');
+    await exportTextToDownloadDir(
+      context: context,
+      text: md,
+      filename: '主题对话导出_${_timestamp()}.md',
+    );
   }
 
   /// 批量导出多选抽屉选项区（全选/反选 + 主题勾选行）
@@ -997,31 +1000,6 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
     );
   }
 
-  /// 生成 Markdown 文本并写入临时目录，经系统分享面板导出（对齐 PC 落盘 .md）
-  Future<void> _shareMarkdown(
-    BuildContext context,
-    String markdown,
-    String filename,
-  ) async {
-    try {
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/$filename');
-      await file.writeAsString(markdown);
-      if (!context.mounted) return;
-      await SharePlus.instance.share(
-        ShareParams(files: [XFile(file.path)], text: '主题对话导出'),
-      );
-    } catch (e) {
-      if (context.mounted) {
-        showFToast(
-          context: context,
-          variant: FToastVariant.destructive,
-          title: const Text('导出失败'),
-          description: Text('$e'),
-        );
-      }
-    }
-  }
 }
 
 /// 单个主题卡（粉渐变头像 + 标题 + 标签彩色徽标 + 消息数 + 更新时间），长按出操作
@@ -1309,6 +1287,45 @@ class _ConversationMessagesPageState
     }
   }
 
+  /// 导出本主题**全部**对话记录为 Markdown（落盘 `Download/渐离App导出/`，未授权回退沙盒）。
+  ///
+  /// 页面只持有 `themeId`，主题元信息（标题/标签/时间）从主题流取——
+  /// 用 `.future` 等首帧，避免 `ref.read(...).value` 在 provider 尚未被本页监听时读到 null
+  /// （会误判「未找到该主题」）。生成器/文件名口径与列表页「导出主题」完全一致。
+  Future<void> _exportTheme() async {
+    final themes = await ref.read(conversationThemesProvider.future);
+    ConversationThemeData? theme;
+    for (final t in themes) {
+      if (t.id.toString() == widget.themeId) {
+        theme = t;
+        break;
+      }
+    }
+    if (!mounted) return;
+    if (theme == null) {
+      showFToast(context: context, title: const Text('未找到该主题'));
+      return;
+    }
+    final msgs = await ref
+        .read(conversationRepositoryProvider)
+        .getMessagesByTheme(widget.themeId);
+    if (!mounted) return;
+    if (msgs.isEmpty) {
+      showFToast(context: context, title: const Text('该主题暂无对话记录'));
+      return;
+    }
+    final tagById = {
+      for (final t in await ref.read(conversationTagsProvider.future))
+        t.id.toString(): t,
+    };
+    if (!mounted) return;
+    await exportTextToDownloadDir(
+      context: context,
+      text: buildThemeMarkdown(theme, msgs, tagById),
+      filename: '主题-${_sanitize(theme.title)}_${_timestamp()}.md',
+    );
+  }
+
   void _send() {
     final text = _input.text.trim();
     if (text.isEmpty) return;
@@ -1556,7 +1573,7 @@ class _ConversationMessagesPageState
         const SizedBox(height: 12),
         // 新建标签（抽屉内嵌入口；创建后自动选中）
         GestureDetector(
-          onTap: () => _createConversationTag(refresh),
+          onTap: () => _createConversationTag(tagDefs, refresh),
           behavior: HitTestBehavior.opaque,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -1590,8 +1607,11 @@ class _ConversationMessagesPageState
     );
   }
 
-  /// 新建对话标签小抽屉（创建后自动加入草稿并刷新选择区）
-  Future<void> _createConversationTag(VoidCallback refresh) async {
+  /// 新建对话标签小抽屉（创建后即时加入列表并刷新选择区，无需关闭重开）
+  Future<void> _createConversationTag(
+    List<ConversationTagData> tagDefs,
+    VoidCallback refresh,
+  ) async {
     final name = await showConvPromptSheet(
       context,
       title: '新建标签',
@@ -1605,6 +1625,7 @@ class _ConversationMessagesPageState
         .createConversationTag(name);
     if (mounted) {
       setState(() => _draftMsgTags.add(tag.id.toString()));
+      tagDefs.add(tag); // 直接补进快照列表，刷新即显示，不依赖 provider 时序
       refresh();
     }
   }
@@ -1877,6 +1898,13 @@ class _ConversationMessagesPageState
       header: FHeader.nested(
         title: const Text('对话记录'),
         prefixes: [FHeaderAction.back(onPress: () => context.pop())],
+        // 右上角导出：导出本主题**全部**对话记录为 Markdown
+        suffixes: [
+          FHeaderAction(
+            icon: const Icon(FLucideIcons.download),
+            onPress: _exportTheme,
+          ),
+        ],
       ),
       child: messagesAsync.when(
         loading: () => const Center(child: FCircularProgress()),
@@ -2267,21 +2295,34 @@ class _ConversationMessagesPageState
                     padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
                     child: Row(
                       children: [
+                        // 根因修复（参考文件互传「手动填 IP」行）：forui `FTextField` 的可见
+                        // 边框按内容固有高度绘制、**不随 Row 的紧约束拉伸**，与同排按钮天生
+                        // 不等高。改用自绘边框的共享 `SheetInputBox`（定高 40）＋自绘同高
+                        // 40 / 同圆角 10 的发送钮，两侧天然对齐。
                         Expanded(
-                          child: FTextField(
-                            control: FTextFieldControl.managed(
-                              controller: _input,
-                            ),
-                            hint: '记录一下…',
-                            maxLines: 1,
-                            onSubmit: (_) => _send(),
+                          child: SheetInputBox(
+                            controller: _input,
+                            hintText: '记录一下…',
+                            onSubmitted: (_) => _send(),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        FButton.icon(
-                          variant: FButtonVariant.primary,
-                          onPress: _send,
-                          child: const Icon(FLucideIcons.send),
+                        TapScale(
+                          onTap: _send,
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              gradient: AppTokens.primaryGradient(context),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              FLucideIcons.send,
+                              size: 18,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ],
                     ),
