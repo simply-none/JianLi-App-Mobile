@@ -359,18 +359,28 @@ Tab 栏（h34 分段）：进行中（默认）/ 未开始 / 已完成 / 已取�
 
 ### 3.19 列表卡片族「三行式」（2026-09-14 收口）
 
-> 提醒 / 主题对话 / 可归类笔记 / 待办 四类列表卡统一为**三行式**，卡壳规格完全同源。
-> **新增列表卡照此组装，勿各写一套。**（待办卡 2026-09-14 从旧「左侧 3.5px 轴线式」迁入本族。）
+> 提醒 / 主题对话 / 可归类笔记 / 待办 / 倒计时 五类列表卡统一为**三行式**，卡壳规格完全同源。
+> **新增列表卡照此组装，勿各写一套。**（待办卡 2026-09-14 从旧「左侧 3.5px 轴线式」迁入本族；
+> 倒计时卡 2026-09-14 从「三态各长各的」收进本族 —— 定稿：**不套进度环**。）
 
-**卡壳规格（四者完全一致）**：`AppCard(margin: EdgeInsets.zero, padding: EdgeInsets.all(14))`
+**卡壳规格（五者完全一致）**：`AppCard(margin: EdgeInsets.zero, padding: EdgeInsets.all(14))`
 —— white 底 + r16 + 1px `colors.border` + `elevation:1`；行间 `SizedBox(height: 8)`；
 列表项间距由外层 `Padding(bottom: 10)` 提供（**卡内 `margin` 必须清零**，
 否则与 `AppCard` 默认 `vertical:6` 叠成 22px 大间隙，2026-09-13 用户实指）。
+`AppCard.radius` 默认即 `AppTokens.radiusMd = 16` → **别再显式传 `radiusLg`(24)**。
 
 **图标盘（R1 左）**：`Container(40×40, BoxDecoration(gradient: AppTokens.accentGradient(域色), borderRadius: circular(13)))`
 + 20px 白图标。**普通圆角矩形，不是 `SquircleBox`**（弧度基准 = 首页快捷入口）。
 ⚠️ **不存在 `AppTokens.iconRadius()`**（多次误记）：弧度就是这个写死的 `circular(13)`，
 尺寸不同的盘按 40→13 的比例自行推导并写注释。
+
+⚠️ **列表卡的图标盘一律不套进度环**（2026-09-14 用户定；倒计时卡实指「环影响观感」）：
+3px 细弧在 40px 尺寸下几乎等同装饰、读不出剩余比例，又和图标盘抢视觉 ——
+**剩余 / 进度信息一律走文字**（倒计时走 R2 主行大字），不要回到环形。
+（留档：倒计时曾试「环套图标盘」，画布里环外径 39 < 盘 40 且画在盘下层 → 环被整块盖住；
+改 46/3 + 盘收 36 能露出，但最终仍被否。真要套环时记住
+`RingProgress.radius = (size - strokeWidth)/2`，`child` 画在环**之上**
+——`ring_progress.dart` 是 `Stack[CustomPaint, Center(child)]`；**别照抄画布 `Ellipse` 的数值**。）
 
 | 卡 | R1 | R2 | R3 |
 |---|---|---|---|
@@ -378,6 +388,7 @@ Tab 栏（h34 分段）：进行中（默认）/ 未开始 / 已完成 / 已取�
 | 主题对话 `_ThemeCard` | 首字头像(44·r14) + 标题 + `chevronRight` | 标签 `Wrap`（≤4 + 「+N」） | `{N} 条 · 更新于 {X}` + 备注 |
 | 可归类笔记 `_NoteCard` | 图标盘 + 标题 + **时间** + `chevronRight` | 摘要正文（2 行） | 分类 chip + 标签徽标 + 「+N」 |
 | 待办 `_TodoListTile` | 图标盘(状态色) + 标题(≤2 行) + **勾选框(22)** | 状态 `SoftChip` + 标签 chips(≤3 + 「+N」) ┈┈ 子任务 n/m | ⏱时间 · ⟳重复 ┈┈ ⚑优先级 + **⋯** |
+| 倒计时 `_CountdownCard` | 图标盘(状态色) + 标题(1 行) + 状态 `SoftChip` | 主行 20/Bold（剩余 / 结束时刻）+ 副行 12（目标 / 说明） | 设定方式 `FlatBadge` + 提醒 chip ┈┈ 圆钮组 |
 
 - **「+N」溢出规则四张卡共用**：`FlatBadge`（最多展示 4 个；笔记卡的分类上限 2、待办卡的标签上限 3），
   超出合并为 **1 个**计数徽标（笔记卡把分类与标签的隐藏数**合并计数**）。
@@ -395,8 +406,29 @@ Tab 栏（h34 分段）：进行中（默认）/ 未开始 / 已完成 / 已取�
   `TodoTagChip.dot` 是 2026-09-14 新增的可选参数（默认 false → `todo_card_view` 不受影响）。
 - **待办卡的状态色只在两处出现**：R1 图标盘（`accentGradient(statusColor)`）与 R2 状态 chip；
   旧的「左侧 3.5px 色轴」已删除。状态色取 `statusMetaOf(context, status)`（进行中 = `colors.primary`）。
-- ⚠️ **chip 内边距尚未全族统一**：本族新口径为 **h8/v3**（画布），但 `_ReminderTile`
-  仍是 `SoftChip` 默认 `all(4)`。统一时**四张卡一起改**，勿只改一张。
+- **倒计时卡三态只在三处随状态变**（`running` / `paused` / `finished`，槽位与排布完全一致）：
+  ① 状态色（进行中 = `colors.primary` / 已暂停 = `accent(3)` 琥珀 / 已结束 = `accent(2)` 绿）
+  ② 主副行文案 ③ 按钮组。「指定时刻」（`mode == 'datetime'`）不出重置/暂停，只留删除
+  —— **按钮组按 `mode` 收敛，槽位不变**。状态色落到 R1 图标盘 + 状态 chip + 提醒 chip 三处。
+  （曾做过「剩余占比进度环」，2026-09-14 用户否决删除，见上方 ⚠️。）
+- **倒计时主行文案**（`_countdownLine`）：≥1 天 = `9天04:44:27`，否则固定三段 `04:44:27`
+  （补两位 + `FontFeature.tabularFigures()`；外面套
+  `FittedBox(scaleDown, alignment: centerLeft)` 防窄屏溢出）。
+  副行 = `目标 X` / `已暂停 · 目标 X` / `已结束 · 时长 X`
+  （`_durationLabel` 最多取两个最大档，不足 1 分钟兜底）；
+  `finished` 的主行**降级为 `mutedForeground`** —— 已完成的事不抢眼。
+  ⚠️ **紧凑口径（2026-09-14 用户两次实指，别再加空格）**：
+  冒号两侧不加空格（`00 : 59 : 54` → `00:59:54`）、**「天」与两侧数字也不加空格**
+  （`9 天 04:44:27` → `9天04:44:27`；CJK 全角字形自带侧边距，贴紧仍有呼吸）。
+  注意这与 `_durationLabel` 的副行 prose 写法（`时长 30 分钟`，带空格）**有意不同**。
+  `_hmsParts` 只返回三段补两位字符串（`List<String>`）。
+- ⚠️ **卡片里别写「恒真」的静态文案**：倒计时卡的提醒 chip 原来恒渲染「提醒 · 声音」，
+  压根没读 `row.notify`。2026-09-14 修为 `'1'` → 状态色软底「提醒 · 声音」、
+  `'0'` → `FlatBadge('不提醒')`。**中性 / 否定态一律走 `FlatBadge`**（`SoftChip` 的底色与文字
+  同为传入色，给不出「浅灰底 + 灰字」）。同卡的 `row.color`（表单自定义色）至今**未被消费**，待定。
+- ⚠️ **chip 内边距尚未全族统一**：本族新口径为 **h8/v3**（画布）。已按新口径的 =
+  待办卡（`TodoStatusChip` / `TodoTagChip` 传 `padding`）、倒计时卡（`_kChipPadH/_kChipPadV`）；
+  仍用 `SoftChip` 默认 `all(4)` 的 = `_ReminderTile` / 笔记卡 / 主题卡。统一时**一起改**，勿只改一张。
 - **笔记卡摘要要去重**：仓库写入格式 `excerpt = "{title}\n{正文首行}"`
   （`note_repository._excerptOf`），首行即标题 → 卡片须剔除首行再渲染，
   否则 R1 标题与 R2 摘要重复（`_NoteCard._excerptBody`）。

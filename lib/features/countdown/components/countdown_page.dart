@@ -3,10 +3,9 @@
 // 骨架（interaction-patterns.md §三 / todo_page.dart 先例）：
 //   头部    ‹22 · 倒计时18/Bold · ＋22（新建）
 //   统计横幅 PageBanner 主色渐变 · r22 · stats 全部/进行中/已暂停/已结束
-//   大计时器 最近结束的 running 项白卡承托 + 主色进度环（随滚动移出，非吸顶元素）
 //   搜索行  ★吸顶锚点（PinnedSearchRow/PinnedSearchHeader，搜索框常驻视口顶部）
 //   Tab 栏  ScopeTabBar：全部 / 进行中 / 已暂停 / 已结束（状态范围，随滚动移出）
-//   列表   倒计时卡片（画布方案 A 定稿：r24 三行结构 · 环内主单位 + 时分秒 + 状态色圆钮组）
+//   列表   倒计时卡片（卡片族三行式 · 状态图标盘 + 时间块占整宽 + 状态色圆钮组，无进度环）
 // 到点通知：创建/恢复/重置即排系统通知，暂停/删除/完成即取消（见 countdown_repository）；
 //   页面 tick 做跨零检测 → sweepExpired 补写 finished + toast（对齐 PC 到点链路）。
 // 搜索为页内实时过滤，Tab 前端过滤 —— 不动数据层。
@@ -20,7 +19,6 @@ import 'package:material_ui/material_ui.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
-import '../../../app/ui/ring_progress.dart';
 import '../../../app/ui/scope_tab_bar.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/sheet_surface.dart';
@@ -596,10 +594,15 @@ class _CountdownFormSheetState extends ConsumerState<_CountdownFormSheet> {
       '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 }
 
-/// 倒计时卡片（画布方案 A 定稿 2026-09-13 · r24 卡三行结构）：
-///   行1 名称 16/Bold + 状态 SoftChip；
-///   行2 状态图腾（进行中/已暂停 = 64 进度环内文字 · 已结束 = 56 实心圆白勾）+ 时间块，垂直居中；
-///   行3 操作行：左侧到期信息（仅进行中）+ 右侧 40×40 圆钮组（Lucide 图标居中留白）。
+/// 倒计时卡片（2026-09-14 定稿 · 卡片族三行式 · r16/padding 14）：
+///   R1 状态图标盘（40·r13 · 20px 白图标，与提醒 / 主题 / 笔记 / 待办同规格）
+///      ＋ 名称 15/SemiBold ＋ 状态 SoftChip；
+///   R2 时间块占整宽：主行 20/Bold（剩余时间 / 结束时刻）＋ 副行 12（目标时刻 / 状态说明）；
+///   R3 设定方式 FlatBadge ＋ 提醒 chip ┈┈ 40×40 圆钮组。
+/// 三态只在三处随状态变：① 状态色 ② 主副行文案 ③ 按钮组 —— 槽位与排布完全一致。
+/// ⚠️ 图标盘外圈**不套进度环**（2026-09-14 用户定：环形既读不出剩余比例、又和图标盘抢视觉）。
+/// 提醒 chip 读 row.notify（2026-09-14 修：此前恒渲染「提醒 · 声音」）：
+///   '1' = 状态色软底「提醒 · 声音」/ '0' = 中性灰「不提醒」。
 /// 按钮配色（2026-09-13 定稿）：重置恒灰底灰图标、删除恒红浅底红图标（destructive 14%）；
 /// 主操作随状态色：进行中暂停 = 主题色、已暂停继续 = 琥珀。
 /// **指定时刻（mode=datetime）不展示重置/暂停**（目标时刻固定，计时类操作无语义），
@@ -609,6 +612,18 @@ class _CountdownCard extends ConsumerWidget {
 
   final CountdownData row;
   final int nowMs;
+
+  // —— 卡片族尺寸（2026-09-14 收口 · 与提醒 / 主题 / 笔记 / 待办同规格）——
+  /// 图标盘（普通圆角矩形 + 状态色渐变 + 白图标；弧度基准 = 首页快捷入口 40→13）
+  static const double _kTileSize = 40;
+  static const double _kTileRadius = 13;
+  static const double _kTileIconSize = 20;
+
+  static const double _kCardPadding = 14;
+
+  /// chip 内边距（全族统一口径 h8/v3）
+  static const double _kChipPadH = 8;
+  static const double _kChipPadV = 3;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -620,12 +635,8 @@ class _CountdownCard extends ConsumerWidget {
     final remaining = paused
         ? (row.pausedRemaining ?? 0)
         : ((row.endTime ?? 0) - nowMs);
-    final total = (row.duration ?? 1).clamp(1, 1 << 31);
-    // 环 = **剩余**占比：时间流逝则弧缩短，归零即结束（2026-09-13 修正：此前写成已走过占比）
-    final progress = finished
-        ? 0.0
-        : (remaining.clamp(0, total) / total).clamp(0.0, 1.0);
-    // 环内主单位（天>时>分>秒 首个非零档）；右侧固定展示 时/分/秒 三段（画布定稿）
+    // 剩余时间全部由 R2 主行承载（`_countdownLine`）—— 2026-09-14 用户定：
+    // **去掉图标盘外圈的进度环**（环形既看不出剩余比例，又和图标盘抢视觉）
 
     // 状态语义色：进行中=主题色（换肤联动）/ 已暂停=琥珀 / 已结束=绿（AppTokens.accent 板）
     final statusColor = finished
@@ -671,25 +682,26 @@ class _CountdownCard extends ConsumerWidget {
 
     return AppCard(
       onLongPress: onLongPress,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(_kCardPadding),
       margin: EdgeInsets.zero,
       elevation: 1,
-      radius: AppTokens.radiusLg,
-      // 三行结构（画布方案 A 定稿）：名称行 / 图腾+时间行 / 操作行
+      // 三行结构：名称行 / 时间块 / 操作行
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 行1：名称 + 状态 pill（Row 默认交叉轴居中，pill 内行高压到 1 贴字）
+          // R1：状态图标盘 ＋ 名称 ＋ 状态 chip
           Row(
             children: [
+              _iconTile(statusColor),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   row.name ?? '倒计时',
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: t.typography.body.sm.copyWith(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -697,135 +709,80 @@ class _CountdownCard extends ConsumerWidget {
               SoftChip(
                 label: statusLabel,
                 color: statusColor,
-                fontSize: 12,
+                alpha: 0.10,
+                fontSize: 11,
                 height: 1,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: _kChipPadH,
+                  vertical: _kChipPadV,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          // 行2：状态图腾 + 时间块（垂直居中——2026-09-13 画布对齐稿）
-          if (finished)
-            Row(
-              children: [
-                _FinishedBadge(color: statusColor),
-                const SizedBox(width: 12),
-                Expanded(
+          const SizedBox(height: 8),
+          // R2：时间块占整宽 —— 主行 20/Bold ＋ 副行 12
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
                   child: Text(
-                    '已于 ${_targetText(row.endTime ?? 0)} 结束',
-                    style: t.typography.body.xs.copyWith(
-                      fontSize: 13,
-                      color: t.colors.mutedForeground,
+                    finished
+                        ? _targetText(row.endTime ?? 0)
+                        : _countdownLine(remaining),
+                    maxLines: 1,
+                    style: t.typography.body.lg.copyWith(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      // 已结束的「结束时刻」降级为中性灰 —— 已完成的事不抢眼
+                      color: finished
+                          ? t.colors.mutedForeground
+                          : t.colors.foreground,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
-                ),
-              ],
-            )
-          else if (running)
-            // 进行中（A1 定稿）：120 大环水平居中，环内 = 主单位「12 天」+ 冒号时分秒
-            Center(
-              child: SizedBox(
-                width: 120,
-                height: 120,
-                child: RingProgress(
-                  progress: progress,
-                  size: 120,
-                  strokeWidth: 8,
-                  color: statusColor,
-                  gradient: _ringShades(statusColor),
-                  child: _runningRingCenter(context, remaining: remaining),
                 ),
               ),
-            )
-          else
-            // 已暂停（A2 定稿）：64 小环 + 右侧时间块
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: RingProgress(
-                    progress: progress,
-                    size: 64,
-                    strokeWidth: 4,
-                    color: statusColor,
-                    gradient: _ringShades(statusColor),
-                    child: Text(
-                      '已暂停',
-                      style: t.typography.body.xs.copyWith(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: statusColor,
-                      ),
-                    ),
-                  ),
+              const SizedBox(height: 4),
+              Text(
+                finished
+                    ? '已结束 · 时长 ${_durationLabel(row.duration ?? 0)}'
+                    : paused
+                    ? '已暂停 · 目标 ${_targetText(row.endTime ?? 0)}'
+                    : '目标 ${_targetText(row.endTime ?? 0)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t.typography.body.xs.copyWith(
+                  fontSize: 12,
+                  color: t.colors.mutedForeground,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: _hmsText(context, remaining),
-                        ),
-                      ),
-                      if (paused) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          '已暂停 · 剩余时间如上',
-                          style: t.typography.body.xs.copyWith(
-                            fontSize: 11,
-                            color: t.colors.mutedForeground,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          const SizedBox(height: 12),
-          // 行3：操作行（进行中：左 = 到期时间 + 提醒 chip；右：40×40 渐变圆钮组，间隔 8）
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // R3：设定方式 ＋ 提醒 chip ┈┈ 40×40 渐变圆钮组
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (running)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '到 ${_targetText(row.endTime ?? 0)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.typography.body.sm.copyWith(
-                          fontSize: 13,
-                          color: t.colors.mutedForeground,
-                        ),
+              FlatBadge(label: canTimeShift ? '指定时长' : '指定时刻'),
+              const SizedBox(width: 6),
+              // 提醒 chip 真正读 row.notify（2026-09-14 修：此前恒渲染「提醒 · 声音」）
+              (row.notify ?? '1') != '0'
+                  ? SoftChip(
+                      label: '提醒 · 声音',
+                      color: statusColor,
+                      alpha: 0.10,
+                      fontSize: 11,
+                      height: 1,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: _kChipPadH,
+                        vertical: _kChipPadV,
                       ),
-                      const SizedBox(height: 6),
-                      SoftChip(
-                        label: '提醒 · 声音',
-                        color: statusColor,
-                        alpha: 0.10,
-                        fontSize: 11,
-                        height: 1,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                const Expanded(child: SizedBox.shrink()),
+                    )
+                  : const FlatBadge(label: '不提醒'),
+              const Spacer(),
               // 配色定稿（2026-09-13）：重置恒灰底灰图标、删除恒红浅底红图标；
               // 主操作随状态色（进行中=主题色 / 暂停恢复=琥珀）
               if (finished) ...[
@@ -870,69 +827,32 @@ class _CountdownCard extends ConsumerWidget {
     );
   }
 
-  /// 进行中环内（A1 定稿）：主单位大字「12 天」+ 冒号时分秒「06 : 30 : 45」
-  Widget _runningRingCenter(BuildContext context, {required int remaining}) {
-    final t = context.theme;
-    final (v, u) = _ringLabel(remaining);
-    final hms = _hmsParts(remaining).map((e) => e.$1).join(' : ');
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '$v $u',
-          style: t.typography.body.lg.copyWith(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: t.colors.foreground,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          hms,
-          style: t.typography.body.sm.copyWith(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: t.colors.mutedForeground,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 右侧时分秒（环内已展示天及以上，这里固定 时/分/秒 三段，数值补两位）
-  Widget _hmsText(BuildContext context, int remaining) {
-    final t = context.theme;
-    return Text.rich(
-      TextSpan(
-        children: [
-          for (final (v, u) in _hmsParts(remaining)) ...[
-            TextSpan(
-              text: v,
-              style: t.typography.body.lg.copyWith(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: t.colors.foreground,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-            TextSpan(
-              text: u,
-              style: t.typography.body.sm.copyWith(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: t.colors.mutedForeground,
-              ),
-            ),
-          ],
-        ],
+  /// 状态图标盘（卡片族图标瓷片：状态色渐变 + 白图标 · 40×40 r13）
+  Widget _iconTile(Color color) {
+    return Container(
+      width: _kTileSize,
+      height: _kTileSize,
+      decoration: BoxDecoration(
+        gradient: AppTokens.accentGradient(color),
+        borderRadius: BorderRadius.circular(_kTileRadius),
       ),
-      maxLines: 1,
+      alignment: Alignment.center,
+      child: Icon(
+        _statusIcon(row.status),
+        size: _kTileIconSize,
+        color: Colors.white,
+      ),
     );
   }
 
-  /// 目标时刻：今天显示 HH:mm；跨天显示 MM-dd 周E HH:mm（画布 A1 定稿）
+  /// 状态 → 图标盘白图标（与待办 / 主题 / 笔记卡片族同源口径）
+  IconData _statusIcon(String? status) => switch (status) {
+    'paused' => FLucideIcons.circlePause,
+    'finished' => FLucideIcons.circleCheck,
+    _ => FLucideIcons.timer,
+  };
+
+  /// 目标时刻：今天显示 HH:mm；跨天显示 MM-dd 周E HH:mm（画布方案 B 定稿）
   String _targetText(int endMs) {
     final dt = DateTime.fromMillisecondsSinceEpoch(endMs);
     final now = DateTime.now();
@@ -990,50 +910,39 @@ class _CircleAction extends StatelessWidget {
   }
 }
 
-/// 已结束图腾：56 实心圆 + 白勾（画布 A3 定稿）
-class _FinishedBadge extends StatelessWidget {
-  const _FinishedBadge({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      alignment: Alignment.center,
-      child: const Icon(FLucideIcons.check, size: 26, color: Colors.white),
-    );
-  }
-}
-
-/// 环弧渐变色阶（三段，顺时针由深到浅，对齐设计稿 A1 方向）：
-/// 本色 → 提亮 30% → 提亮 60%。三停让长弧全程都有可感知的过渡，不只末端变浅。
-List<Color> _ringShades(Color base) => [
-  base,
-  Color.lerp(base, Colors.white, 0.30)!,
-  Color.lerp(base, Colors.white, 0.60)!,
-];
-
-/// 剩余毫秒 → 环内主单位 (数值, 单位)：天 > 时 > 分 > 秒 取首个非零档
-(int, String) _ringLabel(int ms) {  final totalSec = ms <= 0 ? 0 : (ms / 1000).ceil();
+/// 剩余毫秒 → 卡片主行文案：≥1 天 = `9天04:44:27`，否则固定三段 `04:44:27`
+/// （补两位，等宽数字对齐跳动）。
+/// ⚠️ **紧凑口径**（2026-09-14 用户两次实指）：冒号两侧不加空格（`00 : 59 : 54` →
+/// `00:59:54`）、「天」与两侧数字也不加空格（`9 天 04:44:27` → `9天04:44:27`）。
+String _countdownLine(int ms) {
+  final totalSec = ms <= 0 ? 0 : (ms / 1000).ceil();
   final days = totalSec ~/ 86400;
-  if (days > 0) return (days, '天');
-  final hours = totalSec ~/ 3600;
-  if (hours > 0) return (hours, '时');
-  final mins = totalSec ~/ 60;
-  if (mins > 0) return (mins, '分');
-  return (totalSec, '秒');
+  final hms = _hmsParts(ms).join(':');
+  // 「天」与两侧数字**不留空格**（2026-09-14 用户：`9 天 04:44:27` 间隔太大）；
+  // 「天」本身是 CJK 全角字形，自带侧边距，贴紧后仍有可读的呼吸
+  return days > 0 ? '${days}天$hms' : hms;
 }
 
-/// 剩余毫秒 → 时/分/秒 三段数值（补两位字符串；天及以上由环内展示，不在此重复）
-List<(String, String)> _hmsParts(int ms) {
+/// 时长毫秒 → 人话（已结束副行）：最多取两个最大档
+/// （30 分钟 / 1 小时 30 分钟 / 2 天 3 小时；不足 1 分钟兜底）。
+String _durationLabel(int ms) {
+  final totalSec = ms <= 0 ? 0 : (ms / 1000).round();
+  final parts = <String>[
+    if (totalSec ~/ 86400 > 0) '${totalSec ~/ 86400} 天',
+    if (totalSec % 86400 ~/ 3600 > 0) '${totalSec % 86400 ~/ 3600} 小时',
+    if (totalSec % 3600 ~/ 60 > 0) '${totalSec % 3600 ~/ 60} 分钟',
+  ];
+  if (parts.isEmpty) return '不到 1 分钟';
+  return parts.take(2).join(' ');
+}
+
+/// 剩余毫秒 → 时:分:秒 三段数值（补两位字符串；天及以上由主行前置，不在此重复）
+List<String> _hmsParts(int ms) {
   final totalSec = ms <= 0 ? 0 : (ms / 1000).ceil();
   String p(int v) => v.toString().padLeft(2, '0');
   return [
-    (p((totalSec % 86400) ~/ 3600), '时'),
-    (p((totalSec % 3600) ~/ 60), '分'),
-    (p(totalSec % 60), '秒'),
+    p((totalSec % 86400) ~/ 3600),
+    p((totalSec % 3600) ~/ 60),
+    p(totalSec % 60),
   ];
 }
