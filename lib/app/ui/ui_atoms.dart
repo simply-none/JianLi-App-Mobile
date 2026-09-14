@@ -89,6 +89,36 @@ class AppCard extends StatelessWidget {
   }
 }
 
+/// 中性灰徽标 —— 无业务色的小标签（「+N」溢出计数、「子主题」等中性提示）
+///
+/// 与 `SoftChip` 同规格（r10 · 11/w600 · h8/v3），但底色/文字取主题中性色，
+/// 而非调用方传色：底色 `colors.muted` + 文字 `colors.mutedForeground`。
+class FlatBadge extends StatelessWidget {
+  const FlatBadge({super.key, required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: t.colors.muted,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        style: t.typography.body.xs.copyWith(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: t.colors.mutedForeground,
+        ),
+      ),
+    );
+  }
+}
+
 /// 区块标题（左侧色条 + 标题 + 尾部动作）
 class SectionHeader extends StatelessWidget {
   const SectionHeader({

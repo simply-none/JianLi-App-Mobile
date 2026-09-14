@@ -22,7 +22,6 @@ import '../../../app/ui/filter_sheet.dart';
 import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/soft_chip.dart';
-import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -629,7 +628,12 @@ class _CategoryChip extends StatelessWidget {
   }
 }
 
-/// 单条笔记卡（专属色图标盘 + 标题 + 摘要 + 标签彩点徽标 + 分类/时间元信息行）
+/// 单条笔记卡（三行式，2026-09-14 定：对齐提醒卡片 A / 主题对话卡，采用方案 B
+/// 「时间移到标题行行尾」变体）
+///
+/// R1 图标盘（40·r13 专属琥珀渐变 + notebook-pen）+ 标题（1 行省略）+ 时间 + chevron
+/// R2 摘要正文（2 行省略；与标题重复的首行已剔除，无正文则整行不渲染）
+/// R3 分类 chip（琥珀软底 + folder 前饰）+ 标签徽标（彩点 + 同色软底）+「+N」溢出
 class _NoteCard extends StatelessWidget {
   const _NoteCard({
     required this.note,
@@ -637,6 +641,15 @@ class _NoteCard extends StatelessWidget {
     required this.onTap,
     required this.onLongPress,
   });
+
+  /// 笔记域专属琥珀强调色（与内容分组页「笔记」入口色一致）
+  static final Color _accent = AppTokens.accent(3);
+
+  /// 标签最多展示个数（超出合并为「+N」，与主题对话卡同规则）
+  static const int _maxTags = 4;
+
+  /// 分类最多展示个数
+  static const int _maxCategories = 2;
 
   final NoteItem note;
   final Map<String, NoteTag> defByKey;
@@ -646,115 +659,157 @@ class _NoteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
-    // 最多展示 3 个标签，超出合并为 +N（key 无定义的不展示）
-    final badges = [
+    // 标签 key 无定义的不展示（软删标签仍按定义显示名称与颜色）
+    final tags = [
       for (final k in note.tags)
         if (defByKey[k] != null) defByKey[k]!,
     ];
-    final shown = badges.take(3).toList();
-    final overflow = badges.length - shown.length;
-    return AppCard(
-      // 列表卡 margin 清零：间距只由外层 Padding(bottom:10) 提供
-      //（AppCard 默认 vertical:6 会叠出 22px 大间隙，2026-09-13 用户实指）
-      margin: EdgeInsets.zero,
-      onTap: onTap,
+    final shownTags = tags.take(_maxTags).toList();
+    final shownCats = note.categories.take(_maxCategories).toList();
+    // 溢出一并计入同一个「+N」：分类与标签的隐藏项总数
+    final overflow = (tags.length - shownTags.length) +
+        (note.categories.length - shownCats.length);
+    // 时间：优先更新时间，空则回落创建时间（对齐桌面端 `updateTime || createTime`）
+    final timeRaw = note.updateTime.isNotEmpty ? note.updateTime : note.createTime;
+    final excerpt = _excerptBody;
+
+    return GestureDetector(
       onLongPress: onLongPress,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SquircleBox(
-            size: 44,
-            radius: 14,
-            gradient: AppTokens.accentGradient(AppTokens.accent(3)),
-            alignment: Alignment.center,
-            child: Icon(
-              FLucideIcons.notebookPen,
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: AppCard(
+        // 列表卡 margin 清零：间距只由外层 Padding(bottom:10) 提供
+        //（AppCard 默认 vertical:6 会叠出 22px 大间隙，2026-09-13 用户实指）
+        margin: EdgeInsets.zero,
+        padding: const EdgeInsets.all(14),
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // R1：图标盘 + 标题（弹性省略）+ 时间 + chevron，同排垂直居中
+            Row(
+              spacing: 12,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  note.title,
-                  style: t.typography.body.md.copyWith(
-                    fontWeight: FontWeight.w600,
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: AppTokens.accentGradient(_accent),
+                    borderRadius: BorderRadius.circular(13),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  child: Icon(
+                    FLucideIcons.notebookPen,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
-                if (note.excerpt.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    note.excerpt,
+                Expanded(
+                  child: Text(
+                    note.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: t.typography.body.sm.copyWith(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: t.colors.foreground,
+                    ),
+                  ),
+                ),
+                if (timeRaw.isNotEmpty)
+                  Text(
+                    _friendlyTime(timeRaw),
+                    maxLines: 1,
+                    style: t.typography.body.xs.copyWith(
+                      fontSize: 11,
                       color: t.colors.mutedForeground,
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-                if (shown.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      for (final tag in shown) NoteTagBadge(tag: tag),
-                      if (overflow > 0)
-                        Text(
-                          '+$overflow',
-                          style: t.typography.body.xs.copyWith(
-                            color: t.colors.mutedForeground,
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-                // 元信息行：多分类徽标 + 友好更新时间（对齐待办卡的时间行语义）
-                if (note.categories.isNotEmpty || note.updateTime.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      for (final c in note.categories.take(2)) ...[
-                        SoftChip(
-                          label: c,
-                          color: AppTokens.accent(3),
-                          alpha: 0.10,
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      if (note.categories.length > 2)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: Text(
-                            '+${note.categories.length - 2}',
-                            style: t.typography.body.xs.copyWith(
-                              fontSize: 11,
-                              color: t.colors.mutedForeground,
-                            ),
-                          ),
-                        ),
-                      if (note.updateTime.isNotEmpty)
-                        Text(
-                          _friendlyTime(note.updateTime),
-                          style: t.typography.body.xs.copyWith(
-                            fontSize: 11,
-                            color: t.colors.mutedForeground,
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
+                Icon(
+                  FLucideIcons.chevronRight,
+                  size: 18,
+                  color: t.colors.mutedForeground,
+                ),
               ],
             ),
-          ),
-        ],
+            // R2：摘要正文（无正文整行不渲染）
+            if (excerpt.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                excerpt,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: t.typography.body.xs.copyWith(
+                  fontSize: 12,
+                  color: t.colors.mutedForeground,
+                ),
+              ),
+            ],
+            // R3：分类 + 标签（Wrap 自动换行；两者皆空则整行不渲染）
+            if (shownCats.isNotEmpty || shownTags.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  for (final c in shownCats)
+                    SoftChip(
+                      label: c,
+                      color: _accent,
+                      alpha: 0.10,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      leading: Icon(
+                        FLucideIcons.folder,
+                        size: 11,
+                        color: _accent,
+                      ),
+                    ),
+                  for (final tag in shownTags)
+                    SoftChip(
+                      label: tag.name,
+                      color: tag.colorValue,
+                      alpha: 0.14,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      leading: Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: tag.colorValue,
+                        ),
+                      ),
+                    ),
+                  if (overflow > 0) FlatBadge(label: '+$overflow'),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
+  }
+
+  /// 摘要正文：`excerpt` 去掉与标题重复的首行
+  ///
+  /// 本端 `note_repository._excerptOf` 的写入格式为 `"{title}\n{正文首行}"`，
+  /// 首行即标题，直接展示会与 R1 标题重复；桌面端写入的 excerpt 若不与标题
+  /// 重复则原样保留（多行合并为一段）。
+  String get _excerptBody {
+    final lines = note.excerpt
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    if (lines.isNotEmpty && lines.first == note.title.trim()) {
+      lines.removeAt(0);
+    }
+    return lines.join(' ');
   }
 
   /// 'yyyy-MM-dd HH:mm:ss' → 今天/昨天/M月D日（跨年带年份）

@@ -1002,7 +1002,7 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
 
 }
 
-/// 单个主题卡（粉渐变头像 + 标题 + 标签彩色徽标 + 消息数 + 更新时间），长按出操作
+/// 单个主题卡（方案 A 三行式：首字头像+标题+chevron / 标签行 / 统计·备注行），长按出操作
 class _ThemeCard extends StatelessWidget {
   const _ThemeCard({
     required this.theme,
@@ -1018,6 +1018,9 @@ class _ThemeCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
+  /// 标签展示上限（超出以「+N」呈现；2026-09-14 画布定案）
+  static const int _kMaxTags = 4;
+
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
@@ -1029,6 +1032,12 @@ class _ThemeCard extends StatelessWidget {
       for (final id in _parseIds(theme.tags))
         if (tagById[id] != null) tagById[id]!,
     ];
+    // 子主题（parent_id 非空）+ 标签，共同占据第 2 行徽标区
+    final isSubTheme = theme.parentId?.isNotEmpty ?? false;
+    final shownTags = themeTags.take(_kMaxTags).toList();
+    final overflow = themeTags.length - shownTags.length;
+    final hasBadges = isSubTheme || shownTags.isNotEmpty;
+
     // 长按出操作抽屉（外层长按与 AppCard 内层点击手势可共存）
     return GestureDetector(
       onLongPress: onLongPress,
@@ -1036,62 +1045,76 @@ class _ThemeCard extends StatelessWidget {
         // 列表卡 margin 清零：间距只由外层 Padding(bottom:10) 提供
         //（AppCard 默认 vertical:6 会叠出 22px 大间隙，2026-09-13 用户实指）
         margin: EdgeInsets.zero,
+        padding: const EdgeInsets.all(14),
         onTap: onTap,
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SquircleBox(
-              size: 44,
-              radius: 14,
-              gradient: AppTokens.accentGradient(AppTokens.accent(4)),
-              alignment: Alignment.center,
-              child: Text(
-                (theme.title ?? '主').characters.first,
-                style: t.typography.body.md.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    theme.title ?? '未命名主题',
+            // R1：首字头像（普通圆角矩形，弧度对齐首页快捷入口）+ 标题 + chevron
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient: AppTokens.accentGradient(AppTokens.accent(4)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    (theme.title ?? '主').characters.first,
                     style: t.typography.body.md.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    theme.title ?? '未命名主题',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.typography.body.md.copyWith(
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  if (themeTags.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: [
-                        for (final tag in themeTags.take(3))
-                          _ConvTagBadge(tag: tag),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  Text(
-                    '$messageCount 条 · 更新于 ${convFriendlyTime(theme.updateTime)}$remark',
-                    style: t.typography.body.sm.copyWith(
-                      color: t.colors.mutedForeground,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  FLucideIcons.chevronRight,
+                  size: 18,
+                  color: t.colors.mutedForeground,
+                ),
+              ],
+            ),
+            // R2：徽标行（子主题 + 主题标签，最多 4 个，超出「+N」）——有才渲染
+            if (hasBadges) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (isSubTheme) const _FlatBadge(label: '子主题'),
+                  for (final tag in shownTags)
+                    _ConvTagBadge(tag: tag, radius: 10),
+                  if (overflow > 0) _FlatBadge(label: '+$overflow'),
                 ],
               ),
-            ),
-            Icon(
-              FLucideIcons.chevronRight,
-              size: 18,
-              color: t.colors.mutedForeground,
+            ],
+            const SizedBox(height: 8),
+            // R3：N 条 · 更新于 X · 备注（单行超出省略）
+            Text(
+              '$messageCount 条 · 更新于 ${convFriendlyTime(theme.updateTime)}$remark',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t.typography.body.sm.copyWith(
+                fontSize: 12,
+                color: t.colors.mutedForeground,
+              ),
             ),
           ],
         ),
@@ -1114,9 +1137,12 @@ class _ThemeCard extends StatelessWidget {
 
 /// 主题标签彩色徽标（conversation_tag 颜色 + 名称）
 class _ConvTagBadge extends StatelessWidget {
-  const _ConvTagBadge({required this.tag});
+  const _ConvTagBadge({required this.tag, this.radius = 999});
 
   final ConversationTagData tag;
+
+  /// 圆角（默认胶囊 999；主题列表卡内用 10 对齐 SoftChip 口径）
+  final double radius;
 
   Color get _color {
     final hex = (tag.color ?? '').replaceFirst('#', '');
@@ -1132,7 +1158,7 @@ class _ConvTagBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(radius),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1151,6 +1177,33 @@ class _ConvTagBadge extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 中性灰徽标（主题卡第 2 行的「子主题」与标签溢出「+N」用；方形软底、无圆点）
+class _FlatBadge extends StatelessWidget {
+  const _FlatBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: t.colors.muted,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        style: t.typography.body.xs.copyWith(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: t.colors.mutedForeground,
+        ),
       ),
     );
   }

@@ -335,6 +335,7 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
 | 吸顶搜索行 | `lib/app/ui/pinned_search_row.dart` | `PinnedSearchRow`（h40/r10/卡底描边 + 28×28 筛选钮，`onFilter:null` 隐藏）+ `PinnedSearchHeader`（`shrinkOffset>0` 才铺 `pinnedCover`，见 §3.5 雷区）+ `kSearchRowExtent`=60（吸顶高度与行内常量同源推导） |
 | 分段 Tab 栏 | `lib/app/ui/scope_tab_bar.dart` | `ScopeTabBar<T>`（h34 muted 轨 r11、选中白卡 r8、13px、`CrossAxisAlignment.stretch`）；**不吸顶**，随滚动移出 |
 | 软底 chip | `lib/app/ui/soft_chip.dart` | `SoftChip`（色底 alpha · r10 · 11/w600，可选 `leading`/`onRemove` ×；2026-09-13 增选择形态 `onTap`——无 ×、TapScale 包装，供分类/标签选择行使用，与 `onRemove` 互斥）；待办 `TodoStatusChip`(15%)/`TodoTagChip`(14%)/条件 chip(12%) 均为其包装 |
+| 中性灰徽标 | `lib/app/ui/ui_atoms.dart` | `FlatBadge(label:)`（`colors.muted` 底 + `colors.mutedForeground` 字 · r10 · 11/w600 · h8/v3）。**中性提示（「+N」溢出计数、「子主题」）不能用 `SoftChip`**——`SoftChip` 的底色与文字同为传入色，给不出「浅灰底 + 灰字」这套配色。2026-09-14 落地，笔记卡首次消费；`conversation_page` 的私有 `_FlatBadge` 待迁移 |
 | 弹窗表单原子 | `lib/app/ui/sheet_form.dart` | `SheetScaffold`（lg 定高骨架：居中把手 + 17/Bold 标题 + 裸 X + 中间滚动体 + 底部条）+ `SheetHandle`/`SheetChoiceChip`/`SheetFieldLabel`/`SheetInputBox`（数字类短输入可 `textAlign: center`；**与按钮并排等高对齐的唯一选择，见 §4.6**）/`SheetMultilineBox`/`SheetSwitchRow`/`sheetBottomActions`（`destructive: true` 出红色主按钮）+ **`showSheetActionMenu`（长按操作菜单，**默认 sm 档**；可传 `size:` 按三档制升档——**电子书书架长按书籍卡片用 `md`(50vh)**，2026-09-13 用户定）** + **`showSheetConfirm`（危险确认，sm 档，恒返回 bool）**；**新增弹窗优先用这组**（调用点必须配 `mainAxisMaxRatio: AppTokens.sheetHeightLg + resizeToAvoidBottomInset: false`，见 §一）；待办 `todo_sheets.dart` 私有 `_sheetScaffold` 为同构先例，待后续统一迁移 |
 | 日期/时间选择 | `lib/app/ui/datetime_pickers.dart` | **录入日期时间一律走共享原子，禁止再手写文本框收日期**（interaction-patterns 同源思路），三选一：① `showTimePickerSheet`（**纯时刻「时/分」两列独立滚轮 → forui 公开原语 `FPicker`+`FPickerWheel` 自拼，中文单位 `时`/`分`，sm=30vh；滚轮高度按 `sheetMaxHeight(sm)−144` 自适应避免溢出**，2026-09-13 改 30vh）；② `showDateTimePickerSheet`（日期+时+分 → forui 原生 `FDateTimePicker` 轮式，md，分隔符 `:` 写死、无秒）；③ `showDateTimeWheelSheet`（**年/月/日/时/分/秒 六列独立滚轮 → `FPicker`+`FPickerWheel` 自拼，中文单位，md**，跨年/跨月场景好选，默认年列 `今年-10~今年+30`、`withSeconds` 默认 true）。⚠️ **forui 原生 picker 的分隔符写死、改不了**（`FTimePicker` 用 `:`、`FDateTimePicker` 时刻格式写死 `.Hm`），故要求中文单位（`08时00分` / `2026年 09月 13日 06时 10分 12秒`）的场景都走自拼 ① / ③（2026-09-13 用户定），`FDateTimePicker` 仅剩免拆列的简单场景（如二维码参数日期时间）。均三档制底部抽屉、24 小时制、取消返回 null。**嵌套抽屉安全写法**（从其他抽屉内打开）：`showFSheet` 走默认参数、**不传 `mainAxisMaxRatio`**（传了会让 ShiftedSheet 重入布局断言崩）；待办「新增/编辑-到期时间」消费 ③、习惯「提醒时刻」与提醒管理「时刻」均消费 ①。**间距优化**（forui `FPicker` 把每列包成 `Flexible` 均分整行 → 数字与中文单位被拉开；已用 `LayoutBuilder`+两端固定占位 `_textWidth` 量宽回压，见 changelog XLIII）|
 
@@ -349,6 +350,36 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
 > 到点通知 / 权限 / 保活的横切约定（`POST_NOTIFICATIONS`、`SCHEDULE_EXACT_ALARM` 引导、
 > `AlarmBootstrap` 启动重排、`stableId` 通知 id）见 `modules/features.md` 功能域清单
 > 「新增功能域落地清单」第 4 条与 `modules/changelog.md`（2026-09-12 XIV）。
+
+### 3.19 列表卡片族「三行式」（2026-09-14 收口）
+
+> 提醒 / 主题对话 / 可归类笔记三类列表卡统一为**三行式**，卡壳规格完全同源。
+> **新增列表卡照此组装，勿各写一套。**
+
+**卡壳规格（三者完全一致）**：`AppCard(margin: EdgeInsets.zero, padding: EdgeInsets.all(14))`
+—— white 底 + r16 + 1px `colors.border` + `elevation:1`；行间 `SizedBox(height: 8)`；
+列表项间距由外层 `Padding(bottom: 10)` 提供（**卡内 `margin` 必须清零**，
+否则与 `AppCard` 默认 `vertical:6` 叠成 22px 大间隙，2026-09-13 用户实指）。
+
+**图标盘（R1 左）**：`Container(40×40, BoxDecoration(gradient: AppTokens.accentGradient(域色), borderRadius: circular(13)))`
++ 20px 白图标。**普通圆角矩形，不是 `SquircleBox`**（弧度基准 = 首页快捷入口）。
+
+| 卡 | R1 | R2 | R3 |
+|---|---|---|---|
+| 提醒 `_ReminderTile` | 图标盘 + 标题 + 模式 `SoftChip` + `FSwitch` | 规则摘要（含免打扰，2 行） | 下次触发 / 前台驱动 / 已停用 |
+| 主题对话 `_ThemeCard` | 首字头像(44·r14) + 标题 + `chevronRight` | 标签 `Wrap`（≤4 + 「+N」） | `{N} 条 · 更新于 {X}` + 备注 |
+| 可归类笔记 `_NoteCard` | 图标盘 + 标题 + **时间** + `chevronRight` | 摘要正文（2 行） | 分类 chip + 标签徽标 + 「+N」 |
+
+- **「+N」溢出规则三条卡共用**：最多展示 4 个（笔记卡的分类上限 2），
+  超出合并为 **1 个** `FlatBadge`（笔记卡把分类与标签的隐藏数**合并计数**）。
+- **「时间」两种落位都已被采用**：主题卡放 R3（行内文本）、笔记卡放 R1 行尾
+  （2026-09-14 用户选定变体 B，标签行独占整宽）。改一张卡前先看它既有约定，**勿互相改**。
+- **笔记卡的分类 ≠ 标签**：`categories` → `SoftChip(alpha:0.10, leading: Icon(FLucideIcons.folder, size:11))`
+  （琥珀 + 前置文件夹图标）；`tags` → `SoftChip(alpha:0.14, leading: 6×6 色点)`
+  （跟随 `NoteTag.colorValue`）。**只靠底色区分不够**，必须靠「folder 图标 / 色点」区分。
+- **笔记卡摘要要去重**：仓库写入格式 `excerpt = "{title}\n{正文首行}"`
+  （`note_repository._excerptOf`），首行即标题 → 卡片须剔除首行再渲染，
+  否则 R1 标题与 R2 摘要重复（`_NoteCard._excerptBody`）。
 
 ---
 
