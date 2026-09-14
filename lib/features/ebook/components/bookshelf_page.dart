@@ -29,7 +29,6 @@ import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/soft_chip.dart';
-import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
@@ -1617,6 +1616,10 @@ class _BookRow extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onMenu;
 
+  /// 左图标尺寸与弧度（弧度按卡片族口径 40→13 等比推导：48 × 13/40 ≈ 15.6 → 16）
+  static const double _kIconSize = 48;
+  static const double _kIconRadius = 16;
+
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
@@ -1634,12 +1637,18 @@ class _BookRow extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
-          SquircleBox(
-            size: 48,
-            radius: 14,
-            gradient: AppTokens.accentGradient(accent),
+          // 左图标：与提醒 / 待办卡片族**同源配方** —— 普通圆角矩形 + accentGradient + 白图标
+          // （原 SquircleBox 超椭圆的弧度与卡片族不一致，2026-09-14 用户实指「参考提醒卡片」）
+          Container(
+            width: _kIconSize,
+            height: _kIconSize,
+            decoration: BoxDecoration(
+              gradient: AppTokens.accentGradient(accent),
+              // 弧度按卡片族口径等比推导（40 → 13），故 48 → 16
+              borderRadius: BorderRadius.circular(_kIconRadius),
+            ),
             alignment: Alignment.center,
-            child: Icon(
+            child: const Icon(
               FLucideIcons.bookOpenText,
               color: Colors.white,
               size: 20,

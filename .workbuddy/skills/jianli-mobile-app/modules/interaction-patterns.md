@@ -372,7 +372,11 @@ Tab 栏（h34 分段）：进行中（默认）/ 未开始 / 已完成 / 已取�
 **图标盘（R1 左）**：`Container(40×40, BoxDecoration(gradient: AppTokens.accentGradient(域色), borderRadius: circular(13)))`
 + 20px 白图标。**普通圆角矩形，不是 `SquircleBox`**（弧度基准 = 首页快捷入口）。
 ⚠️ **不存在 `AppTokens.iconRadius()`**（多次误记）：弧度就是这个写死的 `circular(13)`，
-尺寸不同的盘按 40→13 的比例自行推导并写注释。
+尺寸不同的盘按 40→13 的比例自行推导并写注释（**48 → 16**）。
+📌 本配方**已外溢到非卡片列表**：电子书列表行左图标（`bookshelf_page.dart` 的 `_BookRow`）
+2026-09-14 从 `SquircleBox(48, r14)` 迁到本配方 `Container(48×48, accentGradient, circular(16))`
++ 20px 白图标。**`SquircleBox` 不再用于图标瓷片场景** —— 超椭圆的弧度观感与卡片族不一致，
+用户实指「参考提醒卡片左侧图标」。（`squircle_box.dart` 本身保留，头像 / 其它场景仍可用。）
 
 ⚠️ **列表卡的图标盘一律不套进度环**（2026-09-14 用户定；倒计时卡实指「环影响观感」）：
 3px 细弧在 40px 尺寸下几乎等同装饰、读不出剩余比例，又和图标盘抢视觉 ——
