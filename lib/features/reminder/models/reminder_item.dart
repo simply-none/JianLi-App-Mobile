@@ -177,6 +177,16 @@ class ReminderItem {
         return modeLabel;
     }
   }
+
+  /// 列表卡第 3 行：下次触发时间 / 前台驱动（状态机）/ 已停用。
+  /// 停用态由列表卡整体降透明度呈现，这里只返回文案。
+  String get nextTriggerLabel {
+    if (!enabled) return '已停用';
+    if (isStateful) return '前台驱动';
+    if (time?.isNotEmpty == true) return '下次 $time';
+    if (interval?.isNotEmpty == true) return '每 $interval${unitShortLabel(unit)}';
+    return '未排程';
+  }
 }
 
 /// 安全解析 states JSON（避免脏数据炸 UI）
@@ -217,3 +227,7 @@ List<IdleSlot> parseIdleSlots(String? raw) => parseStringList(raw)
     })
     .whereType<IdleSlot>()
     .toList();
+
+/// 间隔单位短标签（列表卡副标题用：60000→分钟 / 3600000→小时 / 86400000→天）
+String unitShortLabel(String? unit) =>
+    const {'60000': '分钟', '3600000': '小时', '86400000': '天'}[unit] ?? '';

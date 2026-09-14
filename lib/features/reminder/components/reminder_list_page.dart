@@ -27,7 +27,6 @@ import '../../../app/ui/datetime_pickers.dart';
 import '../../todo/components/todo_sheets.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/sheet_surface.dart';
-import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/soft_chip.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -365,19 +364,53 @@ class _ReminderTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.theme;
-    final subtitleParts = <String>[
-      item.repeatLabel,
-      if (!item.isStateful && (item.time?.isNotEmpty ?? false)) item.time!,
-      if (item.isStateful && item.statesSummary != null) item.statesSummary!,
-      if (item.idleTime != null && item.idleTime != '[]') '含免打扰',
-      item.deliveryLabel,
-    ];
-    // 模式语义色：定点=琥珀 / 周期=绿 / 多状态=红（番茄钟品牌色），图标盘同色
-    final (modeLabel, modeColor, modeIcon) = item.isStateful
-        ? ('多状态', AppTokens.accent(6), FLucideIcons.refreshCw)
+    final disabled = !item.enabled;
+
+    // 模式语义色：定点=琥珀 / 周期=绿 / 多状态=红（番茄钟品牌色）；停用态整体转灰
+    final modeColor = disabled
+        ? t.colors.mutedForeground
+        : item.isStateful
+            ? AppTokens.accent(6)
+            : item.mode == 'interval'
+                ? AppTokens.accent(2)
+                : AppTokens.accent(3);
+
+    // 图标：多状态=计时器 / 周期=循环 / 定点=闹钟(送达为闹钟)或铃铛
+    final iconData = item.isStateful
+        ? FLucideIcons.timer
         : item.mode == 'interval'
-        ? ('周期', AppTokens.accent(2), FLucideIcons.repeat)
-        : ('定点', AppTokens.accent(3), FLucideIcons.bell);
+            ? FLucideIcons.repeat
+            : (item.isAlarm ? FLucideIcons.alarmClock : FLucideIcons.bell);
+
+    final iconGradient = disabled
+        ? AppTokens.accentGradient(t.colors.mutedForeground)
+        : AppTokens.accentGradient(modeColor);
+
+    // R2 规则摘要：状态机 / 间隔 / 重复 + 时刻 + 送达 + 免打扰时段（有则列）
+    final idle = parseIdleSlots(item.idleTime);
+    final intervalPart = (!item.isStateful &&
+            item.mode == 'interval' &&
+            item.interval?.isNotEmpty == true)
+        ? '每 ${item.interval}${unitShortLabel(item.unit)}'
+        : null;
+    final subtitleParts = <String>[
+      if (item.isStateful && item.statesSummary != null) item.statesSummary!,
+      if (intervalPart != null) intervalPart!,
+      if (!item.isStateful && item.mode != 'interval') item.repeatLabel,
+      if (!item.isStateful &&
+          item.mode != 'interval' &&
+          item.time?.isNotEmpty == true)
+        item.time!,
+      item.deliveryLabel,
+      if (idle.isNotEmpty) '免打扰 ${idle.first.start}-${idle.first.end}',
+    ];
+
+    final titleStyle = t.typography.body.sm.copyWith(
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+      color: disabled ? t.colors.mutedForeground : t.colors.foreground,
+      decoration: disabled ? TextDecoration.lineThrough : null,
+    );
 
     // 长按 → 操作菜单【编辑 / 停用·启用 / 删除】（stateful=番茄钟托管，只读不响应长按）
     Future<void> onLongPress() async {
@@ -426,61 +459,81 @@ class _ReminderTile extends ConsumerWidget {
         onTap: item.isStateful
             ? null
             : () => _openReminderEditor(context, item),
-        child: Row(
-          children: [
-            SquircleBox(
-              size: 40,
-              radius: 12,
-              gradient: AppTokens.accentGradient(modeColor),
-              alignment: Alignment.center,
-              child: Icon(modeIcon, color: Colors.white, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: Opacity(
+          opacity: disabled ? 0.6 : 1.0,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // R1：图标 + 标题 + 模式标签 + 开关（同排）
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Row(
-                    spacing: 6,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: t.typography.body.sm.copyWith(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            decoration: item.enabled
-                                ? null
-                                : TextDecoration.lineThrough,
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      gradient: iconGradient,
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(iconData, color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Row(
+                      spacing: 6,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: titleStyle,
                           ),
                         ),
-                      ),
-                      SoftChip(label: modeLabel, color: modeColor),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitleParts.join(' · '),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.typography.body.xs.copyWith(
-                      fontSize: 12,
-                      color: t.colors.mutedForeground,
+                        SoftChip(label: item.modeLabel, color: modeColor),
+                      ],
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  FSwitch(
+                    value: item.enabled,
+                    // 状态机型提醒不允许启停（权威在番茄钟页）
+                    enabled: !item.isStateful,
+                    onChange: (v) => ref
+                        .read(reminderRepositoryProvider)
+                        .toggleEnabled(item, v),
                   ),
                 ],
               ),
-            ),
-            FSwitch(
-              value: item.enabled,
-              // 状态机型提醒不允许启停（权威在番茄钟页）
-              enabled: !item.isStateful,
-              onChange: (v) =>
-                  ref.read(reminderRepositoryProvider).toggleEnabled(item, v),
-            ),
-          ],
+              const SizedBox(height: 8),
+              // R2：规则摘要（含免打扰时段）
+              Text(
+                subtitleParts.join(' · '),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: t.typography.body.xs.copyWith(
+                  fontSize: 12,
+                  color: t.colors.mutedForeground,
+                ),
+              ),
+              const SizedBox(height: 4),
+              // R3：下次触发 / 前台驱动 / 已停用
+              Text(
+                item.nextTriggerLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t.typography.body.xs.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: disabled
+                      ? t.colors.mutedForeground
+                      : t.colors.foreground,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
