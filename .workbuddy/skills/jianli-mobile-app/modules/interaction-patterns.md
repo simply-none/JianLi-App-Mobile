@@ -373,10 +373,30 @@ Tab 栏（h34 分段）：进行中（默认）/ 未开始 / 已完成 / 已取�
 + 20px 白图标。**普通圆角矩形，不是 `SquircleBox`**（弧度基准 = 首页快捷入口）。
 ⚠️ **不存在 `AppTokens.iconRadius()`**（多次误记）：弧度就是这个写死的 `circular(13)`，
 尺寸不同的盘按 40→13 的比例自行推导并写注释（**48 → 16**）。
-📌 本配方**已外溢到非卡片列表**：电子书列表行左图标（`bookshelf_page.dart` 的 `_BookRow`）
-2026-09-14 从 `SquircleBox(48, r14)` 迁到本配方 `Container(48×48, accentGradient, circular(16))`
-+ 20px 白图标。**`SquircleBox` 不再用于图标瓷片场景** —— 超椭圆的弧度观感与卡片族不一致，
-用户实指「参考提醒卡片左侧图标」。（`squircle_box.dart` 本身保留，头像 / 其它场景仍可用。）
+📌 本配方**已外溢到非卡片列表与功能页**（2026-09-14 用户口径：「工具 tab 下所有用到图标的地方，
+除了功能图标之外（增删改查等），都改成和提醒列表卡片左侧图标类似的弧度和渐变」）：
+- 电子书列表行左图标（`bookshelf_page.dart` 的 `_BookRow`）`SquircleBox(48, r14)`
+  → `Container(48×48, accentGradient, circular(16))` + 20px 白图标；
+- **工具 tab 6 个功能页共 13 处**：`two_factor_page` / `password_vault_page` / `file_vault_page` /
+  `qr_page` / `sync_page` / `file_transfer_page` ——
+  ① 门禁页大图标 76（`SquircleBox r26`）→ `Container(76×76, circular(25))`，3 处；
+  ② 列表行 / 设备行图标 44（r14）与 36（`SquircleBox r10`）→ `Container(44, circular(14))`、`Container(36, circular(12))`，6 处；
+  ③ 空态图标 76 圆形淡底（`_accent.withValues(alpha:0.12)` + `BoxShape.circle` + 彩色 32px 图标）
+  → **渐变瓷片** `Container(76×76, accentGradient(_accent), circular(25))` + 34px 白图标，4 处。
+  六个文件的 `import '../../../app/ui/squircle_box.dart'` 已随之删除（无其它用途）。
+
+**`SquircleBox` 不再用于图标瓷片场景** —— 超椭圆的弧度观感与卡片族不一致，
+用户实指「参考提醒卡片左侧图标」「主要是弧度和渐变」。
+⚠️ **空态图标按最新用户口径也用渐变瓷片**（2026-09-14 明确选择，不再保留「淡色圆底」的柔和层次）。
+⚠️ `EmptyState`（`ui_atoms.dart` 的 soft `SquircleBox` 76·r26 + `accentSoft`）**尚未改** ——
+它被非工具页（笔记 / 待办等）共用，改动会外溢到其它 tab，需单独确认。
+（`squircle_box.dart` 本身保留，头像等场景仍可用。）
+
+**工具 tab 里无需改动的图标（本来就已是本配方）**：`EntryCard`（Hub 入口卡 46·r15）、
+`AccountCodeTile`（2FA 列表行 40·r13）、`password_vault` 列表行字母徽标（38·r11 `primaryGradient`）。
+**应保留为「功能图标」不动**（别套渐变瓷片）：表单字段内嵌小图标（日历 / `chevronDown`）、
+chip 内嵌图标（TOTP 胶囊里的 `keyRound`）、扫码页关闭圆钮、色板 swatch 圆点、
+页面返回箭头、`FButton.prefix` / `GradientButton.icon` 等按钮图标。
 
 ⚠️ **列表卡的图标盘一律不套进度环**（2026-09-14 用户定；倒计时卡实指「环影响观感」）：
 3px 细弧在 40px 尺寸下几乎等同装饰、读不出剩余比例，又和图标盘抢视觉 ——

@@ -32,7 +32,6 @@ import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/segmented.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/sheet_surface.dart';
-import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
@@ -686,15 +685,20 @@ class _QrPageState extends ConsumerState<QrPage> {
               mainAxisSize: MainAxisSize.min,
               spacing: 14,
               children: [
+                // 空态图标也统一为渐变瓷片（与列表卡图标同配方）
                 Container(
                   width: 76,
                   height: 76,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: _accent.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
+                    gradient: AppTokens.accentGradient(_accent),
+                    borderRadius: BorderRadius.circular(25),
                   ),
-                  child: Icon(FLucideIcons.history, size: 32, color: _accent),
+                  child: const Icon(
+                    FLucideIcons.history,
+                    color: Colors.white,
+                    size: 34,
+                  ),
                 ),
                 Text(
                   '暂无历史',
@@ -844,11 +848,15 @@ class _QrHistoryTile extends StatelessWidget {
       onLongPress: onDelete,
       child: Row(
         children: [
-          SquircleBox(
-            size: 44,
-            radius: 14,
-            gradient: AppTokens.accentGradient(AppTokens.accent(3)),
+          // 图标瓷片统一配方：Container + accentGradient + 圆角≈size×0.33
+          Container(
+            width: 44,
+            height: 44,
             alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: AppTokens.accentGradient(AppTokens.accent(3)),
+              borderRadius: BorderRadius.circular(14),
+            ),
             child: Icon(FLucideIcons.qrCode, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 12),

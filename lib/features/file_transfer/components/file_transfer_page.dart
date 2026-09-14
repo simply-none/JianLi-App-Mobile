@@ -27,7 +27,6 @@ import '../../../core/android/media_scan.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/page_banner.dart';
-import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../app/ui/gradient_button.dart';
@@ -675,11 +674,15 @@ class _PeerRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          SquircleBox(
-            size: 36,
-            radius: 10,
-            gradient: AppTokens.accentGradient(AppTokens.accent(4)),
+          // 图标瓷片统一配方：Container + accentGradient + 圆角≈size×0.33
+          Container(
+            width: 36,
+            height: 36,
             alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: AppTokens.accentGradient(AppTokens.accent(4)),
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: const Icon(
               FLucideIcons.monitorSmartphone,
               color: Colors.white,
@@ -740,11 +743,14 @@ class _RecentRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          SquircleBox(
-            size: 36,
-            radius: 10,
-            gradient: AppTokens.accentGradient(AppTokens.accent(5)),
+          Container(
+            width: 36,
+            height: 36,
             alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: AppTokens.accentGradient(AppTokens.accent(5)),
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: const Icon(
               FLucideIcons.history,
               color: Colors.white,
@@ -864,11 +870,14 @@ class _HistoryTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          SquircleBox(
-            size: 36,
-            radius: 10,
-            gradient: AppTokens.accentGradient(color),
+          Container(
+            width: 36,
+            height: 36,
             alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: AppTokens.accentGradient(color),
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Icon(
               isSend ? FLucideIcons.upload : FLucideIcons.download,
               color: Colors.white,

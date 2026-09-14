@@ -24,7 +24,6 @@ import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/soft_chip.dart';
-import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../models/password_entry.dart';
@@ -372,18 +371,19 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
         mainAxisSize: MainAxisSize.min,
         spacing: 14,
         children: [
+          // 空态图标也统一为渐变瓷片（与列表/门禁图标同配方）
           Container(
             width: 76,
             height: 76,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: _accent.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
+              gradient: AppTokens.accentGradient(_accent),
+              borderRadius: BorderRadius.circular(25),
             ),
             child: Icon(
               totallyEmpty ? FLucideIcons.keyRound : FLucideIcons.searchX,
-              size: 32,
-              color: _accent,
+              color: Colors.white,
+              size: 34,
             ),
           ),
           Text(
@@ -451,11 +451,16 @@ class _PasswordVaultPageState extends ConsumerState<PasswordVaultPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Center(
-                          child: SquircleBox(
-                            size: 76,
-                            radius: 26,
-                            gradient: AppTokens.accentGradient(_accent),
+                          // 图标瓷片统一配方：Container + accentGradient +
+                          // 圆角≈size×0.33 + 白图标（弃用 SquircleBox 超椭圆弧度）
+                          child: Container(
+                            width: 76,
+                            height: 76,
                             alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              gradient: AppTokens.accentGradient(_accent),
+                              borderRadius: BorderRadius.circular(25),
+                            ),
                             child: const Icon(
                               FLucideIcons.keyRound,
                               color: Colors.white,

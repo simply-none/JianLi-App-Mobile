@@ -14,7 +14,6 @@ import 'package:material_ui/material_ui.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/sheet_form.dart';
-import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/sync/sync_discovery.dart';
@@ -224,13 +223,19 @@ class _SyncPageState extends ConsumerState<SyncPage> {
                                   children: [
                                     Row(
                                       children: [
-                                        SquircleBox(
-                                          size: 36,
-                                          radius: 10,
-                                          gradient: AppTokens.accentGradient(
-                                            AppTokens.accent(5),
-                                          ),
+                                        // 图标瓷片统一配方：Container +
+                                        // accentGradient + 圆角≈size×0.33
+                                        Container(
+                                          width: 36,
+                                          height: 36,
                                           alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            gradient: AppTokens.accentGradient(
+                                              AppTokens.accent(5),
+                                            ),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
                                           child: Icon(
                                             FLucideIcons.monitorSmartphone,
                                             color: Colors.white,

@@ -27,7 +27,6 @@ import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/sheet_surface.dart';
-import '../../../app/ui/squircle_box.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
@@ -310,18 +309,19 @@ class _FileVaultPageState extends ConsumerState<FileVaultPage> {
         mainAxisSize: MainAxisSize.min,
         spacing: 14,
         children: [
+          // 空态图标也统一为渐变瓷片（与列表/门禁图标同配方）
           Container(
             width: 76,
             height: 76,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: _accent.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
+              gradient: AppTokens.accentGradient(_accent),
+              borderRadius: BorderRadius.circular(25),
             ),
             child: Icon(
               totallyEmpty ? FLucideIcons.folderLock : FLucideIcons.searchX,
-              size: 32,
-              color: _accent,
+              color: Colors.white,
+              size: 34,
             ),
           ),
           Text(
@@ -564,11 +564,16 @@ class _GateForm extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Center(
-              child: SquircleBox(
-                size: 76,
-                radius: 26,
-                gradient: AppTokens.accentGradient(AppTokens.accent(2)),
+              // 图标瓷片统一配方：Container + accentGradient +
+              // 圆角≈size×0.33 + 白图标（弃用 SquircleBox 超椭圆弧度）
+              child: Container(
+                width: 76,
+                height: 76,
                 alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: AppTokens.accentGradient(AppTokens.accent(2)),
+                  borderRadius: BorderRadius.circular(25),
+                ),
                 child: const Icon(
                   FLucideIcons.folderLock,
                   color: Colors.white,
@@ -643,11 +648,14 @@ class _FileTile extends StatelessWidget {
       onLongPress: onLongPress,
       child: Row(
         children: [
-          SquircleBox(
-            size: 44,
-            radius: 14,
-            gradient: AppTokens.accentGradient(AppTokens.accent(2)),
+          Container(
+            width: 44,
+            height: 44,
             alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: AppTokens.accentGradient(AppTokens.accent(2)),
+              borderRadius: BorderRadius.circular(14),
+            ),
             child: Icon(_icon, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
