@@ -13,7 +13,6 @@ import '../theme/app_theme.dart';
 import '../theme/card_textures.dart';
 import '../providers/theme_providers.dart';
 import 'animated_stat.dart';
-import 'squircle_box.dart';
 
 /// 功能页渐变横幅：图标 + 标题 + 副标题 + 可选统计行
 ///
@@ -73,6 +72,12 @@ class PageBanner extends ConsumerWidget {
         ref.watch(bannerTextureProvider).value ??
         CardTextures.texture11;
     final accent = AppTokens.accent(accentIndex);
+    final effectiveGradient = gradient ?? AppTokens.accentGradient(accent);
+    // 图标跟随横幅真实颜色（含 gradient: 自定义色），避免固定紫色（accentIndex 默认 0）
+    final bannerColor = (effectiveGradient is LinearGradient &&
+            effectiveGradient.colors.isNotEmpty)
+        ? effectiveGradient.colors.first
+        : accent;
     final radius = cornerRadius ?? AppTokens.radiusLg;
     return Padding(
       padding:
@@ -85,7 +90,7 @@ class PageBanner extends ConsumerWidget {
           ),
       child: Container(
         decoration: BoxDecoration(
-          gradient: gradient ?? AppTokens.accentGradient(accent),
+          gradient: effectiveGradient,
           borderRadius: BorderRadius.circular(radius),
           boxShadow: shadow ? AppTokens.elevation(context, level: 3) : null,
         ),
@@ -117,13 +122,24 @@ class PageBanner extends ConsumerWidget {
                   children: [
                     Row(
                       children: [
-                        // 半透明白图标盘（渐变底上的层次件，与首页英雄卡同语言）
-                        SquircleBox(
-                          size: 44,
-                          radius: 14,
-                          color: Colors.white.withValues(alpha: 0.22),
+                        // 灰色透明渐变图标盘：背景用中性浅灰白透明渐变，压任何横幅色都可见；
+                        // 图标保持横幅同色；bannerColor 取自横幅真实渐变首色，效率 tab 不再固定紫色。
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.white.withValues(alpha: 0.50),
+                                Colors.white.withValues(alpha: 0.22),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                           alignment: Alignment.center,
-                          child: Icon(icon, color: Colors.white, size: 22),
+                          child: Icon(icon, color: bannerColor, size: 22),
                         ),
                         const SizedBox(width: 12),
                         Expanded(

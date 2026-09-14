@@ -7,7 +7,6 @@ import 'package:material_ui/material_ui.dart';
 
 import '../anim/jianli_haptics.dart';
 import '../theme/app_theme.dart';
-import 'squircle_box.dart';
 import 'tap_scale.dart';
 
 /// 功能入口卡：渐变图标底盘 + 标题 + 描述 + 箭头
@@ -51,10 +50,15 @@ class EntryCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              SquircleBox(
-                size: 46,
-                radius: 16,
-                gradient: AppTokens.accentGradient(accent),
+              // 渐变图标瓷片：对齐首页快捷入口（Container + BorderRadius.circular +
+              // accentGradient + 白图标）；弧度≈0.33 与首页 _QuickTile(r10/30) / _MoreRow(r11/34) 同比例。
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  gradient: AppTokens.accentGradient(accent),
+                  borderRadius: BorderRadius.circular(15),
+                ),
                 alignment: Alignment.center,
                 child: Icon(icon, color: Colors.white, size: 22),
               ),
