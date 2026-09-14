@@ -21,6 +21,7 @@ class TodoStatusChip extends StatelessWidget {
     required this.color,
     this.fontSize = 11,
     this.height,
+    this.padding,
   });
 
   final String label;
@@ -32,6 +33,9 @@ class TodoStatusChip extends StatelessWidget {
   /// 行高倍数（null = 默认；传 1 与同行标题精确垂直居中）
   final double? height;
 
+  /// 内边距（null = SoftChip 默认 all(4)；列表卡片族传 h8/v3 对齐提醒卡片）
+  final EdgeInsetsGeometry? padding;
+
   @override
   Widget build(BuildContext context) => SoftChip(
         label: label,
@@ -39,19 +43,46 @@ class TodoStatusChip extends StatelessWidget {
         alpha: 0.15,
         fontSize: fontSize,
         height: height,
+        padding: padding ?? const EdgeInsets.all(4),
       );
 }
 
 /// 标签 chip（带标签名，配色走标签自身颜色）
+///
+/// [dot] = true 时在标签名前加 6px 色点：列表卡片里「状态 chip / 标签 chip」同排时，
+/// 色点是与状态 chip 区分的第二重信号（底色之外的形状差）。
 class TodoTagChip extends StatelessWidget {
-  const TodoTagChip({super.key, required this.name, required this.color});
+  const TodoTagChip({
+    super.key,
+    required this.name,
+    required this.color,
+    this.padding,
+    this.dot = false,
+  });
 
   final String name;
   final Color color;
 
+  /// 内边距（null = SoftChip 默认 all(4)）
+  final EdgeInsetsGeometry? padding;
+
+  /// 标签名前是否加 6px 色点
+  final bool dot;
+
   @override
-  Widget build(BuildContext context) =>
-      SoftChip(label: name, color: color, alpha: 0.14);
+  Widget build(BuildContext context) => SoftChip(
+        label: name,
+        color: color,
+        alpha: 0.14,
+        padding: padding ?? const EdgeInsets.all(4),
+        leading: dot
+            ? Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              )
+            : null,
+      );
 }
 
 /// 主题感知的状态元信息 —— **UI 渲染一律用这个，不要用 [statusMeta]**。

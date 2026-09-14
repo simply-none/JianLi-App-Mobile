@@ -174,7 +174,7 @@
 统计横幅（PageBanner + 4 个统计数）             ← 随滚动移出
 搜索行（页内搜索框 h40 + 筛选按钮）              ← ★ 吸顶锚点，常驻视口顶部
 生效条件 chip（可点掉的摘要，如「条件-搜索」）    ← 随滚动移出
-Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 ← 随滚动移出（是状态范围，不是筛选）
+Tab 栏（h34 分段）：进行中（默认）/ 未开始 / 已完成 / 已取消 / 全部 ← 随滚动移出（是状态范围，不是筛选；口径见 §3.7）
 列表区（按「今天 / 明天 / 更晚」分组标题 + 卡片）  ← 从搜索行下方滚过
 ```
 
@@ -221,18 +221,24 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
 
 ### 3.7 Tab 栏（状态范围）
 
-- padding `16/4/4`，底 `muted`，`r11`，总高 34，内部 padding 3，spacing 3，`crossAxisAlignment.stretch`（选中白底要填满内轨 —— `fill_container` 不会自动发生，见 §3.17）。
-- Tabs = 进行中（默认）/ 已完成 / 已取消 / 全部（`kTodoScopeTabs`）。
+- padding `16/4/4`，底 `muted`，`r11`，总高 34，内部 padding 3，spacing 3，`crossAxisAlignment.stretch`（选中白底要填满内轨 —— `fill_container` 不会自动发生，见 §3.17）。段宽由 `Expanded` 均分：**5 段在 320px 窄屏仍放得下**（每段 ~44px，3 字标签 13px ≈ 36px）；6 段会挤爆「重新开始」这种 4 字标签 → **上限 5 段**。
+- Tabs = 进行中（默认）/ 未开始 / 已完成 / 已取消 / 全部（`kTodoScopeTabs`，顺序即画布顺序）。
+- **6 状态 → 5 格是「完整划分」（不重不漏）**，口径表写在 `todo_filter.dart` 的 `applyTodoScope` 文档注释里，**改前先看那张表**：
+  - 进行中 = `in_progress` · `blocked` · `restart`（**已开工未收尾**）
+  - 未开始 = `not_started` ／ 已完成 = `completed` ／ 已取消 = `cancelled` ／ 全部 = 以上四种之和
+- ⚠️ **2026-09-14 修正（用户实指）**：旧实现把 `active` 写成「未完成且未取消」→「进行中」页签里混进了未开始的任务。**不要再按「未完成」这个宽口径写 scope。**
+- 「进行中」与 PC `useTodo.inProgressCount`（严格 `=== 'in_progress'`）**有意不同**：移动端 Tab 只有 5 格、塞不下 6 个状态各自一格；卡片自身的状态 chip 仍标精确状态（阻塞 / 重新开始分得清），信息不丢。
+- ⚠️ **横幅统计行未同步**：`todo_page._banner` 仍是 全部 / 进行中 / 已完成 / 已取消 四格 → 现在**不再相加等于全部**（未开始没单列）。补一格即 5 格，320px 窄屏偏紧，**待用户定**。
 - 这是**状态范围**，不是筛选；高级搜索抽屉不重复提供状态。随滚动移出（**不吸顶** —— 用户明确纠正旧实现「Tab 吸顶」）。
+- 设计记录板：Ardot `725728418922780`（5 格真宽渲染 + 口径划分表）。
 
 ### 3.8 列表项（TodoListTile）
 
-- 卡片：底 `card`，边框，圆角 `radiusMd`=16，padding 14。`Row`：checkbox 20×20 `r6`（完成→主色填充 + 白 check size13；未完成→透明 + border 1.5）· 内容 · ⋯ `ellipsis` size16。
-- 内容 3 行：
-  1. 标题 `15/SemiBold` maxLines2，完成划线；+ `_StatusChip`（色底 15% `r10` pad4 `11/SemiBold`）+ 优先级文字 `11/SemiBold`（`priorityColor`）。
-  2. tag `Wrap`（`_TagChip` 色底 14% `r10` pad4 `11/SemiBold`）若有标签。
-  3. dueText `11/muted` ⇄「子任务 d/t」`11/muted` 若任一有。
-- `indent` → `cornerDownRight` size14 在标题前（子任务层级标识）。
+> ⚠️ 已并入**列表卡片族「三行式」**，**规格以 §3.19 为准**（2026-09-14 从旧「左侧 3.5px 轴线式」迁入）。
+> 旧结构（3.5px 状态色轴 / 20 勾选环 / 状态圆点+彩色小字 / ⋯ 在标题行）**全部作废，勿照抄**。
+
+- `AppCard(margin: EdgeInsets.zero, padding: 14, elevation: 1)`；R1 = 状态色渐变图标盘(40·r13) + 标题(15/w600·≤2 行) + 勾选(22)；R2 = 状态 chip + 标签 chip(≤3+「+N」) ┈┈ 子任务 `n/m`；R3 = `⏱时间 · ⟳重复` ┈┈ `⚑优先级` + `⋯`(16)。
+- `indent` → `cornerDownRight` size14 放在 **R1 最前**（图标盘随之整体右移）。
 - 点击 → `openTodoDetail`（只读详情）；⋯ → `showTodoActionSheet`。
 - 列表分组标题 `12/Bold` mutedForeground（若 `groupBy != none`）；卡片 gap 10；`ListView` padding `fromLTRB(pagePadding, 0, pagePadding, pageBottomGapOf)`（`top=0` 让横幅贴 header；底部 `pageBottomGapOf`；左右 `pagePadding`，**禁止再给横幅叠 16**）。
 
@@ -341,7 +347,7 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
 
 | 消费方 | 骨架构成（横幅统计 / Tab / 备注） |
 |---|---|
-| `todo_page.dart` | 全部/进行中/已完成/已取消 · Tab=状态范围 · 横幅纹理「卡11」+ 条件 chip 行（原子迁移，零视觉变化） |
+| `todo_page.dart` | 进行中/未开始/已完成/已取消/全部 · Tab=状态范围（口径见 §3.7） · 横幅纹理「卡11」+ 条件 chip 行（原子迁移，零视觉变化） |
 | `reminder_list_page.dart` | 全部/定点/周期/启用中 · Tab=全部/定点/周期/多状态 · **提醒守护卡（常驻「N/4 项已就绪」→ 点开 `_ReminderGuardSheet` lg 抽屉：四项系统开关一键修复 + 后台保活开关 + 厂商路径引导 + 打开应用设置）** + 搜索按标题/内容 + 编辑弹层走 `SheetScaffold`（选「闹钟」且未授权时显示降级提示行）+ **长按卡片 → `showSheetActionMenu`【编辑/停用·启用/删除】**（stateful 只读不响应），删除走 `showSheetConfirm` |
 | `countdown_page.dart` | 全部/进行中/已暂停/已结束 · Tab=同四段 · 大计时器白卡主色环（横幅与搜索行之间，随滚动移出）+ 新建/编辑共用 `_CountdownFormSheet`（**设定方式对齐 PC（2026-09-12）**：指定时刻=复用待办 `showTodoDateTimeSheet` 月历选择器；指定时长=年/月/日/时/分/秒六小输入框（年=365 天、月=30 天折算），默认 1 小时；编辑未改时间设定保留原 timing，改了回到 running 并重排通知）+ **长按卡片 → `showSheetActionMenu`【编辑/删除】**，删除走 `showSheetConfirm` |
 | `pomodoro_page.dart` | **2026-09-13 重构：页面内本地计时（计时只在本页、离开/切后台即停并复位；原 startTime 持久状态机与原生阶段通知已删）**。头部统一 `‹ 番茄钟 [记录][设置]`（已删 ⟳ 横竖屏循环与 `pomodoro.orientation`）；底部统一 `[开始专注/暂停/继续] [重新开始]`。**三种展示效果**（basic_info 键 `pomodoro_display`，设置弹层 choiceChip 切换；展示效果即方向，离开页面恢复跟随系统）：`normal`=横幅 + 白卡进度环（**竖屏计时卡用 `Expanded` 撑满剩余高度、内容居中**；横屏=左横幅 + 右大环）／`clean`=仅进度环内容卡（无说明文字，锁竖屏）／`landscape`=**大字倒计时 HH:mm:ss**（`FittedBox(scaleDown)` 兜底，锁横屏）。阶段完成写 `pomodoro_status` 流水 + `NotificationService.showNow` 提示音 + `haptic(success)`；长按整页 → 编辑配置弹层（lg：专注/休息分钟 + 展示效果 + **周期规则**）。**周期规则**（basic_info 键 `pomodoro_cycle_rule`）：`未完成重新开始`（默认，丢弃进度）/ `未完成继续上一轮`（专注剩余写 `pomodoro_progress`，重进页面或切后台回前台还原为「已暂停」，点「继续」才走）；仅作用于专注阶段 |
@@ -353,30 +359,44 @@ Tab 栏（h34 分段）：进行中（默认）/ 已完成 / 已取消 / 全部 
 
 ### 3.19 列表卡片族「三行式」（2026-09-14 收口）
 
-> 提醒 / 主题对话 / 可归类笔记三类列表卡统一为**三行式**，卡壳规格完全同源。
-> **新增列表卡照此组装，勿各写一套。**
+> 提醒 / 主题对话 / 可归类笔记 / 待办 四类列表卡统一为**三行式**，卡壳规格完全同源。
+> **新增列表卡照此组装，勿各写一套。**（待办卡 2026-09-14 从旧「左侧 3.5px 轴线式」迁入本族。）
 
-**卡壳规格（三者完全一致）**：`AppCard(margin: EdgeInsets.zero, padding: EdgeInsets.all(14))`
+**卡壳规格（四者完全一致）**：`AppCard(margin: EdgeInsets.zero, padding: EdgeInsets.all(14))`
 —— white 底 + r16 + 1px `colors.border` + `elevation:1`；行间 `SizedBox(height: 8)`；
 列表项间距由外层 `Padding(bottom: 10)` 提供（**卡内 `margin` 必须清零**，
 否则与 `AppCard` 默认 `vertical:6` 叠成 22px 大间隙，2026-09-13 用户实指）。
 
 **图标盘（R1 左）**：`Container(40×40, BoxDecoration(gradient: AppTokens.accentGradient(域色), borderRadius: circular(13)))`
 + 20px 白图标。**普通圆角矩形，不是 `SquircleBox`**（弧度基准 = 首页快捷入口）。
+⚠️ **不存在 `AppTokens.iconRadius()`**（多次误记）：弧度就是这个写死的 `circular(13)`，
+尺寸不同的盘按 40→13 的比例自行推导并写注释。
 
 | 卡 | R1 | R2 | R3 |
 |---|---|---|---|
 | 提醒 `_ReminderTile` | 图标盘 + 标题 + 模式 `SoftChip` + `FSwitch` | 规则摘要（含免打扰，2 行） | 下次触发 / 前台驱动 / 已停用 |
 | 主题对话 `_ThemeCard` | 首字头像(44·r14) + 标题 + `chevronRight` | 标签 `Wrap`（≤4 + 「+N」） | `{N} 条 · 更新于 {X}` + 备注 |
 | 可归类笔记 `_NoteCard` | 图标盘 + 标题 + **时间** + `chevronRight` | 摘要正文（2 行） | 分类 chip + 标签徽标 + 「+N」 |
+| 待办 `_TodoListTile` | 图标盘(状态色) + 标题(≤2 行) + **勾选框(22)** | 状态 `SoftChip` + 标签 chips(≤3 + 「+N」) ┈┈ 子任务 n/m | ⏱时间 · ⟳重复 ┈┈ ⚑优先级 + **⋯** |
 
-- **「+N」溢出规则三条卡共用**：最多展示 4 个（笔记卡的分类上限 2），
-  超出合并为 **1 个** `FlatBadge`（笔记卡把分类与标签的隐藏数**合并计数**）。
-- **「时间」两种落位都已被采用**：主题卡放 R3（行内文本）、笔记卡放 R1 行尾
-  （2026-09-14 用户选定变体 B，标签行独占整宽）。改一张卡前先看它既有约定，**勿互相改**。
+- **「+N」溢出规则四张卡共用**：`FlatBadge`（最多展示 4 个；笔记卡的分类上限 2、待办卡的标签上限 3），
+  超出合并为 **1 个**计数徽标（笔记卡把分类与标签的隐藏数**合并计数**）。
+- **「时间」三种落位都已被采用，别互相改**：主题卡放 R3（行内文本）、笔记卡放 R1 行尾
+  （2026-09-14 用户选定变体 B，标签行独占整宽）、待办卡放 R3 行首（要和时间行的
+  ⟳重复 / 行尾 ⚑优先级 做分组）。
+- **第二动作位的落位约定**：卡片最右侧的「开关 / 勾选 / 进入箭头」一律在 **R1 行尾**
+  （提醒=`FSwitch`、待办=`_TodoCheck`、笔记=`chevronRight`）；「⋯ 更多」这类**次级**动作
+  放 **末行行尾**，与主操作位分开（待办卡 2026-09-14 定）。
 - **笔记卡的分类 ≠ 标签**：`categories` → `SoftChip(alpha:0.10, leading: Icon(FLucideIcons.folder, size:11))`
   （琥珀 + 前置文件夹图标）；`tags` → `SoftChip(alpha:0.14, leading: 6×6 色点)`
   （跟随 `NoteTag.colorValue`）。**只靠底色区分不够**，必须靠「folder 图标 / 色点」区分。
+- **待办卡的状态 ≠ 标签**：同一条 R2 上两个 chip 都是 `SoftChip`，靠
+  **命令 `TodoStatusChip`（alpha 0.15 · 无点）/ `TodoTagChip(dot:true)`（alpha 0.14 · 6px 色点）** 区分。
+  `TodoTagChip.dot` 是 2026-09-14 新增的可选参数（默认 false → `todo_card_view` 不受影响）。
+- **待办卡的状态色只在两处出现**：R1 图标盘（`accentGradient(statusColor)`）与 R2 状态 chip；
+  旧的「左侧 3.5px 色轴」已删除。状态色取 `statusMetaOf(context, status)`（进行中 = `colors.primary`）。
+- ⚠️ **chip 内边距尚未全族统一**：本族新口径为 **h8/v3**（画布），但 `_ReminderTile`
+  仍是 `SoftChip` 默认 `all(4)`。统一时**四张卡一起改**，勿只改一张。
 - **笔记卡摘要要去重**：仓库写入格式 `excerpt = "{title}\n{正文首行}"`
   （`note_repository._excerptOf`），首行即标题 → 卡片须剔除首行再渲染，
   否则 R1 标题与 R2 摘要重复（`_NoteCard._excerptBody`）。

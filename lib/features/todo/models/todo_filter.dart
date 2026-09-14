@@ -9,28 +9,48 @@ import '../models/todo.dart';
 /// 分组方式
 enum TodoGroupBy { none, status, due, parent }
 
-/// 列表页 Tab 栏的状态范围（画布「07 待办·列表页 主态」Tab 栏：进行中 / 已完成 / 已取消 / 全部）
-enum TodoScope { active, completed, cancelled, all }
+/// 列表页 Tab 栏的状态范围
+/// （画布「07 待办·列表页 主态」Tab 栏：进行中 / 未开始 / 已完成 / 已取消 / 全部）
+enum TodoScope { active, notStarted, completed, cancelled, all }
 
 /// Tab 栏选项（值 + 字面量），顺序即画布顺序
 const List<(TodoScope, String)> kTodoScopeTabs = [
   (TodoScope.active, '进行中'),
+  (TodoScope.notStarted, '未开始'),
   (TodoScope.completed, '已完成'),
   (TodoScope.cancelled, '已取消'),
   (TodoScope.all, '全部'),
 ];
 
 /// 按 Tab 栏状态范围过滤。
-/// 「进行中」= 未完成且未取消（含未开始/进行中/阻塞/重新开始），不是单指 in_progress 状态。
+///
+/// ⚠️ 六个状态 → 五个 scope 是**完整划分**（不重不漏），改这里先看这张表。
+/// 2026-09-14 修正：旧实现把 `active` 写成「未完成且未取消」，
+/// 于是「进行中」页签里混进了未开始的任务（用户实指）。
+///
+/// | scope      | 覆盖状态                              |
+/// |------------|---------------------------------------|
+/// | active     | `in_progress` / `blocked` / `restart` |
+/// | notStarted | `not_started`                         |
+/// | completed  | `completed`                           |
+/// | cancelled  | `cancelled`                           |
+/// | all        | 全部                                  |
+///
+/// 「进行中」口径 = **已开工未收尾**：进行中 / 阻塞 / 重新开始三者都算「动手了但没结束」。
+/// 与 PC `useTodo.inProgressCount`（严格 `=== 'in_progress'`）有意不同 ——
+/// 移动端 Tab 栏只有 5 格、塞不下 6 个状态各自一格；卡片自身的状态 chip
+/// 仍标精确状态（阻塞 / 重新开始分得清），信息不丢。
 List<TodoItem> applyTodoScope(List<TodoItem> items, TodoScope scope) {
   switch (scope) {
     case TodoScope.active:
       return items
           .where((t) {
             final s = effectiveStatus(t);
-            return s != 'completed' && s != 'cancelled';
+            return s == 'in_progress' || s == 'blocked' || s == 'restart';
           })
           .toList();
+    case TodoScope.notStarted:
+      return items.where((t) => effectiveStatus(t) == 'not_started').toList();
     case TodoScope.completed:
       return items.where((t) => effectiveStatus(t) == 'completed').toList();
     case TodoScope.cancelled:
