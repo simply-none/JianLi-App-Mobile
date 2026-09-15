@@ -61,6 +61,9 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
   /// 传书抽屉：手动设备 IP 输入控制器（SheetInputBox 需要；dispose 释放）
   final _transferIpController = TextEditingController();
 
+  /// 分类管理弹窗：新建分类输入控制器（SheetInputBox 需要；dispose 释放）
+  final _categoryNameController = TextEditingController();
+
   /// 排序：recent=最近阅读 / added=添加时间 / title=书名（持久化）
   String _sortBy = 'recent';
 
@@ -77,6 +80,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
   void dispose() {
     _searchController.dispose();
     _transferIpController.dispose();
+    _categoryNameController.dispose();
     super.dispose();
   }
 
@@ -647,7 +651,6 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
         size: SheetSize.lg,
         body: StatefulBuilder(
           builder: (sheetContext, setSt) {
-            var newName = '';
             final cats = ref.watch(categoriesStreamProvider);
             final bookCatsAsync = ref.watch(bookCategoriesStreamProvider);
             final shelf = ref.watch(bookshelfStreamProvider);
@@ -670,27 +673,35 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               spacing: 10,
               children: [
-                // 新建分类输入行
-                Row(
-                  spacing: 8,
+                // 新建分类（§4.6：与输入框并排的按钮全自绘、与 SheetInputBox 等高 40）
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: FTextField(
-                        label: const Text('新建分类'),
-                        control: FTextFieldControl.managed(
-                          onChange: (v) => newName = v.text.trim(),
+                    const SheetFieldLabel('新建分类'),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SheetInputBox(
+                            controller: _categoryNameController,
+                            hintText: '如 国学典籍',
+                          ),
                         ),
-                      ),
-                    ),
-                    FButton(
-                      onPress: () async {
-                        if (newName.isEmpty) return;
-                        await ref
-                            .read(ebookRepositoryProvider)
-                            .addCategory(newName);
-                        setSt(() {});
-                      },
-                      child: const Text('添加'),
+                        const SizedBox(width: 6),
+                        SheetActionButton(
+                          label: '添加',
+                          primary: true,
+                          onTap: () async {
+                            final name = _categoryNameController.text.trim();
+                            if (name.isEmpty) return;
+                            await ref
+                                .read(ebookRepositoryProvider)
+                                .addCategory(name);
+                            _categoryNameController.clear();
+                            setSt(() {});
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -952,47 +963,6 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
               currentKeys.isNotEmpty && selCount == currentKeys.length;
           final hasSelection = peer != null && selCount > 0;
 
-          // 自绘小按钮（与 SheetInputBox 同高 40，见 interaction-patterns §4.6）
-          Widget sheetAction({
-            required String label,
-            required VoidCallback? onTap,
-            bool primary = false,
-            IconData? icon,
-          }) => TapScale(
-            onTap: onTap,
-            child: Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                gradient: primary ? AppTokens.primaryGradient(context) : null,
-                color: primary ? null : t.colors.muted,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (icon != null) ...[
-                    Icon(
-                      icon,
-                      size: 14,
-                      color: primary ? Colors.white : t.colors.mutedForeground,
-                    ),
-                    const SizedBox(width: 5),
-                  ],
-                  Text(
-                    label,
-                    style: t.typography.body.sm.copyWith(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: primary ? Colors.white : t.colors.foreground,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-
           // 书目勾选行（拉取 = 远端书目；传出 = 本地书架），key = filePath
           Widget bookRow(String title, String? subtitle, String key) {
             final selected = checked.contains(key);
@@ -1148,7 +1118,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    sheetAction(
+                    SheetActionButton(
                       label: '添加',
                       primary: true,
                       onTap: () {
@@ -1176,7 +1146,7 @@ class _BookshelfPageState extends ConsumerState<BookshelfPage> {
                       },
                     ),
                     const SizedBox(width: 6),
-                    sheetAction(
+                    SheetActionButton(
                       label: scanning ? '扫描中…' : '扫描',
                       icon: FLucideIcons.scanLine,
                       onTap: scanning

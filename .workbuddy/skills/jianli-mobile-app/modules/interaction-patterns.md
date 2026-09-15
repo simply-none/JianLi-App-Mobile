@@ -565,6 +565,8 @@ chip 内嵌图标（TOTP 胶囊里的 `keyRound`）、扫码页关闭圆钮、�
     ],
   )
   ```
+- **2026-09-15 收口为共享原子**：上例的自绘按钮已抽成 `SheetActionButton`（`lib/app/ui/sheet_form.dart`）——h40 · r10 · 左右 padding 14 · 14/w600；`primary: true` = 主色渐变底 + 白字，否则 `muted` 底 + 前景字；`icon` 可选（14px）；`onTap: null` = 禁用态（如「扫描中…」）。**凡「输入框 + 按钮」同一行，一律 `SheetInputBox` + `SheetActionButton`（间距 6），不要再内联自绘第二份，更不要 `FButton`。**
+- ⚠️ **实例（用户实拍指出）**：电子书「分类管理」弹窗的「新建分类」行曾直接并排 `FTextField(label:)/FButton` → 输入框与按钮高度、基线均不对齐。已改为 `SheetFieldLabel('新建分类') + SizedBox(6) + Row(SheetInputBox + SheetActionButton(primary))`；同批把电子书「传书」抽屉内的私有 `sheetAction` 闭包迁到该原子，删除本地副本（唯一实现）。
 - **要点**：① 两侧同为自绘容器 → 结构性必然等高，键盘弹起不漂移，与字号缩放无关；② 圆角与输入盒统一 10；③ 次要按钮（如「扫描」独立行）可继续用 FButton——本规则只约束「与输入框并排」的场景；④ 需要固定高度/并排对齐的输入框**一律 SheetInputBox，不要 SizedBox 套 FTextField**（forui 字段适合自适应高度场景）。
 - ⚠️ 禁止再写「SizedBox(height:X) 套 FTextField/FButton 求对齐」——2026-09-13 两轮截图实指后由自绘方案收口。
 - **消费方（2026-09-13 起）**：文件互传「手动填 IP + 添加」、同步页、以及**主题对话「对话记录」页底部输入条**（`SheetInputBox` + 40×40 主色渐变**方形**发送钮，圆角 10；该页原先用 `FTextField + FButton.icon` 必然不等高）。`SheetInputBox` 已加可选 **`onSubmitted`** —— 聊天式输入条（回车/软键盘「完成」即发送）传它，别再为了回车发送而退回 `FTextField`。

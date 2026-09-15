@@ -10,6 +10,7 @@
 //   - [SheetInputBox]   单行输入盒 h40（搜索栏同款：卡色底 + 1px 描边 + r10 + 14px，§4.5）
 //   - [SheetMultilineBox] 多行输入盒（随内容增长，maxLines:null；内部直接 TextField 禁套 Row）
 //   - [SheetSwitchRow]  开关行：muted 底 · r14 · 左图标 + 文字 + 右 FSwitch
+//   - [SheetActionButton] 自绘小按钮 h40（与 [SheetInputBox] 并排等高，§4.6）
 //
 // ⚠️ 高度三档制（interaction-patterns.md §一）：[SheetScaffold] 的 size 只许传
 // SheetSize.sm/md/lg；调用点 showFSheet 必须配对
@@ -21,6 +22,7 @@ import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import 'gradient_button.dart';
 import 'sheet_surface.dart';
+import 'tap_scale.dart';
 
 /// 弹窗定高骨架：把手 + 标题行 + 中间滚动体 + （可选）底部固定条。
 ///
@@ -255,6 +257,67 @@ class SheetInputBox extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 自绘小按钮：**强制 h40**，与 [SheetInputBox] 并排时上下沿严格对齐（§4.6）。
+///
+/// 为什么不用 `FButton`：forui 按钮自带内边距/最小高度，与 40 高的输入盒并排会出现
+/// 高度与基线错位（2026-09-15 电子书「分类管理」实踩）。凡「输入框 + 按钮」同一行，
+/// 一律 输入盒 + 本按钮，等高 40。
+/// - [primary] = 主色渐变底 + 白字；否则 muted 底 + 前景字。
+/// - [onTap] 可为 null（禁用态，如「扫描中…」）。
+class SheetActionButton extends StatelessWidget {
+  const SheetActionButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.primary = false,
+    this.icon,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final bool primary;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return TapScale(
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: primary ? AppTokens.primaryGradient(context) : null,
+          color: primary ? null : t.colors.muted,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 14,
+                color: primary ? Colors.white : t.colors.mutedForeground,
+              ),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              label,
+              style: t.typography.body.sm.copyWith(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: primary ? Colors.white : t.colors.foreground,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
