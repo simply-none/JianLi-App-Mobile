@@ -1,7 +1,9 @@
 // 笔记标签 chip —— 列表 / 详情 / 编辑页共用的彩色小标签
 //
-// 视觉对齐桌面端：色点 + 名称；选中态 = 标签色 16% 软底 + 彩色文字 + 对勾
+// 视觉对齐桌面端：色点 + 名称；选中态 = 标签色 16% 软底 + 彩色文字
 // （桌面端筛选 chips 同款 color+'20' 底、color 文字）。圆角 pill、可点。
+// ⚠️ 尺寸与分类 chip（编辑页 `_CategoryChip`）严格一致；选中态**绝不改变尺寸**
+// （不加对勾、字重恒定，2026-09-15 定案）。
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -11,7 +13,7 @@ import '../models/note_tag.dart';
 /// 笔记标签 chip
 ///
 /// 尺寸与分类 chip 统一（页面规范：同一容器内所有筛选/选项 chip 同规格）：
-/// padding h14/v7 + body.sm 文字 + 色点；选中态 = 标签色 16% 软底 + 彩色文字 + 对勾。
+/// padding h14/v6 + body.xs + w600 + 色点；选中态 = 标签色 16% 软底 + 彩色文字（**尺寸不变**）。
 class NoteTagChip extends StatelessWidget {
   const NoteTagChip({
     super.key,
@@ -34,7 +36,7 @@ class NoteTagChip extends StatelessWidget {
     return FTappable(
       onPress: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
           color: selected ? color.withValues(alpha: 0.16) : t.colors.card,
           borderRadius: BorderRadius.circular(AppTokens.radiusLg),
@@ -51,17 +53,17 @@ class NoteTagChip extends StatelessWidget {
               decoration: BoxDecoration(shape: BoxShape.circle, color: color),
             ),
             const SizedBox(width: 6),
+            // ⚠️ 尺寸与分类 chip 严格一致（同一容器内 chip 同规格，2026-09-15 用户点名）：
+            // padding h14/v6 + body.xs + w600 恒定。且选中/未选**尺寸必须完全一致**——
+            // 不加对勾、字重恒定（w500→w600 会触发中文字面度量变化 → 高度变大），
+            // 选中仅靠「标签色软底 + 彩色文字 + 彩色描边」表达。
             Text(
               tag.name,
-              style: t.typography.body.sm.copyWith(
+              style: t.typography.body.xs.copyWith(
                 color: fg,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            if (selected) ...[
-              const SizedBox(width: 4),
-              Icon(FLucideIcons.check, size: 14, color: color),
-            ],
           ],
         ),
       ),

@@ -16,6 +16,7 @@ import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/gradient_button.dart';
 import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/sheet_surface.dart';
+import '../../../app/ui/ui_atoms.dart';
 import '../models/note_tag.dart';
 import '../providers/note_providers.dart';
 import 'note_tag_chip.dart';
@@ -227,6 +228,15 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
     }
   }
 
+  /// 表单分组卡（方案A：一字段组一卡）——卡壳用 [AppCard]（padding 14 / margin 0 /
+  /// elevation 1），卡内「label + 字段」；卡片负责分组，输入盒负责强调可编辑区。
+  Widget _formCard(Widget child) => AppCard(
+    padding: const EdgeInsets.all(14),
+    margin: EdgeInsets.zero,
+    elevation: 1,
+    child: child,
+  );
+
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
@@ -253,6 +263,8 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
       //（scaffold 默认 childPadding 会再叠一层 → 左右 ~26px，与其他新增页不一致）
       childPad: false,
       header: FHeader.nested(
+        // 标题左对齐（forui 默认 Alignment.center 会居中）——紧贴返回按钮右侧
+        titleAlignment: Alignment.centerLeft,
         title: Text(widget.noteKey == null ? '新建笔记' : '编辑笔记'),
         prefixes: [FHeaderAction.back(onPress: () => context.pop())],
       ),
@@ -275,98 +287,118 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
                           16,
                         ),
                         children: [
-                          // 标题（字段 label 对齐全局规范：14/muted + 自带 bottom:6）
-                          const SheetFieldLabel('标题'),
-                          SheetInputBox(
-                            controller: _title,
-                            hintText: '给这篇笔记起个标题',
-                          ),
-                          const SizedBox(height: 16),
-                          // 分类（直接放页面背景上，不再包白卡分组；多选语义）
-                          const SheetFieldLabel('分类（可多选）'),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: [
-                              for (final c in cats)
-                                _CategoryChip(
-                                  label: c,
-                                  selected: _selectedCategories.contains(c),
-                                  onTap: () => setState(() {
-                                    _selectedCategories.contains(c)
-                                        ? _selectedCategories.remove(c)
-                                        : _selectedCategories.add(c);
-                                  }),
+                          // 分组卡 · 标题（方案A：一字段组一卡，卡内 label + 字段）
+                          _formCard(
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SheetFieldLabel('标题'),
+                                SheetInputBox(
+                                  controller: _title,
+                                  hintText: '给这篇笔记起个标题',
                                 ),
-                              _CategoryChip(
-                                label: '新建分类',
-                                icon: FLucideIcons.plus,
-                                selected: false,
-                                onTap: _newCategory,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 16),
-                          // 标签（可多选）
-                          const SheetFieldLabel('标签（可多选）'),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: [
-                              for (final tag in tagDefs)
-                                NoteTagChip(
-                                  tag: tag,
-                                  selected: _selectedTags.contains(tag.key),
-                                  onTap: () => setState(() {
-                                    _selectedTags.contains(tag.key)
-                                        ? _selectedTags.remove(tag.key)
-                                        : _selectedTags.add(tag.key);
-                                  }),
+                          const SizedBox(height: 10),
+                          // 分组卡 · 分类 + 标签（同卡内两段：label + chips）
+                          _formCard(
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SheetFieldLabel('分类'),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    for (final c in cats)
+                                      _CategoryChip(
+                                        label: c,
+                                        selected: _selectedCategories.contains(c),
+                                        onTap: () => setState(() {
+                                          _selectedCategories.contains(c)
+                                              ? _selectedCategories.remove(c)
+                                              : _selectedCategories.add(c);
+                                        }),
+                                      ),
+                                    _CategoryChip(
+                                      label: '新建分类',
+                                      icon: FLucideIcons.plus,
+                                      selected: false,
+                                      onTap: _newCategory,
+                                    ),
+                                  ],
                                 ),
-                              _CategoryChip(
-                                label: '新建标签',
-                                icon: FLucideIcons.plus,
-                                selected: false,
-                                onTap: _newTag,
-                              ),
-                            ],
+                                const SizedBox(height: 14),
+                                const SheetFieldLabel('标签'),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    for (final tag in tagDefs)
+                                      NoteTagChip(
+                                        tag: tag,
+                                        selected: _selectedTags.contains(tag.key),
+                                        onTap: () => setState(() {
+                                          _selectedTags.contains(tag.key)
+                                              ? _selectedTags.remove(tag.key)
+                                              : _selectedTags.add(tag.key);
+                                        }),
+                                      ),
+                                    _CategoryChip(
+                                      label: '新建标签',
+                                      icon: FLucideIcons.plus,
+                                      selected: false,
+                                      onTap: _newTag,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 16),
-                          // 正文：透明底 + 描边（无白底），随内容增高
-                          const SheetFieldLabel('正文'),
-                          Container(
-                            key: _contentFieldKey,
-                            constraints: const BoxConstraints(
-                              minHeight: 180,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: AppTokens.inputBorder(context),
-                              ),
-                            ),
-                            child: Material(
-                              type: MaterialType.transparency,
-                              child: TextField(
-                                controller: _content,
-                                maxLines: null,
-                                minLines: 1,
-                                style: contentStyle,
-                                cursorColor: t.colors.primary,
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  border: InputBorder.none,
-                                  hintText: '纯文本，按行分段…',
-                                  hintStyle: contentStyle.copyWith(
-                                    color: t.colors.mutedForeground,
+                          const SizedBox(height: 10),
+                          // 分组卡 · 正文（透明底 + 描边，随内容增高）
+                          _formCard(
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const SheetFieldLabel('正文'),
+                                Container(
+                                  key: _contentFieldKey,
+                                  constraints: const BoxConstraints(
+                                    minHeight: 180,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: AppTokens.inputBorder(context),
+                                    ),
+                                  ),
+                                  child: Material(
+                                    type: MaterialType.transparency,
+                                    child: TextField(
+                                      controller: _content,
+                                      maxLines: null,
+                                      minLines: 1,
+                                      style: contentStyle,
+                                      cursorColor: t.colors.primary,
+                                      decoration: InputDecoration(
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        border: InputBorder.none,
+                                        hintText: '纯文本，按行分段…',
+                                        hintStyle: contentStyle.copyWith(
+                                          color: t.colors.mutedForeground,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
                         ],
@@ -394,7 +426,7 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage> {
   }
 }
 
-/// 分类 / 新建入口 chip（选中态用笔记域专属琥珀强调色）
+/// 分类 / 新建入口 chip（选中 / 强调色跟随**外观主题色**，随换肤动态变化）
 class _CategoryChip extends StatelessWidget {
   const _CategoryChip({
     required this.label,
@@ -413,9 +445,10 @@ class _CategoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
-    final accent = AppTokens.accent(3);
+    // 选中 / 强调色跟随**外观主题色**（随换肤动态变化），不再写死笔记域琥珀
+    final accent = t.colors.primary;
     final isAdd = icon != null;
-    final bg = selected ? accent : (isAdd ? Colors.transparent : t.colors.card);
+    final bg = selected ? accent : (isAdd ? t.colors.muted : t.colors.card);
     final fg = selected ? Colors.white : (isAdd ? accent : t.colors.foreground);
     return FTappable(
       onPress: onTap,
