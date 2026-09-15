@@ -13,7 +13,7 @@
 // 历史按来源过滤（本机 qrMobile / 桌面端 qrCode）。
 // 生成：qr_flutter 渲染 + QrPainter 导出 PNG；识别：mobile_scanner；历史：qr_history 表。
 import 'dart:io';
-import 'dart:ui' show ImageByteFormat;
+import 'dart:ui';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,6 +53,12 @@ class _QrPageState extends ConsumerState<QrPage> {
 
   String _tab = 'gen';
 
+  /// 已识别的最后一个二维码内容（去重：同一码不重复弹底部弹窗）
+  String? _lastScanned;
+
+  /// 识别结果底部弹窗是否正在显示（防止并发弹出多个）
+  bool _scanSheetOpen = false;
+
   // —— 生成 ——
   String _type = QrPayloadType.text;
   final Map<String, TextEditingController> _controllers = {};
@@ -70,6 +76,14 @@ class _QrPageState extends ConsumerState<QrPage> {
   Color _fg = const Color(0xFF000000);
   Color _bg = Colors.white;
   int _ecLevel = QrErrorCorrectLevel.M;
+
+  static const List<int> _ecLevels = [
+    QrErrorCorrectLevel.L,
+    QrErrorCorrectLevel.M,
+    QrErrorCorrectLevel.Q,
+    QrErrorCorrectLevel.H,
+  ];
+  int get _ecIndex => _ecLevels.indexOf(_ecLevel);
 
   static const List<Color> _fgChoices = [
     Color(0xFF000000), // 黑
@@ -161,7 +175,14 @@ class _QrPageState extends ConsumerState<QrPage> {
                           ? 1
                           : 2,
                   onSelect: (i) => setState(
-                    () => _tab = i == 0 ? 'gen' : (i == 1 ? 'scan' : 'history'),
+                    () {
+                      _tab = i == 0 ? 'gen' : (i == 1 ? 'scan' : 'history');
+                      // 重新进入识别页时重置去重 / 弹窗占用状态
+                      if (_tab == 'scan') {
+                        _lastScanned = null;
+                        _scanSheetOpen = false;
+                      }
+                    },
                   ),
                 ),
               ),
@@ -220,32 +241,48 @@ class _QrPageState extends ConsumerState<QrPage> {
         AppTokens.pageBottomGapOf(context),
       ),
       children: [
-        // 类型九选（Wrap chips，替代旧 FSelect 下拉）
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final type in QrPayloadType.all)
-              SheetChoiceChip(
-                label: QrPayloadType.label(type),
-                selected: _type == type,
-                color: _accent,
-                onTap: () => setState(() => _type = type),
-              ),
-          ],
+        // ① 类型（分组卡片：九选 chip，选中色跟随主题主色）
+        _groupCard(
+          title: '类型',
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final type in QrPayloadType.all)
+                SheetChoiceChip(
+                  label: QrPayloadType.label(type),
+                  selected: _type == type,
+                  onTap: () => setState(() => _type = type),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // ② 内容（分组卡片：按类型出动态字段）
+        _groupCard(
+          title: '内容',
+          child: _buildFields(),
+        ),
+        const SizedBox(height: 12),
+        // ③ 样式（分组卡片：前景/背景色板）
+        _groupCard(
+          title: '样式',
+          child: _styleSection(),
+        ),
+        const SizedBox(height: 12),
+        // ④ 容错率（分组卡片：分段控件，M·15% 默认选中）
+        _groupCard(
+          title: '容错率',
+          child: _ecSection(),
         ),
         const SizedBox(height: 14),
-        _buildFields(),
-        const SizedBox(height: 14),
-        // 样式选项（对齐 PC StylePicker 子集）
-        _styleSection(),
-        const SizedBox(height: 14),
+        // 实时预览（底色跟随二维码背景色，消除白框）
         if (payload.isNotEmpty)
           Center(
             child: Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: _bg,
                 borderRadius: BorderRadius.circular(AppTokens.radiusMd),
                 boxShadow: AppTokens.elevation(context, level: 1),
               ),
@@ -260,7 +297,6 @@ class _QrPageState extends ConsumerState<QrPage> {
                   dataModuleShape: QrDataModuleShape.square,
                   color: _fg,
                 ),
-                padding: const EdgeInsets.all(10),
               ),
             ),
           ),
@@ -277,54 +313,152 @@ class _QrPageState extends ConsumerState<QrPage> {
           ),
         ],
         const SizedBox(height: 16),
+        // ⑤ 操作按钮行：存入历史 → 复制 → 分享图片
         Row(
           spacing: 10,
           children: [
             Expanded(
-              child: FButton(
-                variant: FButtonVariant.outline,
-                prefix: const Icon(FLucideIcons.copy, size: 16),
-                onPress: payload.isEmpty
+              child: _qrActionButton(
+                label: '存入历史',
+                icon: FLucideIcons.history,
+                primary: false,
+                onTap: payload.isEmpty
+                    ? null
+                    : () async {
+                        await ref
+                            .read(qrHistoryRepositoryProvider)
+                            .add(type: _type, content: payload);
+                        if (mounted) {
+                          showFToast(
+                            context: context,
+                            title: const Text('已存入历史'),
+                          );
+                        }
+                      },
+              ),
+            ),
+            Expanded(
+              child: _qrActionButton(
+                label: '复制',
+                icon: FLucideIcons.copy,
+                primary: false,
+                onTap: payload.isEmpty
                     ? null
                     : () async {
                         await Clipboard.setData(ClipboardData(text: payload));
                         if (mounted) {
-                          showFToast(context: context, title: const Text('内容已复制'));
+                          showFToast(
+                            context: context,
+                            title: const Text('内容已复制'),
+                          );
                         }
                       },
-                child: const Text('复制'),
               ),
             ),
             Expanded(
-              child: FButton(
-                variant: FButtonVariant.outline,
-                prefix: const Icon(FLucideIcons.share, size: 16),
-                onPress: payload.isEmpty ? null : () => _sharePng(payload),
-                child: const Text('分享图片'),
+              child: _qrActionButton(
+                label: '分享图片',
+                icon: FLucideIcons.share2,
+                primary: true,
+                onTap: payload.isEmpty ? null : () => _sharePng(payload),
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 10),
-        GradientButton(
-          label: '存入历史',
-          icon: FLucideIcons.save,
-          onPress: payload.isEmpty
-              ? null
-              : () async {
-                  await ref
-                      .read(qrHistoryRepositoryProvider)
-                      .add(type: _type, content: payload);
-                  if (mounted) {
-                    showFToast(context: context, title: const Text('已存入历史'));
-                  }
-                },
         ),
       ],
     );
   }
 
-  /// 样式选项区（前景色 / 背景色色板 + 容错率）
+  /// 分组卡片：标题 + 内容（统一 生成 tab 的卡片化视觉，对齐列表卡规格）
+  Widget _groupCard({required String title, required Widget child}) {
+    final t = context.theme;
+    return AppCard(
+      margin: EdgeInsets.zero,
+      padding: const EdgeInsets.all(14),
+      elevation: 1,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 12,
+        children: [
+          Text(
+            title,
+            style: t.typography.body.md.copyWith(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: t.colors.foreground,
+            ),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
+
+  /// 容错率分段控件（替代旧 chip 组；选中色跟随主题主色）
+  Widget _ecSection() {
+    return JianliSegmented(
+      items: const [
+        (null, 'L · 7%'),
+        (null, 'M · 15%'),
+        (null, 'Q · 25%'),
+        (null, 'H · 30%'),
+      ],
+      selected: _ecIndex,
+      onSelect: (i) => setState(() => _ecLevel = _ecLevels[i]),
+    );
+  }
+
+  /// 底部操作按钮：次级（渐变灰）/ 主操作（主色渐变），图标与文字同色
+  Widget _qrActionButton({
+    required String label,
+    required IconData icon,
+    required bool primary,
+    required VoidCallback? onTap,
+  }) {
+    final t = context.theme;
+    final enabled = onTap != null;
+    final fg = primary ? t.colors.primaryForeground : t.colors.foreground;
+    final gradient = primary
+        ? AppTokens.primaryGradient(context)
+        : LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [t.colors.card, t.colors.muted],
+          );
+    final child = Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+        border: Border.all(
+          color: primary ? Colors.transparent : t.colors.border,
+        ),
+      ),
+      child: Opacity(
+        opacity: enabled ? 1.0 : 0.45,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: fg),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: t.typography.body.sm.copyWith(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: fg,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    return TapScale(scale: 0.96, onTap: onTap, child: child);
+  }
+
+  /// 样式选项区（仅前景色 / 背景色色板；容错率已独立成卡片）
   Widget _styleSection() {
     final t = context.theme;
     Widget swatches(
@@ -381,29 +515,6 @@ class _QrPageState extends ConsumerState<QrPage> {
       children: [
         swatches('fg', _fgChoices, _fg, (c) => _fg = c),
         swatches('bg', _bgChoices, _bg, (c) => _bg = c),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SheetFieldLabel('容错率'),
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final (level, name) in const [
-                  (QrErrorCorrectLevel.L, 'L · 7%'),
-                  (QrErrorCorrectLevel.M, 'M · 15%'),
-                  (QrErrorCorrectLevel.Q, 'Q · 25%'),
-                  (QrErrorCorrectLevel.H, 'H · 30%'),
-                ])
-                  SheetChoiceChip(
-                    label: name,
-                    selected: _ecLevel == level,
-                    color: _accent,
-                    onTap: () => setState(() => _ecLevel = level),
-                  ),
-              ],
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -418,6 +529,21 @@ class _QrPageState extends ConsumerState<QrPage> {
         return 'H';
       default:
         return 'M';
+    }
+  }
+
+  /// 历史记录时间格式化：ISO → 'yyyy-MM-dd HH:mm'（本地时区）
+  static String _fmtCreatedAt(String? raw) {
+    if (raw == null || raw.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(raw).toLocal();
+      return '${dt.year.toString().padLeft(4, '0')}-'
+          '${dt.month.toString().padLeft(2, '0')}-'
+          '${dt.day.toString().padLeft(2, '0')} '
+          '${dt.hour.toString().padLeft(2, '0')}:'
+          '${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return raw;
     }
   }
 
@@ -583,9 +709,16 @@ class _QrPageState extends ConsumerState<QrPage> {
         children: [
           MobileScanner(
             onDetect: (capture) {
+              if (_scanSheetOpen) return;
               final code = capture.barcodes.firstOrNull;
               if (code?.rawValue == null || code!.rawValue!.isEmpty) return;
-              _showScanResult(code.rawValue!);
+              // 同一二维码在镜头内持续出现时只弹一次
+              if (_lastScanned == code.rawValue) return;
+              _lastScanned = code.rawValue;
+              _scanSheetOpen = true;
+              _showScanResult(code.rawValue!).whenComplete(() {
+                if (mounted) setState(() => _scanSheetOpen = false);
+              });
             },
           ),
           // 提示条
@@ -783,10 +916,20 @@ class _QrPageState extends ConsumerState<QrPage> {
     );
   }
 
-  /// 生成 PNG 并经系统分享面板导出（对齐 PC qr:save-image 的移动端形态）
+  /// 生成带圆角留白的卡片式 PNG 并经系统分享面板导出
+  ///
+  /// 画布布局（总尺寸 640×640）：
+  ///   - 底色 = 二维码背景色 `_bg`
+  ///   - 内边距 = 48px（四周均匀留白）
+  ///   - 二维码居中，尺寸自适应（544×544）
   Future<void> _sharePng(String payload) async {
     try {
-      final painter = QrPainter(
+      const totalSize = 640.0;
+      const innerPadding = 48.0;
+      final qrSize = totalSize - innerPadding * 2; // 544
+
+      // 1. 渲染纯二维码位图
+      final qrPainter = QrPainter(
         data: payload,
         version: QrVersions.auto,
         errorCorrectionLevel: _ecLevel,
@@ -796,14 +939,43 @@ class _QrPageState extends ConsumerState<QrPage> {
           color: _fg,
         ),
       );
-      final byteData = await painter.toImageData(512, format: ImageByteFormat.png);
-      if (byteData == null) throw Exception('渲染二维码失败');
-      final bytes = Uint8List.view(byteData.buffer);
+      final qrBytes = await qrPainter.toImageData(qrSize, format: ImageByteFormat.png);
+      if (qrBytes == null) throw Exception('渲染二维码失败');
+
+      // 2. 合成到带圆角+留白的卡片画布
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      final cardRRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, totalSize, totalSize),
+        const Radius.circular(24),
+      );
+
+      // 圆角裁剪 + 底色填充
+      canvas.save();
+      canvas.clipRRect(cardRRect);
+      canvas.drawColor(_bg, BlendMode.srcOver);
+
+      // 绘制二维码（居中）
+      final qrImage = await decodeImageFromList(Uint8List.view(qrBytes.buffer));
+      paintImage(
+        canvas: canvas,
+        rect: Rect.fromLTWH(innerPadding, innerPadding, qrSize, qrSize),
+        image: qrImage,
+        filterQuality: FilterQuality.high,
+      );
+      canvas.restore();
+
+      // 3. 导出 PNG
+      final picture = recorder.endRecording();
+      final byteData = await picture.toImage(totalSize.toInt(), totalSize.toInt());
+      final bytes = await byteData.toByteData(format: ImageByteFormat.png);
+      if (bytes == null) throw Exception('合成图片失败');
+
       final dir = await getTemporaryDirectory();
       final file = File(
         '${dir.path}/二维码_${DateTime.now().millisecondsSinceEpoch}.png',
       );
-      await file.writeAsBytes(bytes, flush: true);
+      await file.writeAsBytes(Uint8List.view(bytes.buffer), flush: true);
       if (!mounted) return;
       await SharePlus.instance.share(
         ShareParams(files: [XFile(file.path)], text: '渐离App 二维码'),
@@ -874,7 +1046,7 @@ class _QrHistoryTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${QrPayloadType.label(row.type ?? 'text')} · $source · ${row.createdAt ?? ''}',
+                  '${QrPayloadType.label(row.type ?? 'text')} · $source · ${_QrPageState._fmtCreatedAt(row.createdAt)}',
                   style: t.typography.body.xs.copyWith(
                     fontSize: 11,
                     color: t.colors.mutedForeground,
