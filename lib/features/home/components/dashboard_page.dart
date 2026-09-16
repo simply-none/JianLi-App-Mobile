@@ -19,6 +19,7 @@ import '../../../app/ui/banner_texture_sheet.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../core/sync/device_nickname.dart';
 import '../providers/dashboard_providers.dart';
+import '../../reminder/components/reminder_guard_card.dart';
 
 /// 快捷入口磁贴（图标 / 语义强调色索引 / 标签 / 副标 / 路由）——
 /// 图标底盘 = 实色语义渐变瓷片 + 白色图标（对齐工具页视觉语言），
@@ -83,6 +84,11 @@ class DashboardPage extends ConsumerWidget {
                   data: (s) => _PaceCard(stats: s),
                   orElse: () => const _PaceCardPlaceholder(),
                 ),
+                // —— 提醒守护（共享组件：首页 + 提醒列表页共用单一真源） ——
+                const SizedBox(height: 20),
+                const _SectionHeader(title: '提醒守护'),
+                const SizedBox(height: 12),
+                const ReminderGuardCard(padding: EdgeInsets.zero),
                 // —— 快捷入口（改版：语义渐变瓷片 + 白图标 + 主/辅双行文字） ——
                 const SizedBox(height: 20),
                 const _SectionHeader(title: '快捷入口'),

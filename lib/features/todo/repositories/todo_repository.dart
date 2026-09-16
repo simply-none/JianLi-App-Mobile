@@ -260,7 +260,7 @@ class TodoRepository {
     final due = _parseDateTime(item.dueDate!);
     if (due == null || due.isBefore(DateTime.now())) return;
     await NotificationService.scheduleOnce(
-      id: item.key.hashCode & 0x7fffffff,
+      id: NotificationService.stableId(item.key),
       channelKey: NotificationChannels.todo,
       title: '待办即将到期：${item.title}',
       body: '截止时间 ${item.dueDate}',
@@ -270,7 +270,28 @@ class TodoRepository {
 
   /// 取消某待办的截止提醒
   Future<void> cancelDeadlineReminder(String key) async {
-    await NotificationService.cancel(key.hashCode & 0x7fffffff);
+    await NotificationService.cancel(NotificationService.stableId(key));
+  }
+
+  /// 自愈重排：App 启动 / 回前台时按库重建全部启用待办的截止提醒原生通知（覆盖系统清理失效）。
+  /// 同步取消旧版用 `key.hashCode` 排期的残留通知，避免重复弹出。逐条保护，单条失败不影响其余。
+  Future<void> rescheduleAll() async {
+    final rows = await (_db.select(_db.todoList)
+          ..where(
+            (tbl) => tbl.deadlineReminder.equals('1') & tbl.dueDate.isNotNull(),
+          ))
+        .get();
+    for (final r in rows) {
+      final item = TodoItem.fromRow(r);
+      if (item.completed) continue;
+      try {
+        // 取消旧版 hashCode 排期的残留，防止与新 stableId 计划重复
+        await NotificationService.cancel(item.key.hashCode & 0x7fffffff);
+      } catch (_) {}
+      try {
+        await scheduleDeadlineReminder(item);
+      } catch (_) {}
+    }
   }
 
   // ===== 工具 =====

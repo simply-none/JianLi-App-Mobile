@@ -58,6 +58,57 @@ Future<bool> openFullScreenIntentSettings() async {
   }
 }
 
+/// 原生 setAlarmClock 桥（闹钟级送达：息屏/Doze 必响、锁屏全屏、**无需 SCHEDULE_EXACT_ALARM**）
+///
+/// 这是「闹钟」送达最可靠的实现：Android 的 `AlarmManager.setAlarmClock` 是专门给
+/// 用户闹钟的通路，不受 Doze 延后、不要求精确闹钟权限；其 showIntent 在到点时直接把
+/// 锁屏上的全屏 Activity（AlarmRingActivity）带到前台。
+///
+/// [code] 稳定请求码（用 reminder 的 stableId，保证取消/重排一致）；
+/// [repeatSpec] 重复规则 JSON（见 AlarmScheduler.kt），null 表示一次性。
+/// 非 Android 直接返回 false（无此能力，不抛）。
+Future<bool> setAlarmClock({
+  required int code,
+  required String title,
+  required String body,
+  required int triggerAtMillis,
+  String? repeatSpec,
+  int intervalMillis = 0,
+}) async {
+  if (!_isAndroid) return false;
+  try {
+    return await _kChannel.invokeMethod<bool>('setAlarmClock', {
+          'code': code,
+          'title': title,
+          'body': body,
+          'triggerAtMillis': triggerAtMillis,
+          'repeatSpec': repeatSpec,
+          'intervalMillis': intervalMillis,
+        }) ??
+        false;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// 取消单条原生闹钟（按 [code]）
+Future<bool> cancelAlarmClock(int code) async {
+  if (!_isAndroid) return false;
+  try {
+    return await _kChannel.invokeMethod<bool>('cancelAlarmClock', {'code': code}) ??
+        false;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// 批量取消原生闹钟
+Future<void> cancelAlarmClocks(List<int> codes) async {
+  for (final c in codes) {
+    await cancelAlarmClock(c);
+  }
+}
+
 /// 启动常驻前台服务（保活）。必须在 App 处于前台时调用（Android 12+ 限制），返回是否受理。
 Future<bool> startKeepAlive() async {
   if (!_isAndroid) return false;

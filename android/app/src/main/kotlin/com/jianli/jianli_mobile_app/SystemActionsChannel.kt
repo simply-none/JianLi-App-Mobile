@@ -59,6 +59,30 @@ object SystemActionsChannel {
                     "isKeepAliveRunning" ->
                         result.success(ReminderKeepAliveService.isRunning)
 
+                    // 闹钟级送达：原生 setAlarmClock（息屏/Doze 必响、锁屏全屏、无需 SCHEDULE_EXACT_ALARM）
+                    "setAlarmClock" -> {
+                        val code = call.argument<Int>("code") ?: 0
+                        val title = call.argument<String>("title") ?: ""
+                        val body = call.argument<String>("body") ?: ""
+                        val triggerAt = call.argument<Long>("triggerAtMillis") ?: 0L
+                        val repeatSpec = call.argument<String>("repeatSpec")
+                        val interval = call.argument<Long>("intervalMillis") ?: 0L
+                        if (triggerAt <= 0L) {
+                            result.success(false)
+                        } else {
+                            AlarmScheduler.schedule(
+                                activity, code, title, body, triggerAt, repeatSpec, interval
+                            )
+                            result.success(true)
+                        }
+                    }
+
+                    "cancelAlarmClock" -> {
+                        val code = call.argument<Int>("code") ?: 0
+                        AlarmScheduler.cancel(activity, code)
+                        result.success(true)
+                    }
+
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {

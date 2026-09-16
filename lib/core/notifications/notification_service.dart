@@ -4,18 +4,20 @@
 // 移动端策略：读取 reminders → 翻译为本地通知计划（awesome_notifications）。
 // 番茄钟这类状态机型提醒需 App 前台/前台服务驱动（iOS 受限，见 flutter-port.md 第 4 节）。
 //
-// 送达双模式（2026-09-09 与 PC newTips 对齐）：
-// - 'notification'（系统通知）：普通渠道，allowWhileIdle 息屏可响；
-// - 'alarm'（闹钟）：preciseAlarm + fullScreenIntent + 高重要'alarm'渠道，
-//   锁屏弹全屏、息屏精确唤醒（Android 上等价系统闹钟体验，且 App 被杀也能响）。
-// 二者均走 awesome_notifications，无需引入 android_alarm_manager_plus（iOS 无等价能力）。
+// 送达双模式：
+// - 'notification'（系统通知）：awesome_notifications 普通渠道，allowWhileIdle 息屏可响；
+//   精确闹钟权限缺失时自动降级为不精确（保证一定排得上，最多延迟几分钟），见各 schedule* 的 canExact。
+// - 'alarm'（闹钟）：**不再走 awesome**。历史上走 preciseAlarm，在 Android 12+ 未授权
+//   SCHEDULE_EXACT_ALARM 会抛 SecurityException → 闹钟从不响。2026-09-16 起改走原生
+//   AlarmManager.setAlarmClock 桥（见 core/android/system_actions.dart + AlarmScheduler.kt /
+//   AlarmRingActivity.kt）：Android 专门「用户闹钟」通路，息屏/Doze 必响、锁屏全屏、
+//   **无需精确闹钟权限**，彻底修复「闹钟从未响」。重复类由原生 Activity 自行重排。
 //
-// 闹钟增强（2026-09-09，对齐 PC 提醒的「强提醒」诉求）：
-// - 重复响铃：scheduleCalendar(extraRings:N) 额外排 N 次顺延 1 分钟的响铃（id+1000*k），
-//   即一次闹钟连响 N+1 次，避免只响一声被错过；
-// - 稍后提醒：闹钟（fullScreen=true）自动带 actionSnooze 动作按钮，点击后 snoozeMinutes
-//   分钟再响一次，重排的通知仍带该按钮可连续贪睡；由 init() 注册的 onActionReceived
-//   → _onActionReceived 处理，依赖 payload 透传 id/渠道/标题/内容。
+// 普通通知增强（仍走 awesome）：
+// - scheduleCalendar(extraRings:N) 额外排 N 次顺延 1 分钟的响铃（id+1000*k），一次连响 N+1 次；
+// - fullScreen=true 时自动带「稍后提醒」动作（_onActionReceived 处理，5 分钟再响一次）。
+//   （注：新版 alarm 送达走原生 AlarmRingActivity，awesome 的 fullScreen/snooze 主要服务
+//   普通通知被设为全屏的场景。）
 import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -267,6 +269,9 @@ class NotificationService {
     bool fullScreen = false,
     int extraRings = 0,
   }) async {
+    // 精确闹钟（Android 12+ SCHEDULE_EXACT_ALARM）未授权时退化为不精确，
+    // 保证提醒「一定排得上」（最多延迟几分钟），绝不再抛 SecurityException。
+    final canExact = precise ? await exactAlarmAllowed : false;
     for (var k = 0; k <= extraRings; k++) {
       var m = (minute ?? 0) + k;
       var h = hour;
@@ -276,9 +281,69 @@ class NotificationService {
         if (h != null) h = (h + 1) % 24;
       }
       final ringId = id + k * 1000;
+      try {
+        await AwesomeNotifications().createNotification(
+          content: NotificationContent(
+            id: ringId,
+            channelKey: channelKey,
+            title: title,
+            body: body,
+            fullScreenIntent: fullScreen,
+            category: fullScreen
+                ? NotificationCategory.Alarm
+                : NotificationCategory.Reminder,
+            payload: fullScreen
+                ? {
+                    'id': '$ringId',
+                    'channel': channelKey,
+                    'title': title,
+                    'body': body,
+                  }
+                : null,
+          ),
+          // ⚠️ actionButtons 是 createNotification 的参数，不是 NotificationContent 的
+          actionButtons: fullScreen
+              ? [
+                  NotificationActionButton(
+                    key: actionSnooze,
+                    label: '稍后提醒',
+                  )
+                ]
+              : null,
+          schedule: NotificationCalendar(
+            year: year,
+            month: month,
+            day: day,
+            weekday: weekday,
+            hour: h,
+            minute: m,
+            second: second ?? 0,
+            repeats: repeats,
+        preciseAlarm: canExact,
+        allowWhileIdle: true,
+      ),
+    );
+    } catch (_) {
+      // 单条排程失败（权限/参数）忽略，保证其余提醒不受影响
+    }
+    }
+  }
+
+  /// 间隔式定时通知（周期模式：每 N 分/时/天）
+  static Future<void> scheduleInterval({
+    required int id,
+    required String channelKey,
+    required String title,
+    required String body,
+    required Duration interval,
+    bool precise = false,
+    bool fullScreen = false,
+  }) async {
+    final canExact = precise ? await exactAlarmAllowed : false;
+    try {
       await AwesomeNotifications().createNotification(
         content: NotificationContent(
-          id: ringId,
+          id: id,
           channelKey: channelKey,
           title: title,
           body: body,
@@ -288,7 +353,7 @@ class NotificationService {
               : NotificationCategory.Reminder,
           payload: fullScreen
               ? {
-                  'id': '$ringId',
+                  'id': '$id',
                   'channel': channelKey,
                   'title': title,
                   'body': body,
@@ -304,67 +369,16 @@ class NotificationService {
                 )
               ]
             : null,
-        schedule: NotificationCalendar(
-          year: year,
-          month: month,
-          day: day,
-          weekday: weekday,
-          hour: h,
-          minute: m,
-          second: second ?? 0,
-          repeats: repeats,
-          preciseAlarm: precise,
+        schedule: NotificationInterval(
+          interval: interval,
+          repeats: true,
+          preciseAlarm: canExact,
           allowWhileIdle: true,
         ),
       );
+    } catch (_) {
+      // 单条排程失败（权限/参数）忽略，保证其余提醒不受影响
     }
-  }
-
-  /// 间隔式定时通知（周期模式：每 N 分/时/天）
-  static Future<void> scheduleInterval({
-    required int id,
-    required String channelKey,
-    required String title,
-    required String body,
-    required Duration interval,
-    bool precise = false,
-    bool fullScreen = false,
-  }) {
-    return AwesomeNotifications().createNotification(
-      content: NotificationContent(
-        id: id,
-        channelKey: channelKey,
-        title: title,
-        body: body,
-        fullScreenIntent: fullScreen,
-        category: fullScreen
-            ? NotificationCategory.Alarm
-            : NotificationCategory.Reminder,
-        payload: fullScreen
-            ? {
-                'id': '$id',
-                'channel': channelKey,
-                'title': title,
-                'body': body,
-              }
-            : null,
-      ),
-      // ⚠️ actionButtons 是 createNotification 的参数，不是 NotificationContent 的
-      actionButtons: fullScreen
-          ? [
-              NotificationActionButton(
-                key: actionSnooze,
-                label: '稍后提醒',
-              )
-            ]
-          : null,
-      schedule: NotificationInterval(
-        interval: interval,
-        repeats: true,
-        preciseAlarm: precise,
-        allowWhileIdle: true,
-      ),
-    );
   }
 
   /// 单次定点通知（如待办截止 / 一次性提醒；repeats=false 即一次性，到点触发后不再重复）
@@ -376,65 +390,77 @@ class NotificationService {
     required DateTime dateTime,
     bool precise = false,
     bool fullScreen = false,
-  }) {
-    return AwesomeNotifications().createNotification(
-      content: NotificationContent(
-        id: id,
-        channelKey: channelKey,
-        title: title,
-        body: body,
-        fullScreenIntent: fullScreen,
-        category: fullScreen
-            ? NotificationCategory.Alarm
-            : NotificationCategory.Reminder,
-        payload: fullScreen
-            ? {
-                'id': '$id',
-                'channel': channelKey,
-                'title': title,
-                'body': body,
-              }
+  }) async {
+    final canExact = precise ? await exactAlarmAllowed : false;
+    try {
+      await AwesomeNotifications().createNotification(
+        content: NotificationContent(
+          id: id,
+          channelKey: channelKey,
+          title: title,
+          body: body,
+          fullScreenIntent: fullScreen,
+          category: fullScreen
+              ? NotificationCategory.Alarm
+              : NotificationCategory.Reminder,
+          payload: fullScreen
+              ? {
+                  'id': '$id',
+                  'channel': channelKey,
+                  'title': title,
+                  'body': body,
+                }
+              : null,
+        ),
+        // ⚠️ actionButtons 是 createNotification 的参数，不是 NotificationContent 的
+        actionButtons: fullScreen
+            ? [
+                NotificationActionButton(
+                  key: actionSnooze,
+                  label: '稍后提醒',
+                )
+              ]
             : null,
-      ),
-      // ⚠️ actionButtons 是 createNotification 的参数，不是 NotificationContent 的
-      actionButtons: fullScreen
-          ? [
-              NotificationActionButton(
-                key: actionSnooze,
-                label: '稍后提醒',
-              )
-            ]
-          : null,
-      schedule: NotificationCalendar.fromDate(
-        date: dateTime,
-        repeats: false,
-        preciseAlarm: precise,
-        allowWhileIdle: true,
-      ),
-    );
+        schedule: NotificationCalendar.fromDate(
+          date: dateTime,
+          repeats: false,
+          preciseAlarm: canExact,
+          allowWhileIdle: true,
+        ),
+      );
+    } catch (_) {
+      // 单条排程失败（权限/参数）忽略，保证其余提醒不受影响
+    }
   }
 
   /// 通知动作回调：点击闹钟的「稍后提醒」后，[snoozeMinutes] 分钟后再响一次。
   ///
   /// 重排的通知同样带「稍后提醒」动作（fullScreen=true 自动附加），可连续贪睡；
   /// id 用 base+50000 段偏移，避开主响铃 id 与重复响铃的 id+1000*k 段。
-  static Future<void> _onActionReceived(ReceivedAction action) async {
-    if (action.buttonKeyPressed != actionSnooze) return;
-    final p = action.payload ?? {};
-    final baseId = int.tryParse(p['id'] ?? '') ?? action.id ?? 0;
-    final channel = p['channel'] ?? NotificationChannels.alarm;
-    final title = p['title'] ?? '提醒';
-    final body = p['body'] ?? '';
-    final alarm = channel == NotificationChannels.alarm;
-    final snoozeId = baseId + 50000 + (DateTime.now().millisecond % 1000);
-    await scheduleOnce(
-      id: snoozeId,
-      channelKey: channel,
-      title: title,
-      body: body,
-      dateTime: DateTime.now().add(const Duration(minutes: snoozeMinutes)),
-      precise: alarm,
-      fullScreen: alarm,
-    );
-  }
+  ///
+  /// ⚠️ 必须为**顶层函数**（不能放在类里）：awesome_notifications 在 App 被杀后靠
+  /// `PluginUtilities.getCallbackHandle` 取句柄投递动作，静态方法取不到句柄会导致
+  /// 杀进程后点击「稍后提醒」无反应。
+}
+
+/// 顶层动作回调（供 awesome 在 App 被杀后通过回调句柄投递；详见上方说明）
+@pragma('vm:entry-point')
+Future<void> _onActionReceived(ReceivedAction action) async {
+  if (action.buttonKeyPressed != NotificationService.actionSnooze) return;
+  final p = action.payload ?? {};
+  final baseId = int.tryParse(p['id'] ?? '') ?? action.id ?? 0;
+  final channel = p['channel'] ?? NotificationChannels.alarm;
+  final title = p['title'] ?? '提醒';
+  final body = p['body'] ?? '';
+  final alarm = channel == NotificationChannels.alarm;
+  final snoozeId = baseId + 50000 + (DateTime.now().millisecond % 1000);
+  await NotificationService.scheduleOnce(
+    id: snoozeId,
+    channelKey: channel,
+    title: title,
+    body: body,
+    dateTime: DateTime.now().add(const Duration(minutes: NotificationService.snoozeMinutes)),
+    precise: alarm,
+    fullScreen: alarm,
+  );
 }

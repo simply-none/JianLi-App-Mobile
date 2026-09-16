@@ -12,6 +12,12 @@
 //   4. 不再读/写 `reminders.startTime`，不再排任何原生阶段通知；
 //   5. 时长配置仍读 `reminders(id='pomodoro').states`（与桌面端同源，设置弹窗照旧读写）。
 //
+// 双保险（2026-09-16 新增）：页面内计时是前台方案，若 App 进程在专注进行中被杀，
+// 前台计时器随之消亡 → 不会再弹通知。为此在「开始专注 / 继续 / 重新开始 / 进入下一专注阶段」
+// 时额外排一条**原生一次性系统通知**（`stableId('pomodoro:end')`，非精确、息屏可响），
+// 专注自然结束时取消它（前台已用 showNow 提示），避免在后台/暂停/离开时误响。
+// 进程被杀不触发生命周期回调 → 原生通知照常到点弹出，覆盖「被杀不提醒」这一主因。
+//
 // 提示音：页面在前台时用 `NotificationService.showNow`（番茄钟渠道 playSound + 横幅）——
 //   比 `SystemSound.play` 可靠（后者依赖系统「触摸音效」开关，关了就无声）。
 //
@@ -310,6 +316,16 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage>
       _remainingSeconds = next.durationSeconds;
       _running = true;
     });
+    // 双保险：专注阶段自然结束 → 前台已用 showNow 提示，取消原生安全网避免重复；
+    // 下一阶段若是专注 → 重新排程原生结束通知（覆盖进程被杀场景）。
+    if (finished.key == 'work') {
+      unawaited(_disarmFocusEndNotification());
+    }
+    if (next.key == 'work') {
+      unawaited(_armFocusEndNotification());
+    } else {
+      unawaited(_disarmFocusEndNotification());
+    }
     // 到点反馈：通知渠道提示音 + 横幅（前台可靠发声）+ 触感
     haptic(HapticType.success, context);
     showFToast(
@@ -334,6 +350,35 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage>
     } catch (_) {}
   }
 
+  /// 双保险：排程「专注结束」原生一次性系统通知（覆盖进程被杀不提醒）。
+  /// 仅在当前处于「专注」阶段且正在走表时排程；其余情况（休息/暂停/空闲）取消，避免误响。
+  Future<void> _armFocusEndNotification() async {
+    final id = NotificationService.stableId('pomodoro:end');
+    if (_phaseIndex == 0 && _running && _remainingSeconds > 0) {
+      try {
+        await NotificationService.scheduleOnce(
+          id: id,
+          channelKey: NotificationChannels.pomodoro,
+          title: '专注结束',
+          body: '${_phase.label}已完成，记得休息一下～',
+          dateTime: DateTime.now().add(Duration(seconds: _remainingSeconds)),
+          precise: false,
+        );
+      } catch (_) {}
+    } else {
+      await _disarmFocusEndNotification();
+    }
+  }
+
+  /// 取消「专注结束」原生安全网（暂停 / 休息阶段 / 离开页面 / 专注自然结束时调用）。
+  Future<void> _disarmFocusEndNotification() async {
+    try {
+      await NotificationService.cancel(
+        NotificationService.stableId('pomodoro:end'),
+      );
+    } catch (_) {}
+  }
+
   /// 主按钮：空闲→开始 / 运行中→暂停 / 已暂停→继续
   void _toggleRun() {
     if (!_started) {
@@ -342,12 +387,13 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage>
       setState(() {
         _phaseIndex = 0;
         _remainingSeconds = _phases.first.durationSeconds;
-        _started = true;
-        _running = true;
-        _roundActive = true;
-        _pendingResumeSeconds = null;
+      _started = true;
+      _running = true;
+      _roundActive = true;
+      _pendingResumeSeconds = null;
       });
       _startTicker();
+      unawaited(_armFocusEndNotification()); // 双保险：排原生结束通知
       return;
     }
     if (_running) {
@@ -356,12 +402,14 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage>
         _running = false;
       });
       _stopTicker();
+      unawaited(_disarmFocusEndNotification()); // 暂停 → 取消原生安全网
     } else {
       setState(() {
         _roundActive = true;
         _running = true;
       });
       _startTicker();
+      unawaited(_armFocusEndNotification()); // 双保险：排原生结束通知
     }
   }
 
@@ -379,11 +427,13 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage>
       _pendingResumeSeconds = null;
     });
     _startTicker();
+    unawaited(_armFocusEndNotification()); // 双保险：排原生结束通知
   }
 
   /// 停表并复位到「空闲」（离开页面 / 切后台）
   void _stopAndReset() {
     _stopTicker();
+    unawaited(_disarmFocusEndNotification()); // 离开/后台 → 本次专注已放弃，取消安全网
     _roundActive = false;
     if (!mounted) return;
     setState(() {

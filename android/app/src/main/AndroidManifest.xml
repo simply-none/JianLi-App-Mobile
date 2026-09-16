@@ -92,6 +92,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <!-- 到点提醒：全屏闹钟 Activity（由原生 AlarmManager.setAlarmClock 的 showIntent 拉起，
+             息屏/锁屏下前台显示并亮屏；独立于 Flutter，App 被杀也能响铃与交互）。
+             exported=false：只由本应用 AlarmScheduler 启动；noHistory 避免留在返回栈 -->
+        <activity
+            android:name=".AlarmRingActivity"
+            android:exported="false"
+            android:theme="@style/AlarmFullscreen"
+            android:noHistory="true"
+            android:excludeFromRecents="true" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

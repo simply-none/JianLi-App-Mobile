@@ -1,19 +1,29 @@
-// 提醒仓库 + 本地通知调度（reminders → awesome_notifications）
+// 提醒仓库 + 本地通知调度（reminders → awesome_notifications / 原生 AlarmManager）
 //
 // 对齐桌面端 newReminder 引擎语义的移动端映射：
-// - time 模式：每天/按星期/一次性(带date)/每小时/每月/每年 → NotificationCalendar 定时通知；
-// - interval 模式：每 N 分/时/天 → NotificationInterval 周期通知；
+// - time 模式：每天/按星期/一次性(带date)/每小时/每月/每年 → 定时通知；
+// - interval 模式：每 N 分/时/天 → 周期通知；
 // - stateful 模式：番茄钟状态机由 App 前台驱动，不走系统通知；
 // - 用户列表过滤 source==='todo'（桌面端 get-tips 同款规则）；
-// - 送达方式 delivery：'notification'（系统通知）或 'alarm'（精确+全屏意图，闹钟体验）。
-//   闹钟额外增强：① 重复响铃 → 每次排程附 extraRings 次顺延 1 分钟的响铃（id+1000*k）；
-//   ② 稍后提醒 → 闹钟自动带 actionSnooze 按钮，点击后 5 分钟再响（见 notification_service）。
-// - 免打扰（idleTime）：当前落在免打扰段时顺延到段末（一次性场景最佳；周期类逐次精确跳过
-//   需后台 worker，标记为已知近似，见项目 skill reminder 段）。
+// - 送达方式 delivery：'notification'（系统通知）/ 'alarm'（系统级闹钟）。
+//
+// 送达实现（2026-09-16 系统修复后）：
+// - 'alarm' → 原生 AlarmManager.setAlarmClock 桥（见 core/android/system_actions.dart +
+//   AlarmScheduler.kt / AlarmRingActivity.kt）：它是 Android 专门的「用户闹钟」通路，
+//   **不需要 SCHEDULE_EXACT_ALARM 权限**、息屏与 Doze 下必响、锁屏直接弹全屏 Activity，
+//   因此彻底规避了「精确闹钟权限缺失 → setExactAndAllowWhileIdle 抛 SecurityException →
+//   排程整体失败 → 闹钟从不响」这一主因。重复类（每天/每周/每月/每年）由原生 AlarmRingActivity
+//   在用户点「停止」时按 repeatSpec 自行排下一次，连杀进程也能持续。
+// - 'notification' → awesome_notifications（普通系统通知）；精确权限缺失时自动降级为不精确，
+//   保证一定排得上（见 notification_service.dart）。
+//
+// 健壮性（同次修复）：rescheduleAll 逐条 try/catch（一条坏不中断整轮）；saveReminder 排程失败
+// 不再让整个保存抛异常（库已写入，尽力排程）；deleteReminder 同时取消原生闹钟。
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../../../core/android/system_actions.dart' as sys;
 import '../../../core/db/app_database.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../models/reminder_item.dart';
@@ -27,41 +37,55 @@ class ReminderRepository {
   /// 用户提醒流（过滤引擎托管的待办提醒；番茄钟 stateful 保留展示）
   Stream<List<ReminderItem>> watchUserReminders() {
     return (_db.select(_db.reminders)
-          ..where((tbl) => tbl.source.isNull() | tbl.source.equals(''))
-          ..orderBy([(tbl) => OrderingTerm.asc(tbl.title)]))
+          ..where((tbl) => tbl.source.isNull() | tbl.source.equals('')))
         .watch()
         .map((rows) => rows.map(ReminderItem.fromRow).toList());
   }
 
-  /// 进入提醒页 / App 启动时调用：取消并重新排程全部启用提醒，
-  /// 防止 awesome 原生计划被系统清理后不再触发。
+  /// 进入提醒页 / App 启动 / 回到前台时调用：取消并重新排程全部启用提醒，
+  /// 防止原生计划被系统清理后不再触发。逐条保护，单条失败不影响其余。
   Future<void> rescheduleAll() async {
     final rows = await (_db.select(_db.reminders)
           ..where((tbl) => tbl.source.isNull() | tbl.source.equals('')))
         .get();
     for (final row in rows) {
       final item = ReminderItem.fromRow(row);
-      final weekly = !item.isStateful && item.mode == 'time' && item.weekDays.isNotEmpty;
-      await NotificationService.cancelReminder(item.id, weekly: weekly);
+      // 先取消旧计划（awesome 原生 + 原生闹钟），再重排；任一步失败都不中断整轮
+      try {
+        await _cancelAllSchedules(item);
+      } catch (_) {}
       if (item.enabled && !item.isStateful) {
-        await scheduleNotification(item);
+        try {
+          await scheduleNotification(item);
+        } catch (_) {}
       }
     }
   }
 
-  /// 新增 / 编辑统一入口：upsert（按 id 幂等）+ 重排程
+  /// 新增 / 编辑统一入口：upsert（按 id 幂等）+ 重排程。
+  /// 排程失败不再向上抛（库已写入，尽力排程），避免 UI 误判「保存失败」。
   Future<void> saveReminder(ReminderItem item) async {
     await (_db.into(_db.reminders).insertOnConflictUpdate(_toCompanion(item)));
-    final weekly = item.mode == 'time' && item.weekDays.isNotEmpty;
-    await NotificationService.cancelReminder(item.id, weekly: weekly);
+    try {
+      await _cancelAllSchedules(item);
+    } catch (_) {}
     if (item.enabled && !item.isStateful) {
-      await scheduleNotification(item);
+      try {
+        await scheduleNotification(item);
+      } catch (_) {}
     }
   }
 
   /// 删除提醒（取消通知 + 删库）
   Future<void> deleteReminder(String id) async {
-    await NotificationService.cancelReminder(id, weekly: true);
+    final baseId = NotificationService.stableId(id);
+    // awesome（含 weekly 变体）+ 原生闹钟（baseId..baseId+7 覆盖所有可能周几码）
+    try {
+      await NotificationService.cancelReminder(id, weekly: true);
+    } catch (_) {}
+    try {
+      await sys.cancelAlarmClocks([for (var i = 0; i <= 7; i++) baseId + i]);
+    } catch (_) {}
     await (_db.delete(_db.reminders)..where((tbl) => tbl.id.equals(id))).go();
   }
 
@@ -72,8 +96,13 @@ class ReminderRepository {
   /// 按 mode + delivery 把提醒翻译为本地通知计划
   Future<void> scheduleNotification(ReminderItem item) async {
     if (item.isStateful) return; // 状态机不走系统通知
-    final alarm = item.isAlarm;
-    final channel = alarm ? NotificationChannels.alarm : NotificationChannels.todo;
+    // 闹钟送达：走原生 setAlarmClock 桥（系统级闹钟，无需精确闹钟权限、息屏必响、锁屏全屏）
+    if (item.isAlarm) {
+      await _scheduleNativeAlarm(item);
+      return;
+    }
+    // 普通通知送达：awesome_notifications（精确权限缺失自动降级，见 notification_service）
+    final channel = NotificationChannels.todo;
     final baseId = NotificationService.stableId(item.id);
 
     // 周期模式
@@ -86,8 +115,8 @@ class ReminderRepository {
         title: item.title,
         body: item.content,
         interval: iv,
-        precise: alarm,
-        fullScreen: alarm,
+        precise: false,
+        fullScreen: false,
       );
       return;
     }
@@ -100,7 +129,8 @@ class ReminderRepository {
     if (hour == null || minute == null) return;
     final repeat = item.repeat ?? 'daily';
 
-    // 免打扰：当前落在免打扰段时顺延到段末（仅一次性场景精确；周期类见模块文档说明）
+    // 免打扰：当前落在免打扰段时顺延到段末（仅一次性场景精确；周期类逐次精确跳过
+    // 需后台 worker，标记为已知近似，见项目 skill reminder 段）。
     final slots = parseIdleSlots(item.idleTime);
     final idleEnd = _idleEndIfNowInSlot(slots);
 
@@ -113,8 +143,8 @@ class ReminderRepository {
         title: item.title,
         body: item.content,
         dateTime: idleEnd ?? dt,
-        precise: alarm,
-        fullScreen: alarm,
+        precise: false,
+        fullScreen: false,
       );
       return;
     }
@@ -127,9 +157,9 @@ class ReminderRepository {
         body: item.content,
         minute: minute,
         repeats: true,
-        precise: alarm,
-        fullScreen: alarm,
-        extraRings: alarm ? 2 : 0,
+        precise: false,
+        fullScreen: false,
+        extraRings: 0,
       );
       return;
     }
@@ -144,9 +174,9 @@ class ReminderRepository {
         hour: hour,
         minute: minute,
         repeats: true,
-        precise: alarm,
-        fullScreen: alarm,
-        extraRings: alarm ? 2 : 0,
+        precise: false,
+        fullScreen: false,
+        extraRings: 0,
       );
       return;
     }
@@ -163,14 +193,14 @@ class ReminderRepository {
         hour: hour,
         minute: minute,
         repeats: true,
-        precise: alarm,
-        fullScreen: alarm,
-        extraRings: alarm ? 2 : 0,
+        precise: false,
+        fullScreen: false,
+        extraRings: 0,
       );
       return;
     }
 
-    // 每天 / 每周（weekDays 用 PC 约定 0=周日…6=周六，awesome 1=周日…7=周六 → +1）
+    // 每天 / 每周（weekDays 用 PC 约定 0=周日…6=周六；原生 AlarmRingActivity 内部换算为 DateTime.weekday）
     if (item.weekDays.isEmpty) {
       await NotificationService.scheduleCalendar(
         id: baseId,
@@ -180,9 +210,9 @@ class ReminderRepository {
         hour: hour,
         minute: minute,
         repeats: true,
-        precise: alarm,
-        fullScreen: alarm,
-        extraRings: alarm ? 2 : 0,
+        precise: false,
+        fullScreen: false,
+        extraRings: 0,
       );
     } else {
       for (final w in item.weekDays) {
@@ -195,12 +225,177 @@ class ReminderRepository {
           hour: hour,
           minute: minute,
           repeats: true,
-          precise: alarm,
-          fullScreen: alarm,
-          extraRings: alarm ? 2 : 0,
+          precise: false,
+          fullScreen: false,
+          extraRings: 0,
         );
       }
     }
+  }
+
+  /// 闹钟送达：原生 setAlarmClock 桥排程（详见文件头说明）
+  Future<void> _scheduleNativeAlarm(ReminderItem item) async {
+    final baseId = NotificationService.stableId(item.id);
+    final title = item.title;
+    final body = item.content;
+
+    if (item.mode == 'interval') {
+      final iv = _parseInterval(item);
+      if (iv == null) return;
+      final trigger = DateTime.now().add(iv).millisecondsSinceEpoch;
+      await sys.setAlarmClock(
+        code: baseId,
+        title: title,
+        body: body,
+        triggerAtMillis: trigger,
+        repeatSpec: '{"type":"interval","interval":${iv.inMilliseconds}}',
+        intervalMillis: iv.inMilliseconds,
+      );
+      return;
+    }
+
+    if (item.repeat == 'weekly' && item.weekDays.isNotEmpty) {
+      for (final w in item.weekDays) {
+        final ms = _nextAlarmTriggerMillis(item, forWeekdayPc: w);
+        if (ms != null) {
+          await sys.setAlarmClock(
+            code: baseId + w,
+            title: title,
+            body: body,
+            triggerAtMillis: ms,
+            repeatSpec: '{"type":"weekly"}',
+          );
+        }
+      }
+      return;
+    }
+
+    final ms = _nextAlarmTriggerMillis(item);
+    if (ms == null) return;
+    await sys.setAlarmClock(
+      code: baseId,
+      title: title,
+      body: body,
+      triggerAtMillis: ms,
+      repeatSpec: _repeatSpecJson(item),
+    );
+  }
+
+  /// 一次性取消某提醒的全部计划（awesome 原生 + 原生闹钟）
+  Future<void> _cancelAllSchedules(ReminderItem item) async {
+    final weekly =
+        item.mode == 'time' && item.repeat == 'weekly' && item.weekDays.isNotEmpty;
+    try {
+      await NotificationService.cancelReminder(item.id, weekly: weekly);
+    } catch (_) {}
+    try {
+      await sys.cancelAlarmClocks(_nativeAlarmCodes(item));
+    } catch (_) {}
+  }
+
+  /// 原生闹钟的请求码集合（与 _scheduleNativeAlarm 一一对应）：每周一个码 = baseId + 周几
+  List<int> _nativeAlarmCodes(ReminderItem item) {
+    final baseId = NotificationService.stableId(item.id);
+    if (item.mode == 'time' &&
+        item.repeat == 'weekly' &&
+        item.weekDays.isNotEmpty) {
+      return item.weekDays.map((w) => baseId + w).toList();
+    }
+    return [baseId];
+  }
+
+  /// 计算原生闹钟的 repeatSpec JSON（null = 一次性，不重排）
+  String? _repeatSpecJson(ReminderItem item) {
+    if (item.repeat == 'once') return null;
+    switch (item.repeat) {
+      case 'hourly':
+        return '{"type":"interval","interval":3600000}';
+      case 'daily':
+        return '{"type":"daily"}';
+      case 'monthly':
+        return '{"type":"monthly"}';
+      case 'yearly':
+        return '{"type":"yearly"}';
+      case 'weekly':
+        return '{"type":"weekly"}';
+      default:
+        return '{"type":"daily"}';
+    }
+  }
+
+  /// 下次触发时间（毫秒）。[forWeekdayPc] 为 PC 约定周几（0=周日…6=周六），仅 weekly 用。
+  int? _nextAlarmTriggerMillis(ReminderItem item, {int? forWeekdayPc}) {
+    final now = DateTime.now();
+    final timeParts = (item.time ?? '').split(':');
+    if (timeParts.length < 2) return null;
+    final h = int.tryParse(timeParts[0]);
+    final m = int.tryParse(timeParts[1]);
+    if (h == null || m == null) return null;
+
+    switch (item.repeat) {
+      case 'once':
+        if (item.date == null) return null;
+        final dt = _parseDate(item.date!, h, m);
+        if (dt == null) return null;
+        return dt.isAfter(now) ? dt.millisecondsSinceEpoch : null;
+      case 'hourly':
+        var cand = DateTime(now.year, now.month, now.day, now.hour, m, 0, 0, 0);
+        if (!cand.isAfter(now)) cand = cand.add(const Duration(hours: 1));
+        return cand.millisecondsSinceEpoch;
+      case 'monthly':
+        final dom = int.tryParse(item.dayOfMonth ?? '') ?? now.day;
+        return _nextMonthly(dom, h, m, now).millisecondsSinceEpoch;
+      case 'yearly':
+        final mo = int.tryParse(item.month ?? '') ?? now.month;
+        final dom = int.tryParse(item.dayOfMonth ?? '') ?? now.day;
+        return _nextYearly(mo, dom, h, m, now).millisecondsSinceEpoch;
+      case 'weekly':
+        final wd = forWeekdayPc ?? (item.weekDays.isNotEmpty ? item.weekDays.first : 1);
+        return _nextWeekly(wd, h, m, now).millisecondsSinceEpoch;
+      default: // daily
+        var cand = DateTime(now.year, now.month, now.day, h, m, 0, 0, 0);
+        if (!cand.isAfter(now)) cand = cand.add(const Duration(days: 1));
+        return cand.millisecondsSinceEpoch;
+    }
+  }
+
+  /// 每周下次触发：PC 周几(0=周日…6=周六) 换算为 DateTime.weekday(1=周一…7=周日)
+  DateTime _nextWeekly(int pcW, int h, int m, DateTime now) {
+    final dtW = pcW == 0 ? 7 : pcW;
+    var days = (dtW - now.weekday) % 7;
+    if (days == 0) {
+      final todayAt = DateTime(now.year, now.month, now.day, h, m);
+      days = todayAt.isAfter(now) ? 0 : 7;
+    } else if (days < 0) {
+      days += 7;
+    }
+    return DateTime(now.year, now.month, now.day, h, m)
+        .add(Duration(days: days));
+  }
+
+  /// 每月下次触发（dayOfMonth 超过当月天数则夹紧）
+  DateTime _nextMonthly(int dom, int h, int m, DateTime now) {
+    var cand = _clampDay(now.year, now.month, dom, h, m);
+    if (!cand.isAfter(now)) {
+      final nm = now.month + 1;
+      final ny = now.year + (nm > 12 ? 1 : 0);
+      cand = _clampDay(ny, nm > 12 ? 1 : nm, dom, h, m);
+    }
+    return cand;
+  }
+
+  /// 每年下次触发
+  DateTime _nextYearly(int mo, int dom, int h, int m, DateTime now) {
+    var cand = _clampDay(now.year, mo, dom, h, m);
+    if (!cand.isAfter(now)) cand = _clampDay(now.year + 1, mo, dom, h, m);
+    return cand;
+  }
+
+  /// 夹紧 dayOfMonth 到指定月份的实际天数
+  DateTime _clampDay(int year, int month, int dom, int h, int m) {
+    final last = DateTime(year, month + 1, 0).day;
+    final d = dom.clamp(1, last);
+    return DateTime(year, month, d, h, m, 0, 0, 0);
   }
 
   // —— 内部工具 ——

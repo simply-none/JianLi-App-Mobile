@@ -19,7 +19,9 @@ import '../core/android/system_actions.dart';
 import '../core/db/app_database.dart';
 import '../core/notifications/notification_service.dart';
 import '../features/countdown/repositories/countdown_repository.dart';
+import '../features/habit/repositories/habit_repository.dart';
 import '../features/reminder/repositories/reminder_repository.dart';
+import '../features/todo/repositories/todo_repository.dart';
 
 /// App 启动引导（根组件首帧后调用一次；db = 全局单例 `appDatabaseProvider`）
 Future<void> bootstrapAlarms(AppDatabase db) async {
@@ -38,14 +40,22 @@ Future<void> bootstrapAlarms(AppDatabase db) async {
 
 /// 到点提醒自愈（**不申请权限**，可安全地反复调用；调用方负责节流）。
 ///
-/// 覆盖两类失效：
+/// 覆盖三类失效：
 ///   ① 提醒计划被系统/ROM 清理 → `rescheduleAll()` 按库重建全部启用提醒的原生计划；
-///   ② App 被杀期间倒计时已到点但库里仍标 running → `sweepExpired()` 补写 finished。
+///   ② App 被杀期间倒计时已到点但库里仍标 running → `sweepExpired()` 补写 finished；
+///   ③（2026-09-16 新增）习惯/待办提醒同样纳入自愈：与提醒管理/倒计时一致，
+///      原生计划被系统清理后，用户随手打开一次 App 即自动恢复，避免「不开页面就不提醒」。
 Future<void> healAlarmSchedules(AppDatabase db) async {
   try {
     await ReminderRepository(db).rescheduleAll();
   } catch (_) {}
   try {
     await CountdownRepository(db).sweepExpired();
+  } catch (_) {}
+  try {
+    await HabitRepository(db).rescheduleAll();
+  } catch (_) {}
+  try {
+    await TodoRepository(db).rescheduleAll();
   } catch (_) {}
 }

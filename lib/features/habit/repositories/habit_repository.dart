@@ -170,7 +170,7 @@ class HabitRepository {
     if (weekDays.isEmpty) {
       // 每天：scheduleCalendar 只给 hour/minute 即每日重复
       await NotificationService.scheduleCalendar(
-        id: id.hashCode,
+        id: NotificationService.stableId(id),
         channelKey: NotificationChannels.habit,
         title: '习惯提醒',
         body: title,
@@ -182,7 +182,7 @@ class HabitRepository {
       for (final wd in weekDays) {
         // 按星期：awesome weekday 1=周日…7=周六，PC 约定 0=周日…6=周六 → +1
         await NotificationService.scheduleCalendar(
-          id: id.hashCode + wd,
+          id: NotificationService.stableId(id) + wd,
           channelKey: NotificationChannels.habit,
           title: '习惯提醒',
           body: title,
@@ -205,7 +205,7 @@ class HabitRepository {
     )..where((t) => t.id.like('${habit.key}#%'))).get();
     for (final r in rows) {
       await (_db.delete(_db.reminders)..where((t) => t.id.equals(r.id))).go();
-      await NotificationService.cancel(r.id.hashCode);
+      await NotificationService.cancel(NotificationService.stableId(r.id));
     }
   }
 
@@ -239,7 +239,7 @@ class HabitRepository {
         .get();
     for (final r in rows) {
       await (_db.delete(_db.reminders)..where((t) => t.id.equals(r.id))).go();
-      await NotificationService.cancel(r.id.hashCode);
+      await NotificationService.cancel(NotificationService.stableId(r.id));
     }
 
     // 重建提醒（与 createHabit 同源）
@@ -267,6 +267,39 @@ class HabitRepository {
         weekDays,
       );
     }
+  }
+
+  /// 自愈重排：App 启动 / 回前台时按库重建全部启用习惯提醒的原生通知（覆盖系统清理/重启失效）。
+  /// 同步取消旧版用 `id.hashCode` 排期的残留通知，避免重复弹出。逐条保护，单条失败不影响其余。
+  Future<void> rescheduleAll() async {
+    final rows = await (_db.select(_db.reminders)
+          ..where(
+            (tbl) => tbl.source.equals('habit') & tbl.enabled.equals('1'),
+          ))
+        .get();
+    for (final r in rows) {
+      try {
+        // 取消旧版 hashCode 排期的残留（每天 + 每周变体），防止与新 stableId 计划重复
+        await NotificationService.cancel(r.id.hashCode);
+        for (final wd in _parseWeekDays(r.weekDays)) {
+          await NotificationService.cancel(r.id.hashCode + wd);
+        }
+      } catch (_) {}
+      try {
+        final wds = _parseWeekDays(r.weekDays);
+        await _scheduleHabitNotification(r.id, r.title ?? '', r.time ?? '', wds);
+      } catch (_) {}
+    }
+  }
+
+  /// 把 reminders.weekDays（JSON 字符串）解析为周几列表；空/非法 → []
+  List<int> _parseWeekDays(String? raw) {
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final list = jsonDecode(raw);
+      if (list is List) return list.whereType<int>().toList();
+    } catch (_) {}
+    return const [];
   }
 
   /// 随机 id（桌面端格式 aaaaaaaa-bbbbbbbb）
