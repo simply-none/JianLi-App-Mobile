@@ -3,13 +3,13 @@
 // 设计要点（对应 .zcode/skills/jianli-app/references/flutter-port.md）：
 // 1. 与桌面端 db.sqlite 同构：表定义逐列对齐（驼峰列用 @Named 锁定），
 //    后续局域网同步按主键幂等 upsert。
-// 2. 库文件位置（2026-09-07 调整）：`<filesDir>/databases/db.sqlite`
-//    （path_provider.getApplicationSupportDirectory() → Android `getFilesDir()`，
-//    对应 Auto Backup 的 `file` 备份域，默认覆盖 → 重装后云备份可恢复，用户数据不丢）。
-//    （本工程 path_provider 锁 2.1.6，无 `getDatabasesPath()`，故用 filesDir/databases 等价落位。）
-//    旧版本曾放在 `app_flutter/db.sqlite`（getApplicationDocumentsDirectory() 的返回，
-//    即 Context.getDir('flutter') 目录；沙盒、重装即焚、且不在默认备份域内），
-//    首次启动做一次单向拷贝到新位置（见 _openConnection），老用户升级不丢数据。
+// 2. 库文件位置（2026-09-17 调整，需求#1：重装不丢数据）：默认 `Download/渐离App/db.sqlite`
+//    （系统公共 Download 子目录，需「所有文件访问」MANAGE_EXTERNAL_STORAGE，API30+ 才有此要求；
+//    该目录不在应用沙盒内，卸载/重装不会被清，文件管理器可直接浏览）。
+//    未授权「所有文件访问」或 非 Android → 回退沙盒 `<filesDir>/databases/db.sqlite`
+//    （path_provider.getApplicationSupportDirectory() → Android `getFilesDir()`），与旧版一致不丢数据。
+//    具体解析与「首启从最新候选源单向拷贝」的迁移逻辑收口在 `db_location.dart`
+//    的 [resolveDefaultDatabaseFile]（兼容旧位置 documents/app_flutter → filesDir/databases）。
 // 3. 迁移铁律：升级必须「增量、非破坏性」。drift 的 createAll() 生成
 //    `CREATE TABLE IF NOT EXISTS`，对「已存在」的表是空操作——绝不重建、绝不清空行。
 //    绝不能用 destructiveFallback（drop 全表再重建 = 清空用户数据）。
@@ -20,6 +20,7 @@ import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'db_location.dart';
 import 'tables/conversation_tables.dart';
 import 'tables/ebook_tables.dart';
 import 'tables/file_transfer.dart';
@@ -70,8 +71,12 @@ part 'app_database.g.dart';
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
-  /// 只读打开桌面端导出的 db.sqlite 做数据校验/迁移演练时使用（测试入口，暂不暴露 UI）
-  // AppDatabase.forFile(File f) : super(LazyDatabase(() async => NativeDatabase(f, readOnly: true)));
+  /// 只读打开外部数据库文件（需求#2：导入时按主键合并源库数据用）。
+  /// 仅作 SELECT，绝不写盘；源库 schema 与本 App 同源（含 basic_info 表）时使用。
+  AppDatabase.forFile(File f)
+      : super(LazyDatabase(
+          () async => NativeDatabase(f, enableMigrations: false),
+        ));
 
   @override
   int get schemaVersion => 3;
@@ -101,27 +106,16 @@ class AppDatabase extends _$AppDatabase {
 
 /// 打开数据库连接（后台 isolate 执行，避免阻塞 UI）
 ///
-/// 库文件位置约定（2026-09-07 调整）：
-/// - 新版本：`<filesDir>/databases/db.sqlite`（`getApplicationSupportDirectory()` →
-///   Android `getFilesDir()`，对应 Auto Backup 的 `file` 备份域，默认覆盖 → 重装后云备份可恢复，用户数据不丢）。
-///   （本工程 path_provider 锁 2.1.6，无 `getDatabasesPath()`，故用 filesDir/databases 等价落位。）
-/// - 旧版本（≤ 本次调整前）把库放在 `app_flutter/db.sqlite`（getApplicationDocumentsDirectory()
-///   的返回，即 Context.getDir('flutter') 目录），首次启动做一次单向拷贝到新位置
-///   （旧文件保留，拷贝失败也不破坏原数据），保证老用户升级不丢数据。
+/// 库文件位置约定（2026-09-17 调整，需求#1：重装不丢数据）：
+/// - 默认：系统 `Download/渐离App/db.sqlite`（需「所有文件访问」MANAGE_EXTERNAL_STORAGE，
+///   API30+ 才有此要求）。该目录不在应用沙盒内，卸载/重装不会被清，文件管理器可直接浏览。
+/// - 回退：未授权「所有文件访问」或 非 Android → 沙盒 `<filesDir>/databases/db.sqlite`
+///   （`getApplicationSupportDirectory()` → Android `getFilesDir()`），与旧版行为一致。
+/// 具体解析与「首启从最新候选源单向拷贝」的迁移逻辑收口在 `db_location.dart` 的
+/// [resolveDefaultDatabaseFile]，这里只调用它拿最终文件。
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    // 新位置：<filesDir>/databases/db.sqlite（file 备份域，Auto Backup 覆盖）
-    final supportDir = await getApplicationSupportDirectory();
-    final newDir = Directory(p.join(supportDir.path, 'databases'));
-    final newFile = File(p.join(newDir.path, 'db.sqlite'));
-    if (!await newFile.exists()) {
-      final oldDir = await getApplicationDocumentsDirectory();
-      final oldFile = File(p.join(oldDir.path, 'db.sqlite'));
-      if (await oldFile.exists()) {
-        await newDir.create(recursive: true);
-        await oldFile.copy(newFile.path);
-      }
-    }
-    return NativeDatabase.createInBackground(newFile);
+    final file = await resolveDefaultDatabaseFile();
+    return NativeDatabase.createInBackground(file);
   });
 }

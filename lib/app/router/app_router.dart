@@ -28,6 +28,7 @@ import '../../features/ebook/components/epub_reader_page.dart';
 import '../../features/conversation/components/conversation_page.dart';
 import '../../features/sync/components/sync_page.dart';
 import '../../features/about/about_page.dart';
+import '../../features/data_management/data_management_page.dart';
 import '../../features/file_transfer/components/file_transfer_page.dart';
 import '../../features/ferry/ferry_page.dart';
 import '../anim/jianli_transitions.dart';
@@ -206,6 +207,12 @@ final GoRouter appRouter = GoRouter(
       path: '/ferry',
       // WebView 平台视图对透明度动画敏感（淡入期间易空白），同样走纯横向滑入
       pageBuilder: (context, state) => slidePage(const FerryPage(), state),
+    ),
+    // 数据管理页（设置面板「数据管理」入口）
+    GoRoute(
+      path: '/data-management',
+      pageBuilder: (context, state) =>
+          slidePage(const DataManagementPage(), state),
     ),
   ],
 );

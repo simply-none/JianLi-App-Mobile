@@ -213,14 +213,29 @@ class _SettingsPanel extends ConsumerWidget {
                                   GoRouter.of(originContext).push('/sync');
                                 });
                               },
-                              prefix: Icon(
-                                FLucideIcons.refreshCw,
-                                color: AppTokens.accent(3),
-                              ),
-                              title: const Text('数据同步'),
-                              subtitle: const Text('在受信局域网内与其他设备互传数据'),
+                            prefix: Icon(
+                              FLucideIcons.refreshCw,
+                              color: AppTokens.accent(3),
                             ),
-                          ],
+                            title: const Text('数据同步'),
+                            subtitle: const Text('在受信局域网内与其他设备互传数据'),
+                          ),
+                          FTile(
+                            onPress: () {
+                              Navigator.of(context).pop();
+                              Future.microtask(() {
+                                if (!originContext.mounted) return;
+                                GoRouter.of(originContext).push('/data-management');
+                              });
+                            },
+                            prefix: Icon(
+                              FLucideIcons.database,
+                              color: AppTokens.accent(5),
+                            ),
+                            title: const Text('数据管理'),
+                            subtitle: const Text('数据库存储位置 · 导入外部数据库'),
+                          ),
+                        ],
                         ),
                       ),
                       const SizedBox(height: 26),

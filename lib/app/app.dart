@@ -1,5 +1,7 @@
 // 应用根组件 —— MaterialApp.router + forui 主题装配
 //
+import 'dart:async';
+
 // 结构：material_ui 的 MaterialApp.router（forui 建立在 material_ui 之上，
 //       勿改回 flutter/material——两套平行 Material 类，混用会断 Theme 继承链）
 //       └─ builder 注入 FTheme（跟随 themeMode + 选中样式）+ FToaster（全局 toast）+ FTooltipGroup
@@ -11,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../core/android/system_actions.dart';
+import '../core/db/db_location.dart';
 import 'providers/theme_providers.dart';
 import 'security/vault_auto_lock.dart';
 import 'theme/app_theme.dart';
@@ -39,6 +42,9 @@ class _JianliAppState extends ConsumerState<JianliApp>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       bootstrapAlarms(ref.read(appDatabaseProvider));
+      // 首启尝试申请「所有文件访问」，让默认库落在 Download/渐离App（重装不丢数据）。
+      // 仅弹一次、仅 API30+ 未授权时；不阻塞首屏（fire-and-forget）。
+      unawaited(requestDbStoragePermissionOnce(ref.read(appDatabaseProvider)));
     });
   }
 
