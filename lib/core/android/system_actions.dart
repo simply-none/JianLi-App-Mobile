@@ -66,7 +66,8 @@ Future<bool> openFullScreenIntentSettings() async {
 ///
 /// [code] 稳定请求码（用 reminder 的 stableId，保证取消/重排一致）；
 /// [repeatSpec] 重复规则 JSON（见 AlarmScheduler.kt），null 表示一次性。
-/// 非 Android 直接返回 false（无此能力，不抛）。
+/// [mode] 'alarm'=全屏 Activity（闹钟送达）；'notify'=普通系统通知（周期「通知」送达，
+///   由 ReminderAlarmReceiver 触发发通知并自排下次）。非 Android 直接返回 false（无此能力，不抛）。
 Future<bool> setAlarmClock({
   required int code,
   required String title,
@@ -74,6 +75,7 @@ Future<bool> setAlarmClock({
   required int triggerAtMillis,
   String? repeatSpec,
   int intervalMillis = 0,
+  String mode = 'alarm',
 }) async {
   if (!_isAndroid) return false;
   try {
@@ -84,6 +86,7 @@ Future<bool> setAlarmClock({
           'triggerAtMillis': triggerAtMillis,
           'repeatSpec': repeatSpec,
           'intervalMillis': intervalMillis,
+          'mode': mode,
         }) ??
         false;
   } catch (_) {

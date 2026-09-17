@@ -101,6 +101,12 @@
             android:theme="@style/AlarmFullscreen"
             android:noHistory="true"
             android:excludeFromRecents="true" />
+        <!-- 到点提醒：周期「通知」送达的广播接收器（由原生 AlarmManager.setAlarmClock 触发，
+             息屏/App 被杀也能收到广播发通知并自排下次）。exported=false：只由本应用 AlarmScheduler 触发 -->
+        <receiver
+            android:name=".ReminderAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

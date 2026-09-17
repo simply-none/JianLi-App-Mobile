@@ -67,11 +67,13 @@ object SystemActionsChannel {
                         val triggerAt = call.argument<Long>("triggerAtMillis") ?: 0L
                         val repeatSpec = call.argument<String>("repeatSpec")
                         val interval = call.argument<Long>("intervalMillis") ?: 0L
+                        // mode: 'alarm'=全屏 Activity；'notify'=普通系统通知（见 AlarmScheduler）
+                        val mode = call.argument<String>("mode") ?: AlarmScheduler.MODE_ALARM
                         if (triggerAt <= 0L) {
                             result.success(false)
                         } else {
                             AlarmScheduler.schedule(
-                                activity, code, title, body, triggerAt, repeatSpec, interval
+                                activity, code, title, body, triggerAt, repeatSpec, interval, mode
                             )
                             result.success(true)
                         }

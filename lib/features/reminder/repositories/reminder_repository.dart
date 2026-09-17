@@ -96,30 +96,21 @@ class ReminderRepository {
   /// 按 mode + delivery 把提醒翻译为本地通知计划
   Future<void> scheduleNotification(ReminderItem item) async {
     if (item.isStateful) return; // 状态机不走系统通知
+    // 周期模式：无论「通知」还是「闹钟」送达，都走原生 AlarmManager 桥（alarm=全屏 / notify=普通通知）。
+    // awesome 的 NotificationInterval 在 Android 12+ 被 Doze/省电严重节流并会自我停摆，
+    // 表现为「只响 2 次就停 + 间隔不准」，正是周期提醒失效根因，故不再走 awesome。
+    if (item.mode == 'interval') {
+      await _scheduleNativeInterval(item);
+      return;
+    }
     // 闹钟送达：走原生 setAlarmClock 桥（系统级闹钟，无需精确闹钟权限、息屏必响、锁屏全屏）
     if (item.isAlarm) {
       await _scheduleNativeAlarm(item);
       return;
     }
-    // 普通通知送达：awesome_notifications（精确权限缺失自动降级，见 notification_service）
+    // 普通通知送达（时间模式）：awesome_notifications（精确权限缺失自动降级，见 notification_service）
     final channel = NotificationChannels.todo;
     final baseId = NotificationService.stableId(item.id);
-
-    // 周期模式
-    if (item.mode == 'interval') {
-      final iv = _parseInterval(item);
-      if (iv == null) return;
-      await NotificationService.scheduleInterval(
-        id: baseId,
-        channelKey: channel,
-        title: item.title,
-        body: item.content,
-        interval: iv,
-        precise: false,
-        fullScreen: false,
-      );
-      return;
-    }
 
     // 时间模式
     final timeParts = (item.time ?? '').split(':');
@@ -233,26 +224,11 @@ class ReminderRepository {
     }
   }
 
-  /// 闹钟送达：原生 setAlarmClock 桥排程（详见文件头说明）
+  /// 闹钟送达：原生 setAlarmClock 桥排程（时间模式；周期模式走 _scheduleNativeInterval）
   Future<void> _scheduleNativeAlarm(ReminderItem item) async {
     final baseId = NotificationService.stableId(item.id);
     final title = item.title;
     final body = item.content;
-
-    if (item.mode == 'interval') {
-      final iv = _parseInterval(item);
-      if (iv == null) return;
-      final trigger = DateTime.now().add(iv).millisecondsSinceEpoch;
-      await sys.setAlarmClock(
-        code: baseId,
-        title: title,
-        body: body,
-        triggerAtMillis: trigger,
-        repeatSpec: '{"type":"interval","interval":${iv.inMilliseconds}}',
-        intervalMillis: iv.inMilliseconds,
-      );
-      return;
-    }
 
     if (item.repeat == 'weekly' && item.weekDays.isNotEmpty) {
       for (final w in item.weekDays) {
@@ -278,6 +254,27 @@ class ReminderRepository {
       body: body,
       triggerAtMillis: ms,
       repeatSpec: _repeatSpecJson(item),
+    );
+  }
+
+  /// 周期模式（每 N 分/时/天）送达：走原生 AlarmManager 桥（alarm=全屏 / notify=普通通知）。
+  ///
+  /// 不再走 awesome 的 NotificationInterval：它在 Android 12+ 被 Doze/省电严重节流且会自我停摆，
+  /// 表现为「只响 2 次就停 + 间隔不准」。原生 setAlarmClock 由系统持有，首次在 now+interval 触发，
+  /// 之后由 Receiver/Activity 按 repeatSpec 的 interval 类型自排下次，连 App 被杀也能持续每 interval 弹一次。
+  Future<void> _scheduleNativeInterval(ReminderItem item) async {
+    final baseId = NotificationService.stableId(item.id);
+    final iv = _parseInterval(item);
+    if (iv == null) return;
+    final mode = item.isAlarm ? 'alarm' : 'notify';
+    await sys.setAlarmClock(
+      code: baseId,
+      title: item.title,
+      body: item.content,
+      triggerAtMillis: DateTime.now().add(iv).millisecondsSinceEpoch,
+      repeatSpec: '{"type":"interval","interval":${iv.inMilliseconds}}',
+      intervalMillis: iv.inMilliseconds,
+      mode: mode,
     );
   }
 
