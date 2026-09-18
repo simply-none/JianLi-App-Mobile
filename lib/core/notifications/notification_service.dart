@@ -24,17 +24,26 @@ import 'package:permission_handler/permission_handler.dart';
 import '../android/system_actions.dart' as sys;
 
 /// 通知渠道定义（与功能域一一对应，便于系统级分组管理）
+///
+/// ⚠️ **渠道键版本后缀的由来（2026-09-18，务必先读再改键名）**：
+/// Android 的 `NotificationChannel` **一经创建，重要性/声音/振动等即永久锁定**——用同一个键
+/// 再次 `createNotificationChannel` 是 no-op（新设置被系统忽略），而「先删除再重建同名渠道」
+/// 也不行：删除是**软删除**，系统会记住该键并把**旧设置**恢复给重建的渠道（这是系统防 App
+/// 绕过用户选择的设计）。因此**唯一能改重要性的办法是换一个新的渠道键**。
+/// 2026-09-18 把「习惯/待办/番茄钟」三个渠道从 `Default`（不弹横幅）升到 `High`（悬浮横幅 =
+/// 前置屏幕上直接可见，与倒计时一致），故键名统一加 `_v2`；旧键在 [NotificationService.init]
+/// 里删除，避免系统设置里残留点开后什么都没有的死渠道。**下次再改渠道重要性请继续换键（_v3）**。
 class NotificationChannels {
   NotificationChannels._();
 
   /// 习惯打卡提醒
-  static const String habit = 'habit';
+  static const String habit = 'habit_v2';
 
   /// 待办截止/每日实例提醒
-  static const String todo = 'todo';
+  static const String todo = 'todo_v2';
 
   /// 番茄钟阶段切换
-  static const String pomodoro = 'pomodoro';
+  static const String pomodoro = 'pomodoro_v2';
 
   /// 倒计时到点（普通系统通知；精确性由 scheduleOnce 的 preciseAlarm 保证）
   static const String countdown = 'countdown';
@@ -42,28 +51,54 @@ class NotificationChannels {
   /// 闹钟（强提醒）：高重要 + 可全屏
   static const String alarm = 'alarm';
 
+  /// 已被版本升级废弃的旧渠道键（`init()` 时删除，防系统设置里出现死渠道）
+  static const List<String> legacyKeys = ['habit', 'todo', 'pomodoro'];
+
+  /// 旧渠道键 → 当前键（历史通知 payload 里存的仍是旧键，贪睡重排时需迁移）
+  static const Map<String, String> legacyKeyMap = {
+    'habit': habit,
+    'todo': todo,
+    'pomodoro': pomodoro,
+  };
+
   /// 全渠道清单（初始化时统一注册）
+  ///
+  /// **全部 `High`**：`High` 才带 **peeks**（悬浮横幅 / heads-up，锁屏与前台都能直接在屏幕上
+  /// 看到，无需下拉通知栏）；`Default` 只会静默进通知栏（awesome 官方注释：
+  /// `Default` = "does not visually intrude"）。倒计时一直都是 `High`，其余渠道对齐它。
   static List<NotificationChannel> get all => [
         NotificationChannel(
           channelKey: habit,
           channelName: '习惯提醒',
           channelDescription: '习惯打卡到点提醒',
           channelShowBadge: true,
+          importance: NotificationImportance.High,
           playSound: true,
+          enableVibration: true,
+          // 锁屏完整可见（VISIBILITY_PUBLIC）：配合 High 的悬浮横幅，做到「不拉通知栏也能看到」
+          defaultPrivacy: NotificationPrivacy.Public,
         ),
         NotificationChannel(
           channelKey: todo,
           channelName: '待办提醒',
-          channelDescription: '待办截止与重复实例提醒',
+          channelDescription: '待办截止、每日实例与提醒管理的通知送达',
           channelShowBadge: true,
+          importance: NotificationImportance.High,
           playSound: true,
+          enableVibration: true,
+          // 锁屏完整可见（VISIBILITY_PUBLIC）：配合 High 的悬浮横幅，做到「不拉通知栏也能看到」
+          defaultPrivacy: NotificationPrivacy.Public,
         ),
         NotificationChannel(
           channelKey: pomodoro,
           channelName: '番茄钟',
           channelDescription: '番茄钟工作/休息阶段切换提醒',
           channelShowBadge: true,
+          importance: NotificationImportance.High,
           playSound: true,
+          enableVibration: true,
+          // 锁屏完整可见（VISIBILITY_PUBLIC）：配合 High 的悬浮横幅，做到「不拉通知栏也能看到」
+          defaultPrivacy: NotificationPrivacy.Public,
         ),
         NotificationChannel(
           channelKey: countdown,
@@ -72,6 +107,9 @@ class NotificationChannels {
           channelShowBadge: true,
           importance: NotificationImportance.High,
           playSound: true,
+          enableVibration: true,
+          // 锁屏完整可见（VISIBILITY_PUBLIC）：配合 High 的悬浮横幅，做到「不拉通知栏也能看到」
+          defaultPrivacy: NotificationPrivacy.Public,
         ),
         NotificationChannel(
           channelKey: alarm,
@@ -80,6 +118,9 @@ class NotificationChannels {
           channelShowBadge: true,
           importance: NotificationImportance.High,
           playSound: true,
+          enableVibration: true,
+          // 锁屏完整可见（VISIBILITY_PUBLIC）：配合 High 的悬浮横幅，做到「不拉通知栏也能看到」
+          defaultPrivacy: NotificationPrivacy.Public,
         ),
       ];
 }
@@ -107,6 +148,15 @@ class NotificationService {
       NotificationChannels.all,
       debug: false,
     );
+    // 清掉因「渠道键升级」而废弃的旧渠道：Android 渠道创建后重要性不可改（软删除还会恢复旧设置），
+    // 只能换新键 + 删旧键，否则系统设置里会留下点开什么都没有的死渠道。
+    for (final key in NotificationChannels.legacyKeys) {
+      try {
+        await AwesomeNotifications().removeChannel(key);
+      } catch (_) {
+        // 低版本无渠道概念 / 旧键不存在 → 忽略
+      }
+    }
     // 注册动作回调：闹钟「稍后提醒」点击后重排一次响铃。
     // ⚠️ 必须传静态/顶层函数引用（不能是闭包），插件内部用
     // PluginUtilities.getCallbackHandle 取句柄，闭包会取不到导致回调不触发。
@@ -114,6 +164,15 @@ class NotificationService {
       onActionReceivedMethod: _onActionReceived,
     );
     _initialized = true;
+  }
+
+  /// 把历史通知 payload 里可能残留的**旧渠道键**迁移为当前键。
+  ///
+  /// 用途：渠道键升级（见 [NotificationChannels] 顶部说明）后，用户点旧通知上的「稍后提醒」时，
+  /// payload 里存的还是旧键；旧渠道已被删除，直接用会发不出去 → 这里统一映射到新键。
+  static String migrateChannelKey(String? key) {
+    if (key == null || key.isEmpty) return NotificationChannels.alarm;
+    return NotificationChannels.legacyKeyMap[key] ?? key;
   }
 
   /// 请求通知权限（Android 13+ 需运行时授权）
@@ -449,7 +508,8 @@ Future<void> _onActionReceived(ReceivedAction action) async {
   if (action.buttonKeyPressed != NotificationService.actionSnooze) return;
   final p = action.payload ?? {};
   final baseId = int.tryParse(p['id'] ?? '') ?? action.id ?? 0;
-  final channel = p['channel'] ?? NotificationChannels.alarm;
+  // 旧渠道键迁移（渠道做版本升级后，旧通知 payload 里仍是旧键；旧渠道已删除 → 直接发会失败）
+  final channel = NotificationService.migrateChannelKey(p['channel']);
   final title = p['title'] ?? '提醒';
   final body = p['body'] ?? '';
   final alarm = channel == NotificationChannels.alarm;

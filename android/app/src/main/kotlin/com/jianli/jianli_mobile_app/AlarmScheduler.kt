@@ -164,6 +164,8 @@ object AlarmScheduler {
             description = "周期提醒的普通系统通知"
             enableLights(true)
             enableVibration(true)
+            // IMPORTANCE_HIGH = 悬浮横幅（不用下拉通知栏即可看到）；锁屏也完整可见
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         nm.createNotificationChannel(channel)
     }
@@ -194,6 +196,8 @@ object AlarmScheduler {
             .setContentIntent(tapPi)
             .setAutoCancel(true)
             .setPriority(Notification.PRIORITY_HIGH)
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
         nm.notify(code, builder.build())
     }
 }
