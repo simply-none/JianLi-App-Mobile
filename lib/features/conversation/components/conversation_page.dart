@@ -8,7 +8,9 @@
 //   conversation_sheets.dart）；分段 Tab：全部 / 有引用 / 本周更新；
 // - 消息：置顶（pinned='1' 排前 + 图标）、富文本（is_rich='1' 用 HtmlWidget 渲染，'0' 纯文本）、
 //   软删除（长按气泡 → 底部抽屉确认，is_deleted='1' 行保留）、底部输入栏追加记录、
-//   引用/跨主题引用（ref_ids / cross_refs）与正反向链接抽屉、消息标签编辑。
+//   引用/跨主题引用（ref_ids / cross_refs）与正反向链接抽屉、消息标签编辑、
+//   **富文本写入与编辑**（底部栏 Aa → 沉浸式编辑页 conversation_compose_page.dart；
+//   长按菜单「编辑内容」复用同一页；归一化判据见 core/text/rich_text.dart）。
 // 未做（桌面端有、移动端裁剪，记 SKILL.md 待办）：子主题发起、多选批量、情绪预设、LLM 回复。
 import 'dart:async';
 import 'dart:convert';
@@ -34,8 +36,10 @@ import '../../../app/ui/stagger_list.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/db/app_database.dart';
+import '../../../core/text/rich_text.dart';
 import '../repositories/conversation_repository.dart';
 import '../utils/export_markdown.dart';
+import 'conversation_chips.dart';
 import 'conversation_sheets.dart';
 
 /// 分段 Tab 范围（主题列表）
@@ -312,7 +316,7 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
         _condChip(
           context,
           tag.name ?? '',
-          _parseTagColor(tag),
+          parseConvTagColor(tag),
           () => setState(() => _selectedTagIds.remove(id)),
         ),
       );
@@ -407,12 +411,9 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
           convCrossRefs(m.crossRefs).isNotEmpty) {
         hasRefs.add(tid);
       }
-      final raw = m.content ?? '';
-      final text = (m.isRich == '1')
-          ? raw.replaceAll(RegExp(r'<[^>]*>'), ' ')
-          : raw;
-      contentTexts[tid] =
-          '${contentTexts[tid] ?? ''}\n${text.replaceAll(RegExp(r'\s+'), ' ')}';
+      // 关键词搜索索引：与气泡渲染同口径（is_rich 决定是否去标签，见 core/text/rich_text.dart）
+      final text = plainLineOf(m.content, html: m.isRich == '1');
+      contentTexts[tid] = '${contentTexts[tid] ?? ''}\n$text';
     }
     final weekAgo = DateTime.now().subtract(const Duration(days: 7));
     final kw = _keyword.trim().toLowerCase();
@@ -661,7 +662,7 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
                                   editTagIds.remove(id);
                                   setSheetState(() {});
                                 },
-                                child: _ConvTagBadge(tag: tagById[id]!),
+                                child: ConvTagBadge(tag: tagById[id]!),
                               ),
                         ],
                       ),
@@ -1100,7 +1101,7 @@ class _ThemeCard extends StatelessWidget {
                 children: [
                   if (isSubTheme) const _FlatBadge(label: '子主题'),
                   for (final tag in shownTags)
-                    _ConvTagBadge(tag: tag, radius: 10),
+                    ConvTagBadge(tag: tag, radius: 10),
                   if (overflow > 0) _FlatBadge(label: '+$overflow'),
                 ],
               ),
@@ -1132,53 +1133,6 @@ class _ThemeCard extends StatelessWidget {
     } catch (_) {
       return const [];
     }
-  }
-}
-
-/// 主题标签彩色徽标（conversation_tag 颜色 + 名称）
-class _ConvTagBadge extends StatelessWidget {
-  const _ConvTagBadge({required this.tag, this.radius = 999});
-
-  final ConversationTagData tag;
-
-  /// 圆角（默认胶囊 999；主题列表卡内用 10 对齐 SoftChip 口径）
-  final double radius;
-
-  Color get _color {
-    final hex = (tag.color ?? '').replaceFirst('#', '');
-    final v = int.tryParse(hex, radix: 16);
-    return v == null ? const Color(0xFF6366F1) : Color(0xFF000000 | v);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.theme;
-    final color = _color;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(radius),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            tag.name ?? '',
-            style: t.typography.body.xs.copyWith(
-              color: color,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -1377,6 +1331,33 @@ class _ConversationMessagesPageState
       text: buildThemeMarkdown(theme, msgs, tagById),
       filename: '主题-${_sanitize(theme.title)}_${_timestamp()}.md',
     );
+  }
+
+  /// 进沉浸式富文本编辑页（底部栏 Aa）——新建或编辑一条对话的内容。
+  ///
+  /// 与 PC `ChatInput` 的「展开富文本编辑」是同一个动作位，只是移动端把它做成独立页
+  /// （原因见 conversation_compose_page.dart 文件头：抽屉装不下「编辑区+工具条+键盘」）。
+  /// 新建态把当前的标签 / 引用草稿一并带过去，发送成功后清空本地草稿。
+  Future<void> _openCompose({int? messageId}) async {
+    // 新建态把标签 / 引用草稿经查询参数带过去（编辑态不带：编辑页只改内容）。
+    // 用查询参数而非 `extra`：可声明、可从路由状态复原，也不怕热重载丢 extra。
+    final params = <String, String>{
+      if (messageId != null) 'messageId': '$messageId',
+      if (messageId == null && _pendingTagIds.isNotEmpty)
+        'tags': _pendingTagIds.join(','),
+      if (messageId == null && _pendingRefIds.isNotEmpty)
+        'refs': _pendingRefIds.join(','),
+    };
+    final url = Uri(
+      path: '/conversation/${widget.themeId}/compose',
+      queryParameters: params.isEmpty ? null : params,
+    ).toString();
+    final sent = await context.push<bool>(url);
+    if (!mounted || sent != true) return;
+    setState(() {
+      _pendingTagIds.clear();
+      _pendingRefIds.clear();
+    });
   }
 
   void _send() {
@@ -1692,6 +1673,9 @@ class _ConversationMessagesPageState
     if (!mounted) return;
     final actions = <SheetAction<String>>[
       const SheetAction('ref', '引用此对话', icon: FLucideIcons.link),
+      // 编辑内容（对齐 PC ConversationEditDialog）：进沉浸式富文本编辑页改正文，
+      // 保存后由仓库侧归一化重新判定 is_rich（改回纯文字会自动降级）
+      const SheetAction('edit', '编辑内容', icon: FLucideIcons.squarePen),
       if (links.outgoing.isNotEmpty)
         SheetAction(
           'outgoing',
@@ -1733,6 +1717,10 @@ class _ConversationMessagesPageState
       case 'ref':
         setState(() => _pendingRefIds.add(msg.id));
         showFToast(context: context, title: const Text('已加入引用，发送时生效'));
+      case 'edit':
+        await _openCompose(messageId: msg.id);
+        // 编辑返回后把该条滚到视口并高亮片刻（`_highlightMessage` 返回 void，勿 await）
+        _highlightMessage(msg.id);
       case 'outgoing':
         await _showRefDrawer('正向链接', [
           for (final c in links.outgoing) ConvRefItem(c, null),
@@ -1887,13 +1875,11 @@ class _ConversationMessagesPageState
   }
 
   /// 富文本摘要（剥标签 + 压空白）
-  String _snippetOf(ConversationData m) {
-    final raw = m.content ?? '';
-    final text = m.isRich == '1'
-        ? raw.replaceAll(RegExp(r'<[^>]*>'), ' ')
-        : raw;
-    return text.replaceAll(RegExp(r'\s+'), ' ').trim();
-  }
+  /// 单行摘要（预览/抽屉/长按菜单标题用）。
+  /// ⚠️ `html:` 必须按 is_rich 传 —— 纯文本消息里出现的 `<...>` 要原样显示，
+  /// 与气泡的渲染分支（HtmlWidget / Text）保持同一口径。工具见 core/text/rich_text.dart。
+  String _snippetOf(ConversationData m) =>
+      snippetOf(m.content, html: m.isRich == '1');
 
   /// 长按气泡：软删除确认（sm 确认抽屉；行保留对齐桌面追溯语义）
   Future<void> _confirmSoftDelete(ConversationData msg) async {
@@ -2073,7 +2059,7 @@ class _ConversationMessagesPageState
                                                       ))
                                                         if (msgTagById[id] !=
                                                             null)
-                                                          _ConvTagBadge(
+                                                          ConvTagBadge(
                                                             tag:
                                                                 msgTagById[id]!,
                                                           ),
@@ -2311,7 +2297,7 @@ class _ConversationMessagesPageState
                                             onTap: () => setState(
                                               () => _pendingTagIds.remove(id),
                                             ),
-                                            child: _ConvTagBadge(
+                                            child: ConvTagBadge(
                                               tag: msgTagById[id]!,
                                             ),
                                           ),
@@ -2320,7 +2306,7 @@ class _ConversationMessagesPageState
                                       // 引用草稿 chip：摘要 + 可点掉
                                       for (final id in _pendingRefIds)
                                         if (allById[id] != null) ...[
-                                          _RefDraftChip(
+                                          ConvRefDraftChip(
                                             label: _short(
                                               _snippetOf(allById[id]!).isEmpty
                                                   ? '（无文本）'
@@ -2348,6 +2334,28 @@ class _ConversationMessagesPageState
                     padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
                     child: Row(
                       children: [
+                        // Aa：进沉浸式富文本编辑页（与 PC ChatInput 的「展开富文本编辑」
+                        // 同一动作位）。做成 40×40 的 muted 软底方块，与右侧发送钮同高同圆角；
+                        // ⚠️ 不用 FButton/IconButton —— 与 SheetInputBox(h40) 天生不等高
+                        // （见 interaction-patterns §4.6：并排一律自绘容器）。
+                        TapScale(
+                          onTap: _openCompose,
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: t.colors.muted,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              FLucideIcons.type,
+                              size: 18,
+                              color: t.colors.foreground,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         // 根因修复（参考文件互传「手动填 IP」行）：forui `FTextField` 的可见
                         // 边框按内容固有高度绘制、**不随 Row 的紧约束拉伸**，与同排按钮天生
                         // 不等高。改用自绘边框的共享 `SheetInputBox`（定高 40）＋自绘同高
@@ -2496,43 +2504,6 @@ class _ConvTagOption extends StatelessWidget {
 /// 文本截断（超出补省略号）
 String _short(String s, int n) => s.length <= n ? s : '${s.substring(0, n)}…';
 
-/// 引用草稿 chip（摘要 + 可点掉）
-class _RefDraftChip extends StatelessWidget {
-  const _RefDraftChip({required this.label, required this.onDelete});
-
-  final String label;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.theme;
-    return GestureDetector(
-      onTap: onDelete,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: AppTokens.accentSoft(context, AppTokens.accent(4)),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: AppTokens.accent(4).withValues(alpha: 0.4)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(FLucideIcons.link, size: 11, color: AppTokens.accent(4)),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: t.typography.body.xs.copyWith(color: AppTokens.accent(4)),
-            ),
-            const SizedBox(width: 3),
-            Icon(FLucideIcons.x, size: 11, color: AppTokens.accent(4)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// 引用选择抽屉的结果项：勾选圆点 + 主题名/时间 + 摘要（多主题、模糊搜索列表）
 class _RefPickItem extends StatelessWidget {
   const _RefPickItem({
@@ -2549,13 +2520,8 @@ class _RefPickItem extends StatelessWidget {
   final bool isCurrentTheme;
   final VoidCallback onTap;
 
-  String get _snippet {
-    final raw = msg.content ?? '';
-    final text = msg.isRich == '1'
-        ? raw.replaceAll(RegExp(r'<[^>]*>'), ' ')
-        : raw;
-    return text.replaceAll(RegExp(r'\s+'), ' ').trim();
-  }
+  /// 单行摘要（与消息页 `_snippetOf` 同口径，见 core/text/rich_text.dart）
+  String get _snippet => snippetOf(msg.content, html: msg.isRich == '1');
 
   @override
   Widget build(BuildContext context) {
@@ -2781,13 +2747,6 @@ List<({int themeId, int convId})> convCrossRefs(String? raw) {
   } catch (_) {
     return const [];
   }
-}
-
-/// conversation_tag.color('#RRGGBB') → Color（解析失败回落默认紫）
-Color _parseTagColor(ConversationTagData tag) {
-  final hex = (tag.color ?? '').replaceFirst('#', '');
-  final v = int.tryParse(hex, radix: 16);
-  return v == null ? const Color(0xFF6366F1) : Color(0xFF000000 | v);
 }
 
 /// 'yyyy-MM-dd HH:mm:ss' → 今天 HH:mm / 昨天 HH:mm / M月D日（跨年带年份）

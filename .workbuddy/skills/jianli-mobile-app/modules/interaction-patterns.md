@@ -139,8 +139,9 @@
 | **列表卡片的破坏性动作** | **卡片行尾不放删除按钮**（2026-09-13 用户定，习惯卡首发）：删除统一收进**只读详情底栏**（`_sheetButton(label:'删除习惯', bg: destructive)`）。理由：卡右侧只留「主动作」（打卡圈 / ⋯），避免误触删除；新增列表页照此办，勿再往卡里塞 trash 图标 | `habit_page.dart` `_HabitCard` / `_showDetailSheet` |
 | **详情出口动作回传** | 用 `枚举 + 目标条目` 回传（`TodoDetailResult(action, item)`），抽屉自己不直接开表单；带 item 是为了支持父任务**层层下钻**后动作逐层上抛 | `TodoDetailResult` |
 | **新增 / 编辑保存** | 底部固定操作条（`GradientButton`），不随内容滚动；编辑态头部不放重复保存入口 | `note_editor_page.dart` |
+| **同一动作不在页面上出现两个入口** | **元信息 / 摘要类 chip 行只做「展示」，入口统一收在一处**（2026-09-18 用户定，笔记编辑页首发）：顶行原本既有已选分类/标签、又塞「＋分类」「＋标签」入口，与底部条「分类 n」「标签 n」功能重复 → 顶行**只显示已选项**（点击已选 chip 仍可开抽屉增删），添加入口收敛到底部条。⚠️ **配套要求：纯展示行在「一个都没选」时必须整行 + 上下间距一起不渲染**（用 `if (hasX) ...[...]` 连 `SizedBox` 一起包），否则新建态会留下几十像素死区、还压掉内容高度 | `note_editor_page.dart` 的 `_metaRow(selectedTags)` + `hasMeta` |
 | **页面底部固定条（机制）** | 一律用 **`FScaffold.footer:`**，**不要**自己拼 `Column + Expanded + 底部条`——forui 会自动把它排在 body 之下（body 高度自动扣减，内容不会滚到条下面）并按 `viewInsets` 避让键盘，且自带 `footerDecoration`（**默认仅一条顶部描边、无背景**，透明底透出页面背板，与 App「渐变背板」架构一致）。⚠️ **footer 内容必须自带 `SafeArea(top: false)`**：footer **不被 `childPad` 包裹**，forui 也**不会**自动避让系统导航栏（只避让键盘）。⚠️ **`child:` 必须写在构造参数最后**，否则报 info `sort_child_properties_last`（本项目 analyze 要求零 issue） | `main_shell.dart`（悬浮胶囊底栏）、`book_notes_page.dart`（导出条） |
-| **表单输入框** | ① 抽屉内原生 `TextField` 必须有 `Material` 祖先 —— 统一由 `SheetSurface` 提供；`FScaffold` 与 forui Sheet **都不提供**；② **常态必须可见描边、聚焦高亮主题色**（不写 `border:` 即继承主题 `inputDecorationTheme`，**严禁 `InputBorder.none` 抹掉描边**）；③ **点空白 / 滚动失焦收键盘**（根 `Actions` 覆盖 `EditableTextTapOutsideIntent` + `SheetSurface` 的 `ScrollNotification` 兜底，无需各自写 `onTapOutside`）；④ 多行 `maxLines: null` 随内容增长 | `sheet_surface.dart` 注释 / `app.dart` / `interaction-patterns.md` §五 |
+| **表单输入框** | ① 抽屉内原生 `TextField` 必须有 `Material` 祖先 —— 统一由 `SheetSurface` 提供；`FScaffold` 与 forui Sheet **都不提供**（**非抽屉的整页自绘输入区**没有 `SheetSurface`，必须自己逐个补 `Material(type: MaterialType.transparency)`：笔记编辑页共 3 处 —— 标题/正文 `TextField`、`QuillEditor` 的选区菜单、`QuillSimpleToolbar` 的 `IconButton`，详见 SKILL 红线 #23 ⑦）；② **常态必须可见描边、聚焦高亮主题色**（不写 `border:` 即继承主题 `inputDecorationTheme`，**严禁 `InputBorder.none` 抹掉描边**）；③ **点空白 / 滚动失焦收键盘**（根 `Actions` 覆盖 `EditableTextTapOutsideIntent` + `SheetSurface` 的 `ScrollNotification` 兜底，无需各自写 `onTapOutside`）；④ 多行 `maxLines: null` 随内容增长 | `sheet_surface.dart` 注释 / `app.dart` / `interaction-patterns.md` §五 |
 | **controller 生命周期** | controller 归**持有它的 State**，**绝不**在 `await 抽屉 Future` 之后 dispose（会断言 `_dependents.isEmpty` 整屏红） | `architecture.md` 雷区 #14 + `_ControllerHost` |
 | **列表滚动吸顶** | 锚点 = **搜索行**（搜索框常驻视口顶部），**不是** Tab 栏；条件 chip / Tab 栏都随滚动移出 | `todo_page.dart` 的 `_PinnedHeader`；本模块 §3.5 / §3.17 |
 | **反馈（toast）** | 统一 `showFToast`（`FToaster` 已在根组件挂全局） | `showRecordProgressSheet` |
@@ -348,7 +349,7 @@ Tab 栏（h34 分段）：进行中（默认）/ 未开始 / 已完成 / 已取�
 | 消费方 | 骨架构成（横幅统计 / Tab / 备注） |
 |---|---|
 | `todo_page.dart` | 进行中/未开始/已完成/已取消/全部 · Tab=状态范围（口径见 §3.7） · 横幅纹理「卡11」+ 条件 chip 行（原子迁移，零视觉变化） |
-| `reminder_list_page.dart` | 全部/定点/周期/启用中 · Tab=全部/定点/周期/多状态 · **提醒守护卡（常驻「N/4 项已就绪」→ 点开 `_ReminderGuardSheet` lg 抽屉：四项系统开关一键修复 + 后台保活开关 + 厂商路径引导 + 打开应用设置）** + 搜索按标题/内容 + 编辑弹层走 `SheetScaffold`（选「闹钟」且未授权时显示降级提示行）+ **长按卡片 → `showSheetActionMenu`【编辑/停用·启用/删除】**（stateful 只读不响应），删除走 `showSheetConfirm` |
+| `reminder_list_page.dart` | 全部/定点/周期/启用中 · Tab=全部/定点/周期/多状态 · **提醒守护卡（常驻「N/4 项已就绪」→ 点开 `ReminderGuardSheet` lg 抽屉：四项系统开关一键修复 + 后台保活开关 + **前置显示（悬浮通知/锁屏显示）逐厂商引导** + 厂商后台限制路径引导 + 打开应用设置；2026-09-18 起抽屉抽出 `reminder_guard_card.dart`/`reminder_guard_sheet.dart` 共享组件，首页也复用，且**从系统设置页返回会强制重排一次提醒计划**，绕开回前台 5 分钟节流）** + 搜索按标题/内容 + 编辑弹层走 `SheetScaffold`（选「闹钟」且未授权时显示降级提示行）+ **长按卡片 → `showSheetActionMenu`【编辑/停用·启用/删除】**（stateful 只读不响应），删除走 `showSheetConfirm` |
 | `countdown_page.dart` | 全部/进行中/已暂停/已结束 · Tab=同四段 · 大计时器白卡主色环（横幅与搜索行之间，随滚动移出）+ 新建/编辑共用 `_CountdownFormSheet`（**设定方式对齐 PC（2026-09-12）**：指定时刻=复用待办 `showTodoDateTimeSheet` 月历选择器；指定时长=年/月/日/时/分/秒六小输入框（年=365 天、月=30 天折算），默认 1 小时；编辑未改时间设定保留原 timing，改了回到 running 并重排通知）+ **长按卡片 → `showSheetActionMenu`【编辑/删除】**，删除走 `showSheetConfirm` |
 | `pomodoro_page.dart` | **2026-09-13 重构：页面内本地计时（计时只在本页、离开/切后台即停并复位；原 startTime 持久状态机与原生阶段通知已删）**。头部统一 `‹ 番茄钟 [记录][设置]`（已删 ⟳ 横竖屏循环与 `pomodoro.orientation`）；底部统一 `[开始专注/暂停/继续] [重新开始]`。**三种展示效果**（basic_info 键 `pomodoro_display`，设置弹层 choiceChip 切换；展示效果即方向，离开页面恢复跟随系统）：`normal`=横幅 + 白卡进度环（**竖屏计时卡用 `Expanded` 撑满剩余高度、内容居中**；横屏=左横幅 + 右大环）／`clean`=仅进度环内容卡（无说明文字，锁竖屏）／`landscape`=**大字倒计时 HH:mm:ss**（`FittedBox(scaleDown)` 兜底，锁横屏）。阶段完成写 `pomodoro_status` 流水 + `NotificationService.showNow` 提示音 + `haptic(success)`；长按整页 → 编辑配置弹层（lg：专注/休息分钟 + 展示效果 + **周期规则**）。**周期规则**（basic_info 键 `pomodoro_cycle_rule`）：`未完成重新开始`（默认，丢弃进度）/ `未完成继续上一轮`（专注剩余写 `pomodoro_progress`，重进页面或切后台回前台还原为「已暂停」，点「继续」才走）；仅作用于专注阶段 |
 | `pomodoro_records_sheet.dart` | **2026-09-13 由独立页改为 80vh 抽屉**（`showPomodoroRecordsSheet`，lg 定高）：把手 + 「番茄钟记录」+ 统计行（专注 N ｜ 休息 N ｜ 共 M）+ 可滚周期列表（类型 SoftChip：专注红(6)/休息绿(2)）+ **底部固定【导出】**（→ `Download/渐离App导出/番茄钟记录_*.md`，`exportTextToDownloadDir`）。原 `pomodoro_records_page.dart` 与 `/pomodoro/records` 路由**已删除** |
@@ -476,6 +477,7 @@ chip 内嵌图标（TOTP 胶囊里的 `keyRound`）、扫码页关闭圆钮、�
   1. `lib/app/app.dart` 根组件用 `Actions` 覆盖 `EditableTextTapOutsideIntent`（`CallbackAction` 直接 `intent.focusNode.unfocus()`）——覆盖全 App 所有输入框（原生 `TextField` 与 forui `FTextField` 都走 `EditableText` → 该 intent），点任意输入框外即收键盘。
   2. `lib/app/ui/sheet_surface.dart` 另加 `NotificationListener<ScrollNotification>`：抽屉内任意滚动开始（`ScrollStartNotification`）即 `FocusManager.instance.primaryFocus?.unfocus()`——兜底**惯性滚动**（没有 pointer-down，走不到 tap-outside 那条路径）。
 - ⚠️ **新增输入框无需各自写 `onTapOutside`**，统一由上述两处兜底；若某输入框需不同行为再单独覆盖。别回到「每个输入框手写 onTapOutside」的散落写法。
+- ⚠️ **唯一例外：flutter_quill（`QuillEditor` / `QuillSimpleToolbar`）不走 `EditableText`** —— 它自带 `TextInputClient` 实现，**上面两处兜底全都管不到它**，必须自己在 `QuillEditorConfig.onTapOutside` 里实现（含「工具条豁免」，详见 §4.7）。凡是看到「第三方编辑器控件」就该想到这条例外。
 
 ### 4.3 多行输入容器随内容增长
 
@@ -570,3 +572,66 @@ chip 内嵌图标（TOTP 胶囊里的 `keyRound`）、扫码页关闭圆钮、�
 - **要点**：① 两侧同为自绘容器 → 结构性必然等高，键盘弹起不漂移，与字号缩放无关；② 圆角与输入盒统一 10；③ 次要按钮（如「扫描」独立行）可继续用 FButton——本规则只约束「与输入框并排」的场景；④ 需要固定高度/并排对齐的输入框**一律 SheetInputBox，不要 SizedBox 套 FTextField**（forui 字段适合自适应高度场景）。
 - ⚠️ 禁止再写「SizedBox(height:X) 套 FTextField/FButton 求对齐」——2026-09-13 两轮截图实指后由自绘方案收口。
 - **消费方（2026-09-13 起）**：文件互传「手动填 IP + 添加」、同步页、以及**主题对话「对话记录」页底部输入条**（`SheetInputBox` + 40×40 主色渐变**方形**发送钮，圆角 10；该页原先用 `FTextField + FButton.icon` 必然不等高）。`SheetInputBox` 已加可选 **`onSubmitted`** —— 聊天式输入条（回车/软键盘「完成」即发送）传它，别再为了回车发送而退回 `FTextField`。
+
+### 4.7 第三方富文本编辑器（flutter_quill）的键盘 / 焦点契约（2026-09-18 血案定案）
+
+> 适用：`QuillEditor` + `QuillSimpleToolbar`（笔记编辑页方案 B）。这三条任一违反，症状都是「**点开富文本后键盘弹一下就消失、正文区像没有可输入的地方**」。
+
+- **① `FocusNode` / `ScrollController` 必须由 State 持久持有，禁用 `QuillEditor.basic`**。`.basic` 每次 `build` 都现造 `FocusNode()` + `ScrollController()`，而**键盘 inset 变化本身就会触发重建** ⇒ 节点被换掉 ⇒ 旧节点失焦 ⇒ `openOrCloseConnection()` 关掉输入连接 ⇒ 引擎收起键盘（自我循环）。正确写法：
+
+  ```dart
+  // State 字段
+  final _richFocus = FocusNode(debugLabel: 'noteEditorRich');
+  final _richScroll = ScrollController();
+  // dispose() 里一并释放
+
+  QuillEditor(                                    // 完整构造器，不用 .basic
+    controller: _quill!,
+    focusNode: _richFocus,
+    scrollController: _richScroll,
+    config: QuillEditorConfig(
+      expands: true,                              // 默认 false ⇒ 可视输入区只有内容高度，空文档≈一行
+      autoFocus: false,                           // 红线 #14⑤：打开不自动聚焦
+      onTapOutside: (event, node) { /* 见 ③ */ },
+    ),
+  )
+  ```
+
+  进入富文本后要在 `WidgetsBinding.instance.addPostFrameCallback` 里 `requestFocus()`（同一帧编辑器尚未挂载，直接调等于打空）；退回纯文本前先 `unfocus()` 主动收键盘。
+
+- **② 绝不能把 `QuillSimpleToolbar` 套进横向 `SingleChildScrollView`**。它内部是 `QuillToolbarArrowIndicatedButtonList` = `Row[箭头, Expanded(CustomScrollView), 箭头]`，**自带横滑、要求父级给出有界宽度**；外套横向滚动 ⇒ 宽度无界 ⇒ 内部 `CustomScrollView` 永远拿不到有效滚动尺寸 ⇒ `_handleScroll` 读 `position.minScrollExtent` 抛 `Null check operator used on a null value`。**致命之处是连锁**：该回调由 `WidgetsBinding.instance.addObserver(this)` 注册，而 Flutter 的 `handleMetricsChanged()` 观察者循环**没有 try/catch**，异常打断整条 metrics observer 链 —— **软键盘 insets 变化正是走这条链**，于是「键盘谈不开」。单行横滑交给 quill 自带箭头滚动，高度由它内部 `tightFor(height: _toolbarSize)` 兜住。
+
+- **③ 自写 `onTapOutside` 必须豁免工具条**（§4.2 的例外）。quill 默认 `_defaultOnTapOutside` 只在「鼠标/触控笔且非移动端」失焦，移动端 touch 什么都不做，所以要自己实现；但**工具条位于编辑器的 `TapRegion` 之外**，不豁免就是「点一次加粗，键盘和光标一起没了」。做法：给工具条外层挂 `GlobalKey`，回调里 `box.globalToLocal(event.position)` 落在 `Offset.zero & box.size` 内则 `return`，否则 `node.unfocus()`。
+
+  ```dart
+  final _toolbarKey = GlobalKey();
+  // ...
+  onTapOutside: (event, node) {
+    final box = _toolbarKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      final local = box.globalToLocal(event.position);
+      if ((Offset.zero & box.size).contains(local)) return;   // 点在工具条上 → 不收键盘
+    }
+    node.unfocus();
+  },
+  ```
+
+- **④ 排查口诀**：`adb logcat | grep -E "ImeTracker|Null check"`。出现 `onRequestShow → onShown → onRequestHide at ORIGIN_CLIENT_HIDE_SOFT_INPUT` = **客户端自己收的键盘**（查 ①）；出现 `Null check operator used on a null value` + `minScrollExtent` = 查 ②。
+
+- **⑤ Material 祖先要补两处**（本项目 `FScaffold` 不提供）：`QuillEditor`（长按选区菜单走 Material `AdaptiveTextSelectionToolbar`）与 `QuillSimpleToolbar`（内部按钮是 Material `IconButton`），各自包一层 `Material(type: MaterialType.transparency)`。
+
+- 关联：红线 `SKILL.md` #23（参数名清单）/ #24（本条三坑）；变更史 `changelog.md` 2026-09-18 续·六。
+
+### 4.8 富文本编辑入口的形态：**独立沉浸页**，禁止用底部抽屉（2026-09-18 定案）
+
+> 适用：任何需要「编辑区 + 格式工具条 + 软键盘」三方同时在屏的输入场景（笔记方案 B、主题对话富文本页）。
+
+- **结论：走独立页 `push`，不走底部抽屉。** 反证过程：底部抽屉按 §1.2 的 **`lg` 档必须 `resizeToAvoidBottomInset: false` 且不扣键盘** —— 键盘弹起后会**直接盖住抽屉下半屏**；为了躲键盘只能把工具条挪到抽屉顶部，可见编辑区被压到约 **35vh**，实际不可用。独立页则随键盘自然收缩（`SafeArea` + `Expanded` 正文），**工具条常驻键盘上方**，符合用户对「打字时工具条在手边」的预期。
+- **配套实现契约**（`conversation_compose_page.dart` 与笔记编辑页同构）：
+  - 结构 = `FScaffold(childPad:false)` + `FHeader.nested`(标题左对齐) + `SafeArea` + `Column`[上下文行(可选) → `Expanded(QuillEditor)` → `QuillSimpleToolbar` → 底栏]。
+  - 键盘/焦点三条铁律**照抄 §4.7**（State 持 `_richFocus`/`_richScroll`、完整构造器 + `expands:true`、禁套横向 `SingleChildScrollView`、`onTapOutside` 豁免工具条）；Material 祖先同样要补（编辑区 + 工具条各一处）。
+  - **草稿状态单一持有者**：入口页（快速输入栏 / 列表页）持有标签与引用草稿并经路由参数带入，独立页只做「可点掉」的展示，**不在两处各放一套选择器**（否则草稿状态分裂）。编辑已有条目时该页**只改内容**，其余属性仍回入口页的既有入口改。
+  - 返回用 `context.pop<bool>(...)`，新建成功回 `true`（入口页据此清空草稿并高亮），编辑成功回 `null`（无需清空）。
+- **能力边界（跨端对齐时的铁律）**：工具条**只开对端渲染层真正支持的能力**。主题对话工具条只给「加粗/斜体/下划线/删除线/引用/代码块/有序·无序列表/链接/标题 1-3」（+ 移动端补撤销重做，手机没有 Ctrl+Z），**颜色 / 背景色 / 高亮 / 缩进 / 对齐 / 上下标 / 待办清单 / 搜索一律显式关** —— PC 气泡 `:deep` CSS 不覆盖这些标签，开了会在 PC 上渲染成「无样式的裸标签」。详见红线 `SKILL.md` #25。
+- 关联：§1.2（lg 档不扣键盘）/ §1.9（打开不自动聚焦）/ §4.7（quill 键盘契约）；变更史 `changelog.md` 2026-09-18 续·七。
+

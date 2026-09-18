@@ -10,8 +10,11 @@
 // - 'alarm'（闹钟）：**不再走 awesome**。历史上走 preciseAlarm，在 Android 12+ 未授权
 //   SCHEDULE_EXACT_ALARM 会抛 SecurityException → 闹钟从不响。2026-09-16 起改走原生
 //   AlarmManager.setAlarmClock 桥（见 core/android/system_actions.dart + AlarmScheduler.kt /
-//   AlarmRingActivity.kt）：Android 专门「用户闹钟」通路，息屏/Doze 必响、锁屏全屏、
-//   **无需精确闹钟权限**，彻底修复「闹钟从未响」。重复类由原生 Activity 自行重排。
+//   AlarmRingReceiver.kt / AlarmRingActivity.kt）：Android 专门「用户闹钟」通路，息屏/Doze 必响、
+//   状态栏显示下一个闹钟；到点由广播发**全屏意图通知**，由系统拉起响铃页（绕开 Android 15 的
+//   BAL 创建者限制）。⚠️ **setAlarmClock 同样需要 SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM**
+//   （2026-09-18 依官方文档纠正旧注释），未授权会抛 SecurityException；清单已同时声明两者，
+//   Dart 侧（reminder_repository.dart）仍保留 awesome 兜底。重复类由原生接收器自排下一次。
 //
 // 普通通知增强（仍走 awesome）：
 // - scheduleCalendar(extraRings:N) 额外排 N 次顺延 1 分钟的响铃（id+1000*k），一次连响 N+1 次；

@@ -46,6 +46,13 @@ dependencies:
   awesome_notifications: ^0.12.1
   workmanager: ^0.10.9
   flutter_quill: ^11.5.1
+  # 笔记富文本双向转换：
+  #   HTML → Delta 用 flutter_quill_delta_from_html（虽然它是 flutter_quill 的传递依赖，
+  #   但**必须显式声明**——否则 analyze 报 depend_on_referenced_packages，且 flutter_quill
+  #   改版时会被无声摘掉。已解析版本 1.5.3）
+  #   Delta → HTML 用 vsc_quill_delta_to_html（纯 Dart，与 flutter_quill 版本解耦）
+  flutter_quill_delta_from_html: ^1.5.3
+  vsc_quill_delta_to_html: ^1.0.5
   epubx: ^4.0.0
   archive: ^3.6.1 # EPUB 宽容解析（绕过 epubx 的 TOC 解析异常）：解压 OPF/内容文件
   xml: ^6.6.1 # EPUB 宽容解析：解析 container.xml / OPF manifest+spine

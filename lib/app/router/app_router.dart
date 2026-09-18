@@ -25,6 +25,7 @@ import '../../features/file_vault/components/file_vault_page.dart';
 import '../../features/ebook/components/bookshelf_page.dart';
 import '../../features/ebook/components/book_notes_page.dart';
 import '../../features/ebook/components/epub_reader_page.dart';
+import '../../features/conversation/components/conversation_compose_page.dart';
 import '../../features/conversation/components/conversation_page.dart';
 import '../../features/sync/components/sync_page.dart';
 import '../../features/about/about_page.dart';
@@ -137,6 +138,29 @@ final GoRouter appRouter = GoRouter(
             ),
             state,
           ),
+          routes: [
+            GoRoute(
+              // 富文本编辑页（沉浸式，与笔记编辑页同构）：新建 / 编辑一条对话的内容。
+              // messageId 非空 = 编辑已有对话；tags / refs = 从快速输入栏带过来的草稿
+              // （逗号分隔的 id 串，空串安全降级为空集合）。
+              path: 'compose',
+              pageBuilder: (context, state) => slidePage(
+                ConversationComposePage(
+                  themeId: state.pathParameters['id'] ?? '',
+                  messageId: int.tryParse(
+                    state.uri.queryParameters['messageId'] ?? '',
+                  ),
+                  initialTagIds: _csvSet(
+                    state.uri.queryParameters['tags'],
+                  ),
+                  initialRefIds: _csvSet(
+                    state.uri.queryParameters['refs'],
+                  ).map(int.tryParse).whereType<int>().toSet(),
+                ),
+                state,
+              ),
+            ),
+          ],
         ),
       ],
     ),
@@ -216,3 +240,14 @@ final GoRouter appRouter = GoRouter(
     ),
   ],
 );
+
+/// 逗号分隔串 → 集合（`null` / 空串 / 空项 一律安全降级为空集合）。
+///
+/// 用于「跨页传草稿 id 列表」这类查询参数：调用方 `join(',')` 拼、这里拆回来。
+Set<String> _csvSet(String? raw) {
+  if (raw == null || raw.isEmpty) return const <String>{};
+  return {
+    for (final e in raw.split(','))
+      if (e.isNotEmpty) e,
+  };
+}

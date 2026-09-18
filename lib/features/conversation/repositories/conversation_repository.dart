@@ -7,6 +7,8 @@
 //   is_deleted('1'软删)
 // - conversation_tag：name/color/scope(theme|conversation)/create_time
 // 2026-09-13 起：引用/跨主题引用、导出 Markdown、标签管理 CRUD（updateTag/deleteTag）均已落地；
+// 2026-09-18 起：**富文本写入与编辑**已落地（`addMessage` / `updateMessageContent` 走
+//   `core/text/rich_text.dart` 的 `normalizeContent` 归一化，判据与桌面端逐字对齐）；
 // 未做（桌面端有、移动端裁剪）：子主题发起、多选批量、情绪预设、LLM 回复——记 SKILL.md 待办。
 import 'dart:convert';
 
@@ -15,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
+import '../../../core/text/rich_text.dart';
 
 /// 引用关系条目（跨主题/反向链接时附带来源主题名）
 class ConvRefItem {
@@ -188,6 +191,11 @@ class ConversationRepository {
 
   /// 追加一条消息（记录型对话；themeId 与桌面端一致为字符串化 id；tagIds 写入 tags JSON；
   /// refIds = 同主题引用的消息 id；crossRefs = 跨主题引用 [{themeId, convId}]，均与桌面端同构）
+  ///
+  /// [content] 可以是纯文本或富文本 HTML —— **调用方不需要自己判断类型**：
+  /// 由 [normalizeContent] 统一归一化（对齐桌面端 `createConversation`）——含实际格式
+  /// 则原样存 HTML + `is_rich='1'`，否则去掉标签存纯文本 + `is_rich='0'`。
+  /// ⚠️ 判据必须与 PC 逐字一致，否则会出现「一端按富文本渲染、另一端把源码显示出来」。
   Future<void> addMessage({
     required String themeId,
     required String content,
@@ -196,12 +204,14 @@ class ConversationRepository {
     List<({int themeId, int convId})> crossRefs = const [],
   }) async {
     final now = _now();
+    // 内容归一化：落库 content 与 is_rich 由同一处判定（唯一入口，勿在调用点各判一次）
+    final normalized = normalizeContent(content);
     await _db
         .into(_db.conversation)
         .insert(
           ConversationCompanion.insert(
             themeId: Value(themeId),
-            content: Value(content),
+            content: Value(normalized.content),
             tags: Value(jsonEncode(tagIds)),
             createTime: Value(now),
             pinned: const Value('0'),
@@ -213,7 +223,7 @@ class ConversationRepository {
                   {'themeId': x.themeId, 'convId': x.convId},
               ]),
             ),
-            isRich: const Value('0'),
+            isRich: Value(normalized.isRichFlag),
           ),
         );
     // 同步刷新主题的更新时间（与桌面端 createConversation 行为一致）
@@ -223,6 +233,34 @@ class ConversationRepository {
             ..where((t) => t.id.equals(themeIdInt)))
           .write(ConversationThemeCompanion(updateTime: Value(now)));
     }
+  }
+
+  /// 更新一条消息的**内容**（对齐桌面端 `updateConversation` 的 content 分支）。
+  ///
+  /// 归一化规则与 [addMessage] 完全一致，并**同步改写 `is_rich`** —— 所以「把一条
+  /// 富文本改回纯文本」会正确地降级为 `is_rich='0'`，不会留下「标记是富文本、
+  /// 内容却是纯文本」的半脏行。
+  ///
+  /// ⚠️ 与桌面端一致：**不**刷新主题的 `update_time`（PC 只在新建 / 改主题元信息时刷，
+  /// 改对话内容不刷）。若要顺带改标签请用 [updateMessageTags]，别在这里捎带。
+  Future<void> updateMessageContent(int id, String content) {
+    final normalized = normalizeContent(content);
+    return (_db.update(_db.conversation)..where((t) => t.id.equals(id))).write(
+      ConversationCompanion(
+        content: Value(normalized.content),
+        isRich: Value(normalized.isRichFlag),
+      ),
+    );
+  }
+
+  /// 取单条消息（富文本编辑页进入编辑态时按 id 回显；已软删的返回 null）
+  Future<ConversationData?> getMessage(int id) async {
+    final rows = await (_db.select(
+      _db.conversation,
+    )..where((t) => t.id.equals(id))).get();
+    if (rows.isEmpty) return null;
+    final m = rows.first;
+    return m.isDeleted == '1' ? null : m;
   }
 
   /// 更新一条消息的标签（tags JSON 数组，对齐桌面端 updateConversation）

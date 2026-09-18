@@ -4,8 +4,8 @@
 // - 定义存 basic_info 表 key='note_tags' 行（value=JSON 数组），随同步白名单双端互通；
 // - 每条笔记 note_book.tags 存标签 key 的 JSON 数组；
 // - 新建标签随机取 PC 同款色板；删除为软删（deleted: true）。
-// 移动端编辑为轻量纯文本（html 段落化落库，桌面端 vue-quill 可渲染）；
-// flutter_quill 富文本编辑器列入 P2。
+// 移动端编辑：默认纯文本（html 段落化落库）；编辑页支持切 flutter_quill 富文本
+// （Delta→HTML 经 vsc_quill_delta_to_html 走 rawHtml 直落，2026-09-18 方案 B 落地）。
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
@@ -72,17 +72,19 @@ class NoteRepository {
     return row == null ? null : NoteItem.fromRow(row);
   }
 
-  /// 新建笔记（html 由纯文本段落生成，与桌面端 vue-quill 的 <p> 结构兼容；
+  /// 新建笔记（默认由纯文本段落生成 <p> 结构 html，与桌面端 vue-quill 兼容；
+  /// [rawHtml] 非空时直接落库（富文本模式 Delta→HTML 的产物，不再段落化）；
   /// categories 多选分类，落库为 JSON 数组文本，空列表存 NULL）
   Future<String> createNote({
     required String title,
     required String content,
     List<String> categories = const [],
     List<String> tagKeys = const [],
+    String? rawHtml,
   }) async {
     final key = _uuid.v4();
     final now = _now();
-    final html = _textToHtml(content);
+    final html = rawHtml ?? _textToHtml(content);
     await _db
         .into(_db.noteBook)
         .insert(
@@ -101,18 +103,19 @@ class NoteRepository {
     return key;
   }
 
-  /// 更新笔记正文/分类/标签
+  /// 更新笔记正文/分类/标签（[rawHtml] 语义同 [createNote]）
   Future<void> updateNote(
     String key, {
     required String title,
     required String content,
     List<String> categories = const [],
     List<String> tagKeys = const [],
+    String? rawHtml,
   }) async {
     await (_db.update(_db.noteBook)..where((tbl) => tbl.key.equals(key))).write(
       NoteBookCompanion(
         excerpt: Value(_excerptOf(title, content)),
-        html: Value(_textToHtml(content)),
+        html: Value(rawHtml ?? _textToHtml(content)),
         category: Value(
           categories.isEmpty ? null : jsonEncode(categories),
         ),

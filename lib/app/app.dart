@@ -9,6 +9,7 @@ import 'dart:async';
 //       三件套，且支持 zh（115 种语言），无需再单独引 flutter_localizations。
 // 主题：样式与主色取自 themeStyleProvider，模式取自 themeModeProvider（均持久化）。
 import 'package:forui/forui.dart';
+import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -117,7 +118,11 @@ class _JianliAppState extends ConsumerState<JianliApp>
       title: '渐离App',
       debugShowCheckedModeBanner: false,
       supportedLocales: FLocalizations.supportedLocales,
-      localizationsDelegates: FLocalizations.localizationsDelegates,
+      // 追加 flutter_quill 本地化委托（笔记富文本编辑器工具条用，支持 zh）
+      localizationsDelegates: [
+        ...FLocalizations.localizationsDelegates,
+        FlutterQuillLocalizations.delegate,
+      ],
       theme: AppTheme.materialLight(style, baseFontSize),
       darkTheme: AppTheme.materialDark(style, baseFontSize),
       themeMode: toMaterialMode(mode),

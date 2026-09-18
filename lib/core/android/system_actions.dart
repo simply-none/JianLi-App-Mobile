@@ -58,16 +58,23 @@ Future<bool> openFullScreenIntentSettings() async {
   }
 }
 
-/// 原生 setAlarmClock 桥（闹钟级送达：息屏/Doze 必响、锁屏全屏、**无需 SCHEDULE_EXACT_ALARM**）
+/// 原生 setAlarmClock 桥（闹钟级送达：息屏/Doze 必响、锁屏全屏）
 ///
 /// 这是「闹钟」送达最可靠的实现：Android 的 `AlarmManager.setAlarmClock` 是专门给
-/// 用户闹钟的通路，不受 Doze 延后、不要求精确闹钟权限；其 showIntent 在到点时直接把
-/// 锁屏上的全屏 Activity（AlarmRingActivity）带到前台。
+/// 用户闹钟的通路，不受 Doze 延后、会在状态栏显示「下一个闹钟」。
+///
+/// ⚠️ **setAlarmClock 同样需要 SCHEDULE_EXACT_ALARM（或 USE_EXACT_ALARM）**（2026-09-18 依官方
+/// 文档纠正：曾经误以为「用户闹钟通路」免权限）。未授权时抛 `SecurityException`，故：
+///   ① 清单同时声明 `SCHEDULE_EXACT_ALARM` + `USE_EXACT_ALARM`（后者 Android 13+ 安装即授予）；
+///   ② Dart 侧 `ReminderRepository` 仍保留 awesome 兜底（原生失败即回退，绝不静默丢提醒）。
+///
+/// 到点后由**广播**承接（不再用 getActivity 直拉 Activity）：`mode='alarm'` → AlarmRingReceiver
+/// 发全屏意图通知，由系统拉起响铃页（绕开 Android 15 的 BAL 创建者限制）；`mode='notify'` →
+/// ReminderAlarmReceiver 发普通通知。非 Android 直接返回 false（无此能力，不抛）。
 ///
 /// [code] 稳定请求码（用 reminder 的 stableId，保证取消/重排一致）；
-/// [repeatSpec] 重复规则 JSON（见 AlarmScheduler.kt），null 表示一次性。
-/// [mode] 'alarm'=全屏 Activity（闹钟送达）；'notify'=普通系统通知（周期「通知」送达，
-///   由 ReminderAlarmReceiver 触发发通知并自排下次）。非 Android 直接返回 false（无此能力，不抛）。
+/// [repeatSpec] 重复规则 JSON（见 AlarmScheduler.kt），null 表示一次性；
+/// [intervalMillis] `repeatSpec.type = 'interval'` 时的间隔毫秒。
 Future<bool> setAlarmClock({
   required int code,
   required String title,

@@ -1,6 +1,6 @@
 // 提醒守护抽屉（lg）—— 从 reminder_list_page.dart 抽出为共享组件，供首页与提醒列表共用。
 //
-// 四项系统前置开关 + 后台保活 + 厂商保活路径引导。
+// 四项系统前置开关 + 后台保活 + 前置显示/厂商保活路径引导。
 //
 // 为什么要有这一页：提醒计划存在原生 AlarmManager（App 被杀也能响），但「到底能不能响」
 // 取决于系统给不给权限 —— 通知 / 精确闹钟 / 电池优化白名单 / 全屏通知。任一项缺失都表现为
@@ -8,11 +8,22 @@
 //
 // ⚠️ 新增判定项时必须同步三处：`NotificationService.checkCapabilities`、本页、列表页守护卡计数
 // （现统一由 `reminder_guard_card.dart` 的 `ReminderGuardCard` 承载卡片）。
+//
+// 2026-09-18 补充两块「文案级」引导（判定项不变，故守护卡 4 项计数与列表页不动）：
+//   ① 前置可见性：系统通知只有渠道重要性为 High 才会「悬浮横幅」（heads-up），且厂商 ROM 的
+//      「悬浮通知 / 锁屏显示」开关可能单独关着 → 逐厂商给出路径（对齐用户诉求「像倒计时那样
+//      直接在前置屏幕上看到」）。这条 App 无法代开，只能引导。
+//   ② 系统设置往返后**立即重排**：`_fix` 把用户送去系统设置页 → 返回时绕开 app.dart 的
+//      5 分钟回前台自愈节流，直接跑一次 `healAlarmSchedules`，让刚授予的权限立刻生效
+//      （否则用户点完「去开启」回来发现状态是「已开启」但提醒仍不准时，会以为没用）。
+import 'dart:async';
+
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../app/alarm_bootstrap.dart';
 import '../../../app/di/app_providers.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/gradient_button.dart';
@@ -21,7 +32,7 @@ import '../../../app/ui/sheet_surface.dart';
 import '../../../core/android/system_actions.dart';
 import '../../../core/notifications/notification_service.dart';
 
-/// 提醒守护弹窗（lg 定高）：四项系统开关 + 后台保活 + 厂商保活路径引导。
+/// 提醒守护弹窗（lg 定高）：四项系统开关 + 后台保活 + 前置显示/厂商保活路径引导。
 /// 公开组件，首页与提醒列表共用。
 class ReminderGuardSheet extends ConsumerStatefulWidget {
   const ReminderGuardSheet({super.key});
@@ -48,6 +59,11 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
   /// 正在处理某项（防连点）
   bool _busy = false;
 
+  /// 是否刚把用户送去系统设置页（点了任一「去开启」）——决定回前台时是否强制重排一次。
+  /// 「通知权限」是系统对话框、其余是设置 Activity，两者都会让 App 走 inactive/paused，
+  /// 故统一置位；返回后无论权限是否真的授到，重排一次都是无害且必要的（幂等）。
+  bool _pendingSettingsReturn = false;
+
   @override
   void initState() {
     super.initState();
@@ -65,8 +81,31 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !_busy) _refresh();
+    if (state != AppLifecycleState.resumed) {
+      super.didChangeAppLifecycleState(state);
+      return;
+    }
+    // 从系统设置页回来：**强制重排一次提醒计划**，让刚授予的权限立刻生效。
+    // 为什么必须在这里做：app.dart 的回前台自愈有 5 分钟节流，用户「去开启 → 返回」通常
+    // 只隔几秒，会被节流吃掉 → 表现为「状态显示已开启，但提醒还是不准时」。
+    // 这里直接调 healAlarmSchedules（不经节流），授完权限随即重排，立即生效。
+    if (_pendingSettingsReturn) {
+      _pendingSettingsReturn = false;
+      unawaited(_healAfterSettings());
+    } else if (!_busy) {
+      _refresh();
+    }
     super.didChangeAppLifecycleState(state);
+  }
+
+  /// 系统设置往返后：重排全部提醒计划 → 重查四项状态（顺序固定，状态必须是重排后的真实值）。
+  Future<void> _healAfterSettings() async {
+    try {
+      await healAlarmSchedules(ref.read(appDatabaseProvider));
+    } catch (_) {
+      // 自愈失败不崩页：状态重查照旧，用户可再点一次「去开启」
+    }
+    if (mounted) await _refresh();
   }
 
   /// 重查四项开关 + 保活偏好/服务状态
@@ -87,6 +126,8 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
   Future<void> _fix(Future<void> Function() action) async {
     if (_busy) return;
     setState(() => _busy = true);
+    // 标记「用户被送去系统设置/系统对话框」→ 返回时强制重排一次（见 didChangeAppLifecycleState）
+    _pendingSettingsReturn = true;
     try {
       await action();
     } catch (_) {
@@ -129,7 +170,8 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'App 切到后台或被系统清理后，已排好的提醒可能被取消。下面四项都开启，提醒才最准时。',
+            'App 切到后台或被系统清理后，已排好的提醒可能被取消。下面四项都开启，提醒才最准时；'
+            '再按「前置显示」把悬浮横幅打开，到点就能直接在屏幕上看到，不用下拉通知栏。',
             style: t.typography.body.xs.copyWith(
               fontSize: 12,
               color: t.colors.mutedForeground,
@@ -173,12 +215,12 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
               await NotificationService.requestIgnoreBatteryOptimizations();
             }),
           ),
-          // ④ 全屏通知（Android 14+ 默认不授予 → 「闹钟」只弹横幅不锁屏全屏）
+          // ④ 全屏通知（Android 14+ 默认不授予 → 息屏时「闹钟」只弹横幅、不亮屏全屏）
           _capRow(
             context,
             icon: FLucideIcons.smartphone,
             title: '全屏通知',
-            desc: 'Android 14+ 默认关闭；不开则闹钟只弹横幅',
+            desc: 'Android 14+ 默认关闭；息屏时闹钟不亮屏全屏',
             ok: caps?.fullScreenIntent ?? false,
             actionLabel: '去开启',
             onFix: () => _fix(() async {
@@ -189,6 +231,30 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
           _label(context, '后台保活'),
           _keepAliveCard(context),
           const SizedBox(height: 18),
+          _label(context, '前置显示（不拉通知栏也能看到）'),
+          Text(
+            '系统通知默认只进通知栏。想让提醒像倒计时那样直接弹在屏幕上方（悬浮横幅），'
+            '除上面的「通知权限」外，还需在系统里允许本 App 的「横幅 / 悬浮通知」与「锁屏显示」：',
+            style: t.typography.body.xs.copyWith(
+              fontSize: 12,
+              color: t.colors.mutedForeground,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _bulletBlock(context, const [
+            '小米 / 红米：设置 → 通知与控制中心 → 渐离App → 悬浮通知 + 锁屏显示',
+            '华为 / 荣耀：设置 → 通知 → 渐离App → 横幅 + 锁屏通知',
+            'OPPO / 一加 / realme：设置 → 通知与状态栏 → 渐离App → 横幅通知 + 锁屏通知',
+            'vivo / iQOO：设置 → 通知 → 渐离App → 悬浮通知 + 锁屏显示',
+            '原生 / 三星：设置 → 应用 → 渐离App → 通知 → 允许横幅 + 锁屏显示',
+          ]),
+          const SizedBox(height: 10),
+          _noteBlock(
+            context,
+            'Android 14 及以上：系统默认关闭「全屏通知」，需在上面第 ④ 项单独开启，'
+            '否则息屏时闹钟只弹横幅、不会亮屏全屏。',
+          ),
+          const SizedBox(height: 18),
           _label(context, '厂商后台限制'),
           Text(
             '若上面都开了仍不准时，多半是系统省电策略在清理后台。请在系统设置里为「渐离App」额外开启：',
@@ -198,40 +264,22 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
             ),
           ),
           const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: t.colors.muted,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final line in const [
-                  '小米 / 红米：应用设置 → 渐离App → 自启动 + 省电策略「无限制」',
-                  '华为 / 荣耀：应用 → 启动管理 → 手动管理（自启动/关联启动/后台活动）',
-                  'OPPO / 一加 / realme：电池 → 应用耗电管理 → 允许后台运行 + 允许自启动',
-                  'vivo / iQOO：电池 → 后台高耗电 → 允许；i 管家 → 自启动管理',
-                  '三星 / 原生：应用 → 渐离App → 电池 → 不受限制',
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(
-                      '· $line',
-                      style: t.typography.body.xs.copyWith(
-                        fontSize: 12,
-                        height: 1.5,
-                        color: t.colors.foreground,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+          _bulletBlock(context, const [
+            '小米 / 红米：应用设置 → 渐离App → 自启动 + 省电策略「无限制」',
+            '华为 / 荣耀：应用 → 启动管理 → 手动管理（自启动/关联启动/后台活动）',
+            'OPPO / 一加 / realme：电池 → 应用耗电管理 → 允许后台运行 + 允许自启动',
+            'vivo / iQOO：电池 → 后台高耗电 → 允许；i 管家 → 自启动管理',
+            '三星 / 原生：应用 → 渐离App → 电池 → 不受限制',
+          ]),
           const SizedBox(height: 12),
           FButton(
             variant: FButtonVariant.outline,
-            onPress: () => openAppSettings(),
+            // 去系统设置页改（悬浮通知 / 电池策略等）后回来同样强制重排一次，
+            // 与「去开启」一致 —— 用户在这里改的正是影响提醒准时的设置。
+            onPress: () {
+              _pendingSettingsReturn = true;
+              unawaited(openAppSettings());
+            },
             child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -264,6 +312,65 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
       ),
     ),
   );
+
+  /// 逐条引导块（muted 底 · r14）：厂商路径清单共用，避免两处各写一份样式。
+  Widget _bulletBlock(BuildContext context, List<String> lines) {
+    final t = context.theme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: t.colors.muted,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final line in lines)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                '· $line',
+                style: t.typography.body.xs.copyWith(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: t.colors.foreground,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 补充说明块（琥珀 12% 底 · r14）：放「容易漏掉的一句」系统差异说明。
+  Widget _noteBlock(BuildContext context, String text) {
+    final t = context.theme;
+    final color = AppTokens.accent(3);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(FLucideIcons.info, size: 14, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: t.typography.body.xs.copyWith(
+                fontSize: 12,
+                height: 1.5,
+                color: t.colors.foreground,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// 单项系统开关行：图标 + 标题 + 说明 + 右侧「已开启」或「去开启」
   Widget _capRow(

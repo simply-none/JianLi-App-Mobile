@@ -106,7 +106,8 @@ class ReminderRepository {
       await _scheduleAwesomeInterval(item);
       return;
     }
-    // 闹钟送达：**优先**走原生 setAlarmClock 桥（系统级闹钟，无需精确闹钟权限、息屏必响、锁屏全屏）；
+    // 闹钟送达：**优先**走原生 setAlarmClock 桥（系统级闹钟，息屏/Doze 必响、锁屏全屏；
+    // 仍需 SCHEDULE_EXACT_ALARM/USE_EXACT_ALARM，清单已声明两者）。
     // 原生桥失败时回退 awesome 全屏通知（精确权限缺失由 schedule* 自动降级）。
     if (item.isAlarm) {
       if (await _scheduleNativeAlarm(item)) return;

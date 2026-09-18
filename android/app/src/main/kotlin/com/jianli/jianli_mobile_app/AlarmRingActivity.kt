@@ -13,10 +13,12 @@ import android.widget.TextView
 /**
  * 全屏闹钟 Activity（「闹钟」送达的用户界面）。
  *
- * 由原生 AlarmManager.setAlarmClock 的 showIntent 在到点时直接拉起——息屏 / Doze / 锁屏下
- * 也能前台显示并亮屏（setShowWhenLocked / setTurnScreenOn / FLAG_SHOW_WHEN_LOCKED）。
- * 提供「停止」与「稍后提醒」两个按钮：
- * - 停止：重复类按 repeatSpec 排下一次（见 AlarmScheduler.nextTrigger）；
+ * 由 [AlarmRingReceiver] 发出的**全屏意图通知**拉起：息屏 / 锁屏 / Doze 下系统会把本页带到前台并亮屏
+ * （setShowWhenLocked / setTurnScreenOn / FLAG_KEEP_SCREEN_ON）。
+ *
+ * ⚠️ 本页**不再负责重排**：下一次的计划由 [AlarmRingReceiver] 在到点那一刻就排好了
+ * （这样即使用户不理会/手机不在手边，重复闹钟也不会断链）。本页只负责响铃 UI 与两个动作：
+ * - 停止：收掉响铃通知；
  * - 稍后提醒：5 分钟后再响一次（一次性）。
  *
  * 完全独立于 Flutter，因此 App 被杀 / 未启动也能正常响铃与交互。
@@ -25,8 +27,6 @@ class AlarmRingActivity : Activity() {
     private var code = 0
     private var title = ""
     private var body = ""
-    private var repeatSpec: String? = null
-    private var interval: Long = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,8 +48,6 @@ class AlarmRingActivity : Activity() {
         code = intent.getIntExtra(AlarmScheduler.EXTRA_CODE, 0)
         title = intent.getStringExtra(AlarmScheduler.EXTRA_TITLE) ?: ""
         body = intent.getStringExtra(AlarmScheduler.EXTRA_BODY) ?: ""
-        repeatSpec = intent.getStringExtra(AlarmScheduler.EXTRA_REPEAT)
-        interval = intent.getLongExtra(AlarmScheduler.EXTRA_INTERVAL, 0L)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -87,20 +85,17 @@ class AlarmRingActivity : Activity() {
 
     private fun dismissAlarm(snooze: Boolean) {
         if (snooze) {
-            // 5 分钟后再次响（一次性，repeatSpec=null）
+            // 5 分钟后再响一次（一次性，repeatSpec=null）。
+            // ⚠️ 必须用 snoozeCode(code) 而不是 code：到点时 AlarmRingReceiver 已用原 code 排好了
+            // 「下一次」重复闹钟，同码会因 PendingIntent 相同而被这条贪睡**覆盖**（重复链断掉）。
             AlarmScheduler.schedule(
-                this, code, title, body,
-                System.currentTimeMillis() + 5L * 60L * 1000L, null, 0L
+                this, AlarmScheduler.snoozeCode(code), title, body,
+                System.currentTimeMillis() + 5L * 60L * 1000L, null, 0L,
+                AlarmScheduler.MODE_ALARM
             )
-        } else {
-            // 重复类：排下一次（连杀进程也能持续）
-            val next = AlarmScheduler.nextTrigger(
-                System.currentTimeMillis(), repeatSpec, interval
-            )
-            if (next != null) {
-                AlarmScheduler.schedule(this, code, title, body, next, repeatSpec, interval)
-            }
         }
+        // 停止：下一次已由 AlarmRingReceiver 在到点时排好（见类注释），这里只需收掉响铃通知
+        AlarmScheduler.cancelRingNotification(this, code)
         finish()
     }
 

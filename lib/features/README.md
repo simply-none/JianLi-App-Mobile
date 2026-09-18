@@ -6,7 +6,7 @@
 | 模块 | 移动端处理 | 状态 |
 |---|---|---|
 | `twofactor` | 解密 vault + HMAC-SHA1 出 TOTP（最早可交付，兼作加密 PoC 验收） | 未启动 |
-| `notes` | flutter_quill 直接消费 note_book.html | 未启动 |
+| `notes` | flutter_quill 编辑（默认纯文本，Aa 切富文本；Delta⇄HTML 与 vue-quill 互通） | 已落地（2026-09-18） |
 | `habit` | reminders → 本地通知；打卡按 `habitKey#date` 幂等 upsert | 未启动 |
 | `todo` | 每日实例用 workmanager；父子/重复任务字段已在表定义中 | 未启动 |
 | `pomodoro` | 状态机来自 reminders(stateful)；需前台服务保活（iOS 受限） | 未启动 |

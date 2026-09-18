@@ -8,8 +8,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Android 13+ 通知运行时权限：缺失时系统通知弹窗不出现（提醒/倒计时/番茄钟到点全依赖） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- 提醒「闹钟」模式：Android 12+ 精确闹钟（preciseAlarm）所需；普通「通知」模式不依赖 -->
+    <!-- 提醒「闹钟」模式 / 周期提醒：精确闹钟（setAlarmClock）所需。
+         Android 12+ 引入 SCHEDULE_EXACT_ALARM：targetSdk ≥ 33 的**新装默认拒绝**，需用户去「闹钟和提醒」手动开；
+         所以再声明 USE_EXACT_ALARM（Android 13+，**安装即授予、用户不可撤销**）拿到同样的能力，
+         避免真机新装后 setAlarmClock 抛 SecurityException 导致闹钟全废。
+         ⚠️ 代价：USE_EXACT_ALARM 受 Google Play 政策限制（仅限闹钟/日历类核心功能），
+         本 App 含闹钟/提醒/倒计时/番茄钟，属核心功能，暂按此声明；若将来上 Play 需复核。 -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- 开机重排：awesome_notifications 的 BOOT receiver 靠它收到开机广播后恢复全部通知计划 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 通知振动（Android 13+ 为运行时权限）：提醒/闹钟到点的振动反馈 -->
@@ -92,16 +98,24 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-        <!-- 到点提醒：全屏闹钟 Activity（由原生 AlarmManager.setAlarmClock 的 showIntent 拉起，
-             息屏/锁屏下前台显示并亮屏；独立于 Flutter，App 被杀也能响铃与交互）。
-             exported=false：只由本应用 AlarmScheduler 启动；noHistory 避免留在返回栈 -->
+        <!-- 到点提醒：全屏响铃界面。由 AlarmRingReceiver 发出的**全屏意图通知**拉起（系统负责启动，
+             故不受 Android 15「PendingIntent 创建者默认不委托后台启动 Activity 权限」限制），
+             息屏/锁屏下前台显示并亮屏；独立于 Flutter，App 被杀也能响铃与交互。
+             exported=false：只由本应用通知启动；noHistory 避免留在返回栈 -->
         <activity
             android:name=".AlarmRingActivity"
             android:exported="false"
             android:theme="@style/AlarmFullscreen"
             android:noHistory="true"
             android:excludeFromRecents="true" />
-        <!-- 到点提醒：周期「通知」送达的广播接收器（由原生 AlarmManager.setAlarmClock 触发，
+        <!-- 到点提醒：闹钟送达（mode=alarm）的接收器。AlarmManager.setAlarmClock 到点触发它，
+             它再发一条带全屏意图的高优通知（系统拉起 AlarmRingActivity）并自排下一次。
+             exported=false：只由本应用 AlarmScheduler 触发 -->
+        <receiver
+            android:name=".AlarmRingReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <!-- 到点提醒：周期「通知」送达（mode=notify）的广播接收器（由原生 AlarmManager.setAlarmClock 触发，
              息屏/App 被杀也能收到广播发通知并自排下次）。exported=false：只由本应用 AlarmScheduler 触发 -->
         <receiver
             android:name=".ReminderAlarmReceiver"

@@ -3,7 +3,7 @@
 // 与桌面端 db.sqlite 逐列对齐（来源：test-scripts/db_first_batch_dump.txt）。
 // ⚠️ 桌面端驼峰列名必须 named() 锁定（详见 habit_tables.dart 顶部说明）。
 // note_book.html 为 vue-quill 产出的富文本 HTML，移动端阅读用 flutter_widget_from_html 渲染，
-// 编辑器（flutter_quill）列入 P2。
+// 编辑页已接 flutter_quill（2026-09-18 方案 B，默认纯文本、Aa 可切富文本）。
 // basic_info 是桌面端全局键值配置（含 twoFactorVaultPath / passwordVaultPath / appLockVault /
 // note_tags 等关键键），是加密 PoC（vault 路径寻址）的关键表。
 import 'package:drift/drift.dart';
