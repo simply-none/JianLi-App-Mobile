@@ -106,16 +106,15 @@ class ReminderRepository {
       await _scheduleAwesomeInterval(item);
       return;
     }
-    // 闹钟送达：**优先**走原生 setAlarmClock 桥（系统级闹钟，息屏/Doze 必响、锁屏全屏；
-    // 仍需 SCHEDULE_EXACT_ALARM/USE_EXACT_ALARM，清单已声明两者）。
-    // 原生桥失败时回退 awesome 全屏通知（精确权限缺失由 schedule* 自动降级）。
-    if (item.isAlarm) {
-      if (await _scheduleNativeAlarm(item)) return;
-      await _scheduleAwesomeTime(item, fullScreen: true);
-      return;
-    }
-    // 普通通知送达（时间模式）：awesome_notifications（精确权限缺失自动降级，见 notification_service）
-    await _scheduleAwesomeTime(item, fullScreen: false);
+    // 时间模式（once/daily/weekly/hourly/monthly/yearly）：**无论通知还是闹钟送达都优先走原生**。
+    //
+    // ⚠️ 2026-09-18 修复「切后台 / 锁屏后定时提醒不触发、回 App 才补触发」：此前只有「闹钟送达」
+    // 走原生，普通「通知送达」的时间模式整条走 awesome `NotificationCalendar` —— 它在后台/Doze/
+    // 厂商冻结下依赖自己的 ScheduleReceiver 链，环节多、易被推迟，正是「亮屏或回前台才集中补发」
+    // 的成因。原生 `setAlarmClock` 由系统直接持有计划且 Doze 豁免，是后台最可靠的一层。
+    // 仍保留 awesome 兜底：原生返回 false（通道异常 / 权限 / 本机不支持）时才降级。
+    if (await _scheduleNativeTime(item)) return;
+    await _scheduleAwesomeTime(item, fullScreen: item.isAlarm);
   }
 
   /// 时间模式 → awesome 定时通知。
@@ -241,20 +240,32 @@ class ReminderRepository {
     }
   }
 
-  /// 闹钟送达：原生 setAlarmClock 桥排程（时间模式；周期模式走 _scheduleNativeInterval）。
+  /// 时间模式 → 原生 setAlarmClock 桥排程（周期模式走 _scheduleNativeInterval）。
+  ///
+  /// 送达形态由 [mode] 区分：`alarm` = 闹钟（全屏响铃页）、`notify` = 普通系统通知；
+  /// 两者都由**系统**持有计划，Doze 下豁免、App 被杀也能到点触发，并由接收器自排下一次。
   ///
   /// 返回 **true = 已由原生桥接手**（至少一条 setAlarmClock 返回成功，或本就无需排程）；
   /// 返回 **false = 原生桥未接手**，调用方须回退 awesome 兜底 —— 这是修复
   /// 「原生桥静默失败 + rescheduleAll 先取消再重排 = 所有提醒都不响」的关键语义。
-  Future<bool> _scheduleNativeAlarm(ReminderItem item) async {
+  Future<bool> _scheduleNativeTime(ReminderItem item) async {
     final baseId = NotificationService.stableId(item.id);
     final title = item.title;
     final body = item.content;
+    final mode = item.isAlarm ? 'alarm' : 'notify';
 
-    if (item.repeat == 'weekly' && item.weekDays.isNotEmpty) {
+    // 免打扰：当前落在免打扰段内时把首次触发推迟到段末（与 awesome 路径同口径；
+    // 周期类「逐次跳过」需后台 worker，仍是已知近似，见 _scheduleAwesomeTime 注释）
+    final idleEndMs = _idleEndIfNowInSlot(parseIdleSlots(item.idleTime))
+        ?.millisecondsSinceEpoch;
+    int? at(int? ms) =>
+        ms == null ? null : (idleEndMs != null && ms < idleEndMs ? idleEndMs : ms);
+
+    // 每周多天：一天一个请求码（与 _nativeCodes 同源，保证排/取消一致）
+    if (_isWeeklyMultiDay(item)) {
       var any = false;
       for (final w in item.weekDays) {
-        final ms = _nextAlarmTriggerMillis(item, forWeekdayPc: w);
+        final ms = at(_nextAlarmTriggerMillis(item, forWeekdayPc: w));
         if (ms == null) continue;
         final ok = await sys.setAlarmClock(
           code: baseId + w,
@@ -262,13 +273,14 @@ class ReminderRepository {
           body: body,
           triggerAtMillis: ms,
           repeatSpec: '{"type":"weekly"}',
+          mode: mode,
         );
         if (ok) any = true;
       }
       return any;
     }
 
-    final ms = _nextAlarmTriggerMillis(item);
+    final ms = at(_nextAlarmTriggerMillis(item));
     if (ms == null) return true; // 无需排程（如一次性已过期）→ 视为已处理，不触发兜底
     return await sys.setAlarmClock(
       code: baseId,
@@ -276,6 +288,7 @@ class ReminderRepository {
       body: body,
       triggerAtMillis: ms,
       repeatSpec: _repeatSpecJson(item),
+      mode: mode,
     );
   }
 
@@ -285,7 +298,7 @@ class ReminderRepository {
   /// 表现为「只响 2 次就停 + 间隔不准」。原生 setAlarmClock 由系统持有，首次在 now+interval 触发，
   /// 之后由 Receiver/Activity 按 repeatSpec 的 interval 类型自排下次，连 App 被杀也能持续每 interval 弹一次。
   ///
-  /// 返回值语义同 [_scheduleNativeAlarm]：true = 原生桥已接手，false = 须回退 awesome 兜底。
+  /// 返回值语义同 [_scheduleNativeTime]：true = 原生桥已接手，false = 须回退 awesome 兜底。
   Future<bool> _scheduleNativeInterval(ReminderItem item) async {
     final baseId = NotificationService.stableId(item.id);
     final iv = _parseInterval(item);
@@ -324,26 +337,33 @@ class ReminderRepository {
 
   /// 一次性取消某提醒的全部计划（awesome 原生 + 原生闹钟）
   Future<void> _cancelAllSchedules(ReminderItem item) async {
-    final weekly =
-        item.mode == 'time' && item.repeat == 'weekly' && item.weekDays.isNotEmpty;
+    final codes = _nativeCodes(item);
     try {
-      await NotificationService.cancelReminder(item.id, weekly: weekly);
+      await NotificationService.cancelReminder(item.id, weekly: codes.length > 1);
     } catch (_) {}
     try {
-      await sys.cancelAlarmClocks(_nativeAlarmCodes(item));
+      await sys.cancelAlarmClocks(codes);
     } catch (_) {}
   }
 
-  /// 原生闹钟的请求码集合（与 _scheduleNativeAlarm 一一对应）：每周一个码 = baseId + 周几
-  List<int> _nativeAlarmCodes(ReminderItem item) {
+  /// 原生排程使用的请求码集合：**排程与取消必须共用这一份**。
+  ///
+  /// ⚠️ 此前排程按「weekDays 非空」、取消按「repeat=='weekly' && weekDays 非空」两套口径，
+  /// 不一致时会取消不掉旧计划 ⇒ 「改了提醒时间还按旧时间响 / 关掉了还在响」。
+  /// [_scheduleNativeTime] 用 [_isWeeklyMultiDay] 走「每周多天」分支，与此处天然同源。
+  List<int> _nativeCodes(ReminderItem item) {
     final baseId = NotificationService.stableId(item.id);
-    if (item.mode == 'time' &&
-        item.repeat == 'weekly' &&
-        item.weekDays.isNotEmpty) {
+    if (_isWeeklyMultiDay(item)) {
       return item.weekDays.map((w) => baseId + w).toList();
     }
     return [baseId];
   }
+
+  /// 是否「每周多天」（一天一个请求码）：时间模式 + 周几非空 + 非一次性。
+  bool _isWeeklyMultiDay(ReminderItem item) =>
+      item.mode == 'time' &&
+      item.weekDays.isNotEmpty &&
+      item.repeat != 'once';
 
   /// 计算原生闹钟的 repeatSpec JSON（null = 一次性，不重排）
   String? _repeatSpecJson(ReminderItem item) {

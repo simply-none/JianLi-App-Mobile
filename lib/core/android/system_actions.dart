@@ -112,6 +112,31 @@ Future<bool> cancelAlarmClock(int code) async {
   }
 }
 
+/// 原生提醒排程诊断快照（「提醒为什么没响」的取证口）。
+///
+/// 真机上「到底排上没有」此前完全不可观测，只能靠现象猜。这里把原生的客观事实一次取回：
+/// - `scheduled`：原生认为已排上的闹钟条数（= `AlarmScheduler` 登记表大小）
+/// - `entries`：`code -> 触发时刻(ms)`，最近 8 条（可看出下一条是哪条、是否在预期时间）
+/// - `nextSystemAlarmAt`：`AlarmManager.getNextAlarmClock()` 的触发时刻（-1 = 系统里没有）
+/// - `standbyBucket`：10=ACTIVE / 20=WORKING / 30=FREQUENT / 40=RARE / **45=RESTRICTED**
+///   —— **45 意味着系统会把本 App 的 alarms/jobs 一并推迟**，这是国产 ROM 上「切后台就不响」
+///   最常见且可判定的成因（-1 = 取不到）。
+/// - `powerSave` / `deviceIdle`：省电模式 / Doze 中
+///
+/// 非 Android 返回空 map（调用方按「无诊断信息」处理，不要据此判定失败）。
+Future<Map<String, Object?>> alarmDiagnostics() async {
+  if (!_isAndroid) return {};
+  try {
+    final raw = await _kChannel.invokeMethod('alarmDiagnostics');
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k.toString(), v));
+    }
+  } catch (_) {
+    // 通道不支持（老版本原生）→ 无诊断信息
+  }
+  return {};
+}
+
 /// 批量取消原生闹钟
 Future<void> cancelAlarmClocks(List<int> codes) async {
   for (final c in codes) {

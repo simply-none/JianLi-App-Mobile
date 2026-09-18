@@ -75,13 +75,17 @@ object SystemActionsChannel {
                         val interval = call.argument<Number>("intervalMillis")?.toLong() ?: 0L
                         // mode: 'alarm'=全屏 Activity；'notify'=普通系统通知（见 AlarmScheduler）
                         val mode = call.argument<String>("mode") ?: AlarmScheduler.MODE_ALARM
+                        // ⚠️ 成败必须由原生如实回传：此前这里恒 `success(true)`，
+                        // 而 AlarmScheduler.schedule 内部失败是静默 return ⇒ Dart 以为原生已接手、
+                        // 不回退 awesome ⇒ 「先取消再重排」后提醒彻底消失（2026-09-18 修复）。
                         if (triggerAt <= 0L) {
                             result.success(false)
                         } else {
-                            AlarmScheduler.schedule(
-                                activity, code, title, body, triggerAt, repeatSpec, interval, mode
+                            result.success(
+                                AlarmScheduler.schedule(
+                                    activity, code, title, body, triggerAt, repeatSpec, interval, mode
+                                )
                             )
-                            result.success(true)
                         }
                     }
 
@@ -90,6 +94,11 @@ object SystemActionsChannel {
                         AlarmScheduler.cancel(activity, code)
                         result.success(true)
                     }
+
+                    // 诊断快照：「提醒为什么没响」的取证口（排程条数 / 系统下一个闹钟 /
+                    // standby bucket / 省电 / Doze）。详见 AlarmScheduler.diagnostics。
+                    "alarmDiagnostics" ->
+                        result.success(AlarmScheduler.diagnostics(activity))
 
                     else -> result.notImplemented()
                 }

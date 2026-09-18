@@ -6,10 +6,13 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.util.Log
 import org.json.JSONObject
 import java.util.Calendar
 
@@ -172,6 +175,11 @@ object AlarmScheduler {
 
     /**
      * 排一条系统级闹钟。到点由广播接收器处理（见文件头 BAL 说明），不再让系统直接拉 Activity。
+     *
+     * ⚠️ **必须返回 Boolean**（2026-09-18 修复「原生静默失败却报成功」）：此前本函数返回 `Unit`，
+     * 内部失败路径都是 `?: return` 静默退出，而 `SystemActionsChannel` 无论成败都 `result.success(true)`
+     * ⇒ Dart 侧以为「原生已接手」，不回退 awesome；叠加「rescheduleAll 先取消再重排」⇒
+     * 提醒被取消后再也排不上，表现为「守护全开但完全不触发」。
      */
     fun schedule(
         context: Context,
@@ -182,20 +190,85 @@ object AlarmScheduler {
         repeatSpec: String?,
         interval: Long,
         mode: String = MODE_ALARM
-    ) {
-        val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val operation = broadcastPi(
-            context, code,
-            buildReceiverIntent(context, code, title, body, repeatSpec, interval, mode)
-        )
-        // showIntent = 状态栏「下一个闹钟」被点开时打开的页面（用户主动点击，不受 BAL 限制）
-        val showPi = activityPi(
-            context, code,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+    ): Boolean {
+        val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            ?: return false
+        return try {
+            val operation = broadcastPi(
+                context, code,
+                buildReceiverIntent(context, code, title, body, repeatSpec, interval, mode)
+            )
+            // showIntent = 状态栏「下一个闹钟」被点开时打开的页面（用户主动点击，不受 BAL 限制）
+            val showPi = activityPi(
+                context, code,
+                Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+            )
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, showPi), operation)
+            registry(context).edit()
+                .putString(code.toString(), "$triggerAt|$mode")
+                .apply()
+            true
+        } catch (e: Exception) {
+            Log.e("AlarmScheduler", "schedule(code=$code) failed", e)
+            false
+        }
+    }
+
+    /**
+     * 已排程登记表（`SharedPreferences`）：仅用于**诊断**——真机上「到底排上没有」此前完全不可观测，
+     * 只能靠现象猜。schedule 时写入、cancel 时移除；`diagnostics()` 把它连同 standby bucket /
+     * 省电 / Doze 一并返回给 Dart，用户可据此判定断链位置。
+     */
+    private const val REGISTRY_PREF = "jianli_alarms"
+
+    private fun registry(context: Context) =
+        context.applicationContext.getSharedPreferences(REGISTRY_PREF, Context.MODE_PRIVATE)
+
+    /**
+     * 诊断快照：给 Dart 的「提醒为什么没响」取证用。
+     * - `scheduled`：登记表里的条数（原生认为排上的闹钟数）
+     * - `entries`：`code -> 触发时刻(ms)`，取最近 8 条
+     * - `nextSystemAlarmAt`：`AlarmManager.getNextAlarmClock()`（系统侧下一个闹钟，-1 = 无）
+     * - `standbyBucket`：10=ACTIVE / 20=WORKING / 30=FREQUENT / 40=RARE / **45=RESTRICTED（alarms 会被系统推迟）**
+     * - `powerSave` / `deviceIdle`：省电模式 / Doze 中
+     */
+    fun diagnostics(context: Context): Map<String, Any?> {
+        val app = context.applicationContext
+        val reg = registry(app).all.filterValues { it is String }
+        val entries = reg.entries
+            .mapNotNull { (k, v) ->
+                val at = (v as? String)?.substringBefore('|')?.toLongOrNull() ?: return@mapNotNull null
+                k to at
             }
+            .sortedBy { it.second }
+            .take(8)
+            .associate { it.first to it.second }
+        val am = app.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+        val pm = app.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        return mapOf(
+            "scheduled" to reg.size,
+            "entries" to entries,
+            "nextSystemAlarmAt" to (am?.nextAlarmClock?.triggerTime ?: -1L),
+            "standbyBucket" to standbyBucket(app),
+            "powerSave" to (pm?.isPowerSaveMode ?: false),
+            "deviceIdle" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                pm?.isDeviceIdleMode ?: false
+            } else false,
         )
-        am.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, showPi), operation)
+    }
+
+    /** App Standby Bucket（自身包名，无需权限；失败返回 -1） */
+    private fun standbyBucket(context: Context): Int = try {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) -1
+        else {
+            val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+            usm?.appStandbyBucket ?: -1
+        }
+    } catch (e: Exception) {
+        Log.w("AlarmScheduler", "appStandbyBucket unavailable", e)
+        -1
     }
 
     /**
@@ -231,6 +304,11 @@ object AlarmScheduler {
             buildReceiverIntent(context, snooze, "", "", null, 0L, MODE_ALARM), noCreate
         )?.let { am.cancel(it) }
         cancelRingNotification(context, snooze)
+        // 登记表同步移除（仅诊断用；不移除会误报「已排 N 条」）
+        registry(context).edit()
+            .remove(code.toString())
+            .remove(snooze.toString())
+            .apply()
     }
 
     /** 重复类计算下一次触发时间（毫秒）；null = 不再重排（一次性） */

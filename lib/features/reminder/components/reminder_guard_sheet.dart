@@ -59,6 +59,10 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
   /// 正在处理某项（防连点）
   bool _busy = false;
 
+  /// 原生排程诊断快照（`sys.alarmDiagnostics`）：真机上「到底排上没有」此前只能靠现象猜，
+  /// 这里把客观事实显示出来 —— 原生计划条数 / 下一条时刻 / 待机分组 / 省电 / Doze。
+  Map<String, Object?> _diag = {};
+
   /// 是否刚把用户送去系统设置页（点了任一「去开启」）——决定回前台时是否强制重排一次。
   /// 「通知权限」是系统对话框、其余是设置 Activity，两者都会让 App 走 inactive/paused，
   /// 故统一置位；返回后无论权限是否真的授到，重排一次都是无害且必要的（幂等）。
@@ -108,17 +112,19 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
     if (mounted) await _refresh();
   }
 
-  /// 重查四项开关 + 保活偏好/服务状态
+  /// 重查四项开关 + 保活偏好/服务状态 + 原生排程诊断
   Future<void> _refresh() async {
     final caps = await NotificationService.checkCapabilities();
     final guard = KeepAliveGuard(ref.read(appDatabaseProvider));
     final pref = await guard.isPreferred();
     final running = await isKeepAliveRunning();
+    final diag = await alarmDiagnostics();
     if (!mounted) return;
     setState(() {
       _caps = caps;
       _keepAliveOn = pref;
       _keepAliveRunning = running;
+      _diag = diag;
     });
   }
 
@@ -177,6 +183,8 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
               color: t.colors.mutedForeground,
             ),
           ),
+          const SizedBox(height: 16),
+          _diagCard(context),
           const SizedBox(height: 16),
           _label(context, '系统开关'),
           // ① 通知权限（Android 13+ 运行时权限；不授予 → 到点完全不弹）
@@ -312,6 +320,119 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
       ),
     ),
   );
+
+  /// 原生排程诊断卡：**真机上判断「提醒为什么没响」的第一现场**。
+  ///
+  /// - 计划 0 条 ⇒ 压根没排上（原生桥失败且 awesome 兜底也失败，或提醒未启用）；
+  /// - 计划 >0 但到点不响 ⇒ 系统侧推迟（待机分组受限 / Doze / 厂商冻结），看下面几行；
+  /// - `standbyBucket = 45`（RESTRICTED）⇒ **系统会推迟本 App 的全部 alarms**，
+  ///   这是国产 ROM 上「切后台就不响、回前台才补触发」最常见且可判定的成因。
+  Widget _diagCard(BuildContext context) {
+    final t = context.theme;
+    final n = (_diag['scheduled'] as int?) ?? 0;
+    final bucket = (_diag['standbyBucket'] as int?) ?? -1;
+    final powerSave = _diag['powerSave'] == true;
+    final idle = _diag['deviceIdle'] == true;
+
+    int? nextAt;
+    final entries = _diag['entries'];
+    if (entries is Map && entries.isNotEmpty) {
+      final vals = entries.values.whereType<int>().toList()..sort();
+      if (vals.isNotEmpty) nextAt = vals.first;
+    }
+
+    final restricted = bucket == 45 || bucket == 40;
+    final color = n == 0
+        ? t.colors.destructive
+        : restricted
+            ? AppTokens.accent(3)
+            : AppTokens.accent(2);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: t.colors.muted,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                n == 0 ? FLucideIcons.circleAlert : FLucideIcons.circleCheck,
+                size: 18,
+                color: color,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '原生排程',
+                  style: t.typography.body.sm.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: t.colors.foreground,
+                  ),
+                ),
+              ),
+              Text(
+                '$n 条',
+                style: t.typography.body.xs.copyWith(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '下一条：${nextAt == null ? '—' : _fmtClock(nextAt)}'
+            '${bucket >= 0 ? ' · 待机分组 $bucket' : ''}'
+            '${powerSave ? ' · 省电模式' : ''}'
+            '${idle ? ' · Doze 中' : ''}',
+            style: t.typography.body.xs.copyWith(
+              fontSize: 12,
+              height: 1.5,
+              color: t.colors.mutedForeground,
+            ),
+          ),
+          if (n == 0) ...[
+            const SizedBox(height: 6),
+            Text(
+              '系统里没有排上任何提醒计划。请确认上面四项都已开启，再回到提醒列表让 App 重排一次。',
+              style: t.typography.body.xs.copyWith(
+                fontSize: 12,
+                height: 1.5,
+                color: t.colors.destructive,
+              ),
+            ),
+          ] else if (restricted) ...[
+            const SizedBox(height: 6),
+            Text(
+              '系统正在限制本 App 的后台（待机分组 ${bucket == 45 ? '受限' : '罕见'}），'
+              '到点的计划会被推迟，直到你打开 App。请按下面「厂商后台限制」把本 App 设为不受限制。',
+              style: t.typography.body.xs.copyWith(
+                fontSize: 12,
+                height: 1.5,
+                color: color,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 毫秒时间戳 → `MM-DD HH:mm`（今年省略年份，够用且短）
+  String _fmtClock(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    final mm = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    final hh = d.hour.toString().padLeft(2, '0');
+    final mi = d.minute.toString().padLeft(2, '0');
+    return '$mm-$dd $hh:$mi';
+  }
 
   /// 逐条引导块（muted 底 · r14）：厂商路径清单共用，避免两处各写一份样式。
   Widget _bulletBlock(BuildContext context, List<String> lines) {
