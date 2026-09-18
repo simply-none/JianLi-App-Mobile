@@ -256,6 +256,8 @@ class _HabitPageState extends ConsumerState<HabitPage> {
     TimeOfDay? timeValue = const TimeOfDay(hour: 8, minute: 0);
     final weekDays = <int>{};
     final t = context.theme;
+    // 创建进行中（防连点 + 按钮禁用态）；由 StatefulBuilder 的 setSheetState 驱动
+    var saving = false;
 
     await showFSheet<void>(
       context: context,
@@ -463,25 +465,46 @@ class _HabitPageState extends ConsumerState<HabitPage> {
           ],
           bottomBar: _sheetButton(
             context,
-            label: '创建',
+            label: saving ? '创建中…' : '创建',
             bg: t.colors.primary,
             fg: t.colors.primaryForeground,
-            onTap: () {
-              final name = nameController.text.trim();
-              if (name.isEmpty) return;
-              // 'HH:mm' 与桌面端 reminderTimes 契约一致；null 即不提醒，传空串。
-              final reminderTime = timeValue == null
-                  ? ''
-                  : '${timeValue!.hour.toString().padLeft(2, '0')}:${timeValue!.minute.toString().padLeft(2, '0')}';
-              ref
-                  .read(habitRepositoryProvider)
-                  .createHabit(
-                    name: name,
-                    weekDays: weekDays.toList()..sort(),
-                    reminderTime: reminderTime,
-                  );
-              Navigator.pop(context);
-            },
+            onTap: saving
+                ? null
+                : () async {
+                    final name = nameController.text.trim();
+                    // ⚠️ 此前静默 return：名称为空时点了创建毫无反馈（与编辑页同病，一并修）
+                    if (name.isEmpty) {
+                      showFToast(
+                        context: context,
+                        title: const Text('请输入习惯名称'),
+                      );
+                      return;
+                    }
+                    // 'HH:mm' 与桌面端 reminderTimes 契约一致；null 即不提醒，传空串。
+                    final reminderTime = timeValue == null
+                        ? ''
+                        : '${timeValue!.hour.toString().padLeft(2, '0')}:${timeValue!.minute.toString().padLeft(2, '0')}';
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    setSheetState(() => saving = true);
+                    try {
+                      // ⚠️ 必须 await 且捕获（与编辑页同口径）：失败时留在弹窗内提示，
+                      // 不要「关了弹窗却没创建成功」。
+                      await ref.read(habitRepositoryProvider).createHabit(
+                            name: name,
+                            weekDays: weekDays.toList()..sort(),
+                            reminderTime: reminderTime,
+                          );
+                      if (context.mounted) Navigator.pop(context);
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      setSheetState(() => saving = false);
+                      showFToast(
+                        context: context,
+                        title: const Text('创建失败'),
+                        description: const Text('请重试，或检查是否已存在同名习惯'),
+                      );
+                    }
+                  },
           ),
         ),
       ),
@@ -618,6 +641,8 @@ class _HabitPageState extends ConsumerState<HabitPage> {
         : null;
     final weekDays = <int>{...habit.weekDays};
     final t = context.theme;
+    // 保存进行中（防连点 + 按钮禁用态）；由 StatefulBuilder 的 setSheetState 驱动
+    var saving = false;
 
     await showFSheet<void>(
       context: context,
@@ -822,23 +847,49 @@ class _HabitPageState extends ConsumerState<HabitPage> {
           ],
           bottomBar: _sheetButton(
             context,
-            label: '保存',
+            label: saving ? '保存中…' : '保存',
             bg: t.colors.primary,
             fg: t.colors.primaryForeground,
-            onTap: () {
-              final name = nameController.text.trim();
-              if (name.isEmpty) return;
-              final reminderTime = timeValue == null
-                  ? ''
-                  : '${timeValue!.hour.toString().padLeft(2, '0')}:${timeValue!.minute.toString().padLeft(2, '0')}';
-              ref.read(habitRepositoryProvider).updateHabit(
-                    habit: habit,
-                    name: name,
-                    weekDays: weekDays.toList()..sort(),
-                    reminderTime: reminderTime,
-                  );
-              Navigator.pop(context);
-            },
+            onTap: saving
+                ? null
+                : () async {
+                    final name = nameController.text.trim();
+                    // ⚠️ 此前这里是**静默 return**：名称为空时点了保存毫无反馈，
+                    // 用户只能反复点 → 表现为「保存按钮没效果」。现在明确提示。
+                    if (name.isEmpty) {
+                      showFToast(
+                        context: context,
+                        title: const Text('请输入习惯名称'),
+                      );
+                      return;
+                    }
+                    // 先收键盘：让底部按钮回到原位（键盘覆盖抽屉时按钮被顶起，观感跳变），
+                    // 也避免保存后软键盘残留在已关闭的弹窗上。
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    setSheetState(() => saving = true);
+                    final reminderTime = timeValue == null
+                        ? ''
+                        : '${timeValue!.hour.toString().padLeft(2, '0')}:${timeValue!.minute.toString().padLeft(2, '0')}';
+                    try {
+                      // ⚠️ 必须 await 且捕获：此前是 fire-and-forget，写库/重排提醒一旦抛异常，
+                      // 用户看到的是「弹窗关了但没更新」，且异常变成未处理的异步错误。
+                      await ref.read(habitRepositoryProvider).updateHabit(
+                            habit: habit,
+                            name: name,
+                            weekDays: weekDays.toList()..sort(),
+                            reminderTime: reminderTime,
+                          );
+                      if (context.mounted) Navigator.pop(context);
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      setSheetState(() => saving = false);
+                      showFToast(
+                        context: context,
+                        title: const Text('保存失败'),
+                        description: const Text('请重试，或检查是否已存在同名习惯'),
+                      );
+                    }
+                  },
           ),
         ),
       ),
@@ -1203,7 +1254,18 @@ Widget _habitSheetPanel(
             ),
             if (bottomBar != null) ...[
               const SizedBox(height: 12),
-              bottomBar,
+              // ⚠️ **键盘弹起时必须把底部操作条顶到键盘上方**（2026-09-18 修复「保存按钮点了没反应」）：
+              // 本面板按红线走 `sheetMaxHeightFull`（固定 80vh、**不扣键盘**）+ 调用点
+              // `resizeToAvoidBottomInset: false` ⇒ 软键盘是从屏幕底部**覆盖**抽屉的。
+              // 按钮死贴抽屉底部时会被键盘完全遮住 —— 用户在名称框打完字直接点保存，
+              // 实际点到的是键盘区域，观感就是「按钮点了没效果、弹窗也不关」。
+              // 这里只给 bottomBar 加键盘等高的下边距（抽屉高度与滚动区不变，不违反红线）。
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: bottomBar,
+              ),
             ],
           ],
         ),
@@ -1247,28 +1309,34 @@ Widget _weekChip(
 }
 
 /// 底部按钮（h46 · r14 · 15/SemiBold），对齐 todo_sheets._sheetButton。
+///
+/// [onTap] 传 null = 禁用态（半透明 + 不可点），用于保存进行中防连点
+/// （此前保存是「fire-and-forget + 立即 pop」，连点会写两次库）。
 Widget _sheetButton(
   BuildContext c, {
   required String label,
   required Color bg,
   required Color fg,
-  required VoidCallback onTap,
+  required VoidCallback? onTap,
 }) =>
     FTappable(
       onPress: onTap,
-      child: Container(
-        height: 46,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(
-          label,
-          style: c.theme.typography.body.sm.copyWith(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: fg,
+      child: Opacity(
+        opacity: onTap == null ? 0.5 : 1,
+        child: Container(
+          height: 46,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            label,
+            style: c.theme.typography.body.sm.copyWith(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: fg,
+            ),
           ),
         ),
       ),

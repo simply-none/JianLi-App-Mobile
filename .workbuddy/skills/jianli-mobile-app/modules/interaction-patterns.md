@@ -118,6 +118,9 @@
   - 习惯 `_habitSheetPanel(size:)`：`Column[ Expanded(SingleChildScrollView(children)), const SizedBox(12), if (bottomBar) bottomBar ]`（`habit_page.dart`，2026-09-12 Request 6 重构加入 `bottomBar` 形参）。
 - ⚠️ **不要**把按钮当成滚动体的最后一个 child（会随内容滚出屏幕找不到）；也**不要**用「`minHeight` 撑满」方案（内容少时按钮浮在中间，实踩）。
 - 底部条按钮规范：高 46、`r14`、`15/SemiBold`；主操作用 `GradientButton` 或 `FButton.primary`、危险用 `FButton.destructive`、取消用 `FButton.outline`；两个并排建议都用 `Expanded`。
+- 🔴 **【键盘弹起时底部条必须抬起，否则「按钮点了没反应」】（2026-09-18 习惯编辑页实踩）**：lg 抽屉按 §一 走 `sheetMaxHeightFull`（固定 80vh、**不扣键盘**）+ 调用点 `resizeToAvoidBottomInset: false` ⇒ 软键盘是从屏幕底部**覆盖**抽屉的。按钮死贴抽屉底部时会被键盘**完全遮住**，用户在输入框打完字直接点保存，实际点到的是键盘区域 —— 观感就是「保存按钮没效果、弹窗也不关」，且**只在键盘弹起时复现**（不动输入框就正常），极难自查。**修法：给 bottomBar 包一层 `Padding(bottom: MediaQuery.of(context).viewInsets.bottom)`**（只抬按钮，抽屉高度与滚动区不变，不违反「lg 不扣键盘」红线）。`_habitSheetPanel` 已内置，新增自绘面板照抄。
+- 🔴 **【主操作按钮必须能表达「进行中」且防连点】**：保存/创建类动作一律 `await` + `try/catch` + `saving` 禁用态（`onTap: saving ? null : ...`，按钮文案切「保存中…」）。**禁止 fire-and-forget 后立刻 `Navigator.pop`** —— 写库失败时用户看到的是「弹窗关了但没更新」，异常还变成未处理的异步错误。
+- 🔴 **【校验失败绝不能静默 return】**：`if (name.isEmpty) return;` 这种写法让用户点了毫无反馈，被当成「按钮没效果」。**必填项为空要 `showFToast` 明确提示**。
 
 ### 1.9 打开弹窗不要自动聚焦输入框
 

@@ -1,6 +1,13 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-18（续·十·**修复「习惯编辑页保存按钮有时点了没效果、不更新也不关闭弹窗」**）：三个叠加成因，逐个修（`habit_page.dart`）：
+  - **①（主因，解释「有时」）键盘弹起时底部保存按钮被完全遮住**。习惯面板 `_habitSheetPanel` 走 lg 固定 80vh（`sheetMaxHeightFull`）+ 调用点 `resizeToAvoidBottomInset: false` ⇒ 软键盘从底部**覆盖**抽屉；按钮死贴抽屉底部 ⇒ 用户在名称框打完字直接点保存，手指落到的是键盘区域。**只在键盘弹起时复现**（不动输入框就正常），所以是「有的时候」。**修法**：`bottomBar` 包 `Padding(bottom: MediaQuery.of(context).viewInsets.bottom)`，只抬按钮、抽屉高度与滚动区不变（不违反 lg 不扣键盘的红线）。
+  - **② 校验静默 return**：`if (name.isEmpty) return;` —— 名称为空时点了保存**毫无反馈**，用户只能反复点，同样被当成「按钮没效果」。改为 `showFToast('请输入习惯名称')`。
+  - **③ fire-and-forget + 立即 pop**：`ref.read(...).updateHabit(...)` 不 await、不 catch，紧接着 `Navigator.pop(context)` ⇒ 写库/重排提醒抛异常时表现为「弹窗关了但没更新」，异常还变成未处理的异步错误。改为 `await` + `try/catch` + `saving` 禁用态（防连点重复写库），失败留在弹窗内 toast 提示、成功才 pop。
+  - **新建页（`_showCreateSheet`）同病，一并修**（同一套 `saving` / toast / await-catch）。`_sheetButton` 的 `onTap` 改 `VoidCallback?`（null = 半透明禁用态），4 个调用点兼容。
+  - 技能：`interaction-patterns.md` §1.8 新增三条 🔴（键盘弹起时底部条必须抬起 / 主操作必须有进行中态且防连点 / 校验失败禁止静默 return）。
+  - 校验交用户本地：`flutter analyze lib/features/habit`；真机复现路径：进习惯 → 长按【编辑】→ 点名称框弹键盘 → **此时应能看见并点到「保存」**（修复前被键盘盖住）→ 保存后列表即时更新并关闭；再试清空名称点保存应出现 toast。
 - 2026-09-18（续·九·**修复「切后台/锁屏后周期与定时提醒不触发、回 App 才补触发」**）：用户真机 Android 15 复现——守护四项全开，但一切到别的应用或一锁屏提醒就不响，**回到 App 过一会又补着响**。三条各自独立的成因，逐条修：
   - **① 定时（时间模式 + 通知送达）此前整条走 awesome** —— 只有 `delivery='alarm'` 走原生，普通通知送达的 daily/weekly/hourly/monthly/yearly/once 全走 `NotificationCalendar`；awesome 在后台/Doze/厂商冻结下靠自己的 ScheduleReceiver + SharedPreferences 恢复链，环节多、易被推迟 ⇒ **亮屏或回前台时集中补发**，与现象逐字吻合。改法：`scheduleNotification` 的时间模式与周期对齐 —— **优先原生** `_scheduleNativeTime`（`mode` 按 `item.isAlarm` 选 `alarm`/`notify`），false 才回退 `_scheduleAwesomeTime(fullScreen: item.isAlarm)`；原 `_scheduleNativeAlarm` 就是它加 mode 参数的推广版（已改名）。顺手补两处一致性：免打扰 `idleTime` 在原生分支同样生效（`max(下次触发, 段末)`，与 awesome 同口径）；**排程码与取消码统一走 `_nativeCodes(item)` / `_isWeeklyMultiDay(item)`**（此前排程按「weekDays 非空」、取消按「repeat=='weekly' && weekDays 非空」两套口径 ⇒ 取消不掉旧计划 ⇒ 「改了时间还按旧时间响 / 关了还在响」）。
   - **② ★ 原生排程成败谎报（致命）**：`SystemActionsChannel` 的 `setAlarmClock` 分支**无论成败都 `result.success(true)`**，而 `AlarmScheduler.schedule()` 返回 `Unit`、内部失败路径（`getSystemService(...) as? AlarmManager ?: return`）是**静默 return** ⇒ Dart 的 `if (await _scheduleNativeXxx(item)) return;` 判成「已接手」、**不回退 awesome**；叠加「`rescheduleAll` 先取消再重排」⇒ 提醒被取消后再也排不上。表现正是「守护全开但完全不触发」。改法：`schedule()` 改返回 `Boolean`（`?: return false` + try/catch + `Log.e("AlarmScheduler", "schedule(code=...) failed", e)`），通道如实回传。**铁律：凡是「原生优先 + Dart 兜底」的桥，原生必须能如实表达失败。**
