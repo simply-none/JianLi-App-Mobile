@@ -96,20 +96,36 @@ class ReminderRepository {
   /// 按 mode + delivery 把提醒翻译为本地通知计划
   Future<void> scheduleNotification(ReminderItem item) async {
     if (item.isStateful) return; // 状态机不走系统通知
-    // 周期模式：无论「通知」还是「闹钟」送达，都走原生 AlarmManager 桥（alarm=全屏 / notify=普通通知）。
+    // 周期模式：无论「通知」还是「闹钟」送达，都**优先**走原生 AlarmManager 桥（alarm=全屏 / notify=普通通知）。
     // awesome 的 NotificationInterval 在 Android 12+ 被 Doze/省电严重节流并会自我停摆，
     // 表现为「只响 2 次就停 + 间隔不准」，正是周期提醒失效根因，故不再走 awesome。
+    // ⚠️ 原生桥失败（通道异常/机型限制）时必须回退 awesome —— 否则 rescheduleAll「先取消再重排」
+    // 会把提醒取消后静默排不上，表现为「所有提醒都不响」。
     if (item.mode == 'interval') {
-      await _scheduleNativeInterval(item);
+      if (await _scheduleNativeInterval(item)) return;
+      await _scheduleAwesomeInterval(item);
       return;
     }
-    // 闹钟送达：走原生 setAlarmClock 桥（系统级闹钟，无需精确闹钟权限、息屏必响、锁屏全屏）
+    // 闹钟送达：**优先**走原生 setAlarmClock 桥（系统级闹钟，无需精确闹钟权限、息屏必响、锁屏全屏）；
+    // 原生桥失败时回退 awesome 全屏通知（精确权限缺失由 schedule* 自动降级）。
     if (item.isAlarm) {
-      await _scheduleNativeAlarm(item);
+      if (await _scheduleNativeAlarm(item)) return;
+      await _scheduleAwesomeTime(item, fullScreen: true);
       return;
     }
     // 普通通知送达（时间模式）：awesome_notifications（精确权限缺失自动降级，见 notification_service）
-    final channel = NotificationChannels.todo;
+    await _scheduleAwesomeTime(item, fullScreen: false);
+  }
+
+  /// 时间模式 → awesome 定时通知。
+  /// [fullScreen]=true 用高重要 `alarm` 渠道 + 全屏意图（原生闹钟桥失败时的兜底）；否则用 `todo` 渠道普通通知。
+  Future<void> _scheduleAwesomeTime(
+    ReminderItem item, {
+    required bool fullScreen,
+  }) async {
+    final channel = fullScreen
+        ? NotificationChannels.alarm
+        : NotificationChannels.todo;
     final baseId = NotificationService.stableId(item.id);
 
     // 时间模式
@@ -134,8 +150,8 @@ class ReminderRepository {
         title: item.title,
         body: item.content,
         dateTime: idleEnd ?? dt,
-        precise: false,
-        fullScreen: false,
+        precise: fullScreen,
+        fullScreen: fullScreen,
       );
       return;
     }
@@ -148,8 +164,8 @@ class ReminderRepository {
         body: item.content,
         minute: minute,
         repeats: true,
-        precise: false,
-        fullScreen: false,
+        precise: fullScreen,
+        fullScreen: fullScreen,
         extraRings: 0,
       );
       return;
@@ -165,8 +181,8 @@ class ReminderRepository {
         hour: hour,
         minute: minute,
         repeats: true,
-        precise: false,
-        fullScreen: false,
+        precise: fullScreen,
+        fullScreen: fullScreen,
         extraRings: 0,
       );
       return;
@@ -184,8 +200,8 @@ class ReminderRepository {
         hour: hour,
         minute: minute,
         repeats: true,
-        precise: false,
-        fullScreen: false,
+        precise: fullScreen,
+        fullScreen: fullScreen,
         extraRings: 0,
       );
       return;
@@ -201,8 +217,8 @@ class ReminderRepository {
         hour: hour,
         minute: minute,
         repeats: true,
-        precise: false,
-        fullScreen: false,
+        precise: fullScreen,
+        fullScreen: fullScreen,
         extraRings: 0,
       );
     } else {
@@ -216,39 +232,44 @@ class ReminderRepository {
           hour: hour,
           minute: minute,
           repeats: true,
-          precise: false,
-          fullScreen: false,
+          precise: fullScreen,
+          fullScreen: fullScreen,
           extraRings: 0,
         );
       }
     }
   }
 
-  /// 闹钟送达：原生 setAlarmClock 桥排程（时间模式；周期模式走 _scheduleNativeInterval）
-  Future<void> _scheduleNativeAlarm(ReminderItem item) async {
+  /// 闹钟送达：原生 setAlarmClock 桥排程（时间模式；周期模式走 _scheduleNativeInterval）。
+  ///
+  /// 返回 **true = 已由原生桥接手**（至少一条 setAlarmClock 返回成功，或本就无需排程）；
+  /// 返回 **false = 原生桥未接手**，调用方须回退 awesome 兜底 —— 这是修复
+  /// 「原生桥静默失败 + rescheduleAll 先取消再重排 = 所有提醒都不响」的关键语义。
+  Future<bool> _scheduleNativeAlarm(ReminderItem item) async {
     final baseId = NotificationService.stableId(item.id);
     final title = item.title;
     final body = item.content;
 
     if (item.repeat == 'weekly' && item.weekDays.isNotEmpty) {
+      var any = false;
       for (final w in item.weekDays) {
         final ms = _nextAlarmTriggerMillis(item, forWeekdayPc: w);
-        if (ms != null) {
-          await sys.setAlarmClock(
-            code: baseId + w,
-            title: title,
-            body: body,
-            triggerAtMillis: ms,
-            repeatSpec: '{"type":"weekly"}',
-          );
-        }
+        if (ms == null) continue;
+        final ok = await sys.setAlarmClock(
+          code: baseId + w,
+          title: title,
+          body: body,
+          triggerAtMillis: ms,
+          repeatSpec: '{"type":"weekly"}',
+        );
+        if (ok) any = true;
       }
-      return;
+      return any;
     }
 
     final ms = _nextAlarmTriggerMillis(item);
-    if (ms == null) return;
-    await sys.setAlarmClock(
+    if (ms == null) return true; // 无需排程（如一次性已过期）→ 视为已处理，不触发兜底
+    return await sys.setAlarmClock(
       code: baseId,
       title: title,
       body: body,
@@ -262,12 +283,14 @@ class ReminderRepository {
   /// 不再走 awesome 的 NotificationInterval：它在 Android 12+ 被 Doze/省电严重节流且会自我停摆，
   /// 表现为「只响 2 次就停 + 间隔不准」。原生 setAlarmClock 由系统持有，首次在 now+interval 触发，
   /// 之后由 Receiver/Activity 按 repeatSpec 的 interval 类型自排下次，连 App 被杀也能持续每 interval 弹一次。
-  Future<void> _scheduleNativeInterval(ReminderItem item) async {
+  ///
+  /// 返回值语义同 [_scheduleNativeAlarm]：true = 原生桥已接手，false = 须回退 awesome 兜底。
+  Future<bool> _scheduleNativeInterval(ReminderItem item) async {
     final baseId = NotificationService.stableId(item.id);
     final iv = _parseInterval(item);
-    if (iv == null) return;
+    if (iv == null) return true; // 无有效间隔参数 → 无需排程
     final mode = item.isAlarm ? 'alarm' : 'notify';
-    await sys.setAlarmClock(
+    return await sys.setAlarmClock(
       code: baseId,
       title: item.title,
       body: item.content,
@@ -275,6 +298,26 @@ class ReminderRepository {
       repeatSpec: '{"type":"interval","interval":${iv.inMilliseconds}}',
       intervalMillis: iv.inMilliseconds,
       mode: mode,
+    );
+  }
+
+  /// 周期模式 → awesome 兜底（仅当原生桥不可用时）。
+  ///
+  /// awesome 的 NotificationInterval 在 Android 12+ 会被 Doze 节流、甚至自我停摆，体验不如原生桥；
+  /// 但它「至少能排得上、能响几次」，远优于原生桥失败时「先取消后静默排不上 = 完全不响」。
+  /// 原生桥恢复后，下一次 rescheduleAll / saveReminder 会重新切回原生。
+  Future<void> _scheduleAwesomeInterval(ReminderItem item) async {
+    final iv = _parseInterval(item);
+    if (iv == null) return;
+    await NotificationService.scheduleInterval(
+      id: NotificationService.stableId(item.id),
+      channelKey:
+          item.isAlarm ? NotificationChannels.alarm : NotificationChannels.todo,
+      title: item.title,
+      body: item.content,
+      interval: iv,
+      precise: item.isAlarm,
+      fullScreen: item.isAlarm,
     );
   }
 

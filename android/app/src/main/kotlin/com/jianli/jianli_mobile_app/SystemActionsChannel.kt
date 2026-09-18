@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
@@ -61,12 +62,17 @@ object SystemActionsChannel {
 
                     // 闹钟级送达：原生 setAlarmClock（息屏/Doze 必响、锁屏全屏、无需 SCHEDULE_EXACT_ALARM）
                     "setAlarmClock" -> {
-                        val code = call.argument<Int>("code") ?: 0
+                        // ⚠️ 数字参数一律按 Number 读再转 Long/Int：Flutter 的 StandardMessageCodec
+                        // 会把 int32 范围内的 Dart int 编成 Java Integer、超范围才编成 Long。
+                        // 若写死 `call.argument<Long>`，收到 Integer 会在 checkcast 处抛
+                        // ClassCastException，被下方 catch 吞成 false → 原生闹钟永远排不上
+                        //（表现＝周期提醒 + 闹钟送达「完全不响」）。Number 对 Int/Long 都兼容。
+                        val code = call.argument<Number>("code")?.toInt() ?: 0
                         val title = call.argument<String>("title") ?: ""
                         val body = call.argument<String>("body") ?: ""
-                        val triggerAt = call.argument<Long>("triggerAtMillis") ?: 0L
+                        val triggerAt = call.argument<Number>("triggerAtMillis")?.toLong() ?: 0L
                         val repeatSpec = call.argument<String>("repeatSpec")
-                        val interval = call.argument<Long>("intervalMillis") ?: 0L
+                        val interval = call.argument<Number>("intervalMillis")?.toLong() ?: 0L
                         // mode: 'alarm'=全屏 Activity；'notify'=普通系统通知（见 AlarmScheduler）
                         val mode = call.argument<String>("mode") ?: AlarmScheduler.MODE_ALARM
                         if (triggerAt <= 0L) {
@@ -80,7 +86,7 @@ object SystemActionsChannel {
                     }
 
                     "cancelAlarmClock" -> {
-                        val code = call.argument<Int>("code") ?: 0
+                        val code = call.argument<Number>("code")?.toInt() ?: 0
                         AlarmScheduler.cancel(activity, code)
                         result.success(true)
                     }
@@ -88,7 +94,8 @@ object SystemActionsChannel {
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
-                // 任何原生异常都降级为 false，让 Dart 侧走保守分支（提示用户手动设置）
+                // 任何原生异常都降级为 false，让 Dart 侧走保守分支；并打日志便于定位静默失效
+                Log.e("SystemActionsChannel", "method ${call.method} failed", e)
                 result.success(false)
             }
         }
