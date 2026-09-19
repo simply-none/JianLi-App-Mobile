@@ -1,6 +1,11 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-19（续·**响铃页 UI 双主题定稿「方案 A · 晨光紫」落地**）：用户对方案 B 的浅青底不满，走 Ardot 设计稿（file `727535642868357`）三轮迭代定稿后执行落地。
+  - **定稿规格**：A 方案双主题——**触发时刻 hour<18 亮色（淡紫晨光 #F1EEFE→#FBFBFF）/ hour>=18 暗色（深夜墨蓝 #141824→#1E2433）**；顶部新增 **76dp 品牌紫渐变圆铃铛徽章**（`res/drawable/ic_alarm_bell.xml` 新增 Lucide 白铃铛 vector）；时钟行布局 = 上午/下午**垂直居中** + 大号时间（设计稿 Noto Sans Bold，直竖笔「7」）+ **秒数上标式顶部对齐**（`translationY=-30dp`）；提醒信息**去卡片底/描边/阴影**变纯文字居中（22sp 标题 + 13sp 正文）；底部药丸按钮 关闭=中性（亮：白底 #E9E6F8 描边 / 暗：#262D42 底 14% 白描边）、稍后提醒=品牌紫 #6C5CE7（替代旧红 #FA5150）；**主文字避开纯黑/纯白**（#303338 / #D7DBE4，用户要求降刺激）。
+  - **字体坑（勿回退）**：Android `sans-serif` = Roboto，其数字「7」**字形天生斜竖笔**（非斜体，用户两次反馈才定位到是字体设计）。`clockTypeface()` 优先加载 `assets/fonts/clock_bold.ttf` / `clock_medium.ttf`（内置即自动获得设计稿同款直 7），缺文件回退系统 Bold/Medium——要完全对齐设计稿就往 `android/app/src/main/assets/fonts/` 丢 Noto/Inter ttf。
+  - **范围**：只动 `AlarmRingActivity.kt` UI 构建（`RingPalette` 双色板 + `buildUi` 重写）+ 新增铃铛 drawable；铃声/震动/贪睡/自排业务逻辑零改动。设计稿余量：暗色稿秒数紫 #8B7CF7 已同步进色板。
+  - 校验：无 Agent 侧静态分析（Kotlin 不走 dart analyze），构建交用户本地跑；真机待验 = 18 点前后各触发一次闹钟看双主题 + 新布局（徽章/上标秒/无卡信息区/紫药丸）。⚠️ **编译坑：`Typeface` 没有 `MEDIUM` 常量**（只有 NORMAL/BOLD/ITALIC/BOLD_ITALIC），中字重必须 `Typeface.create("sans-serif-medium", Typeface.NORMAL)`（已修）。
 - 2026-09-19（**首页 Dashboard 数据自动刷新**）：用户报「首页 tab 每次显示都要自动更新数据，现在没有」。
   - **根因**：`dashboardStatsProvider` 是普通 `FutureProvider`（结果永久缓存），而首页分支在 `StatefulShellRoute.indexedStack` 中**常驻挂载**——切 tab / push 子页 / pop 返回都不触发重建，唯一刷新入口只有手动下拉。
   - **修法（`dashboard_page.dart`，不动数据层）**：`DashboardPage` 改 `ConsumerStatefulWidget` + `WidgetsBindingObserver`，两个刷新信号：① 监听 `appRouter.routerDelegate`（ChangeNotifier），每次导航**穿透 `ShellRouteMatch` 逐层取 `matches.last`** 得到栈顶叶子路由的 `matchedLocation`，变回 `'/'` 即 `ref.invalidate`——一个信号同时覆盖「切 tab 返回」与「从功能页 pop 返回（含系统返回手势）」；② `didChangeAppLifecycleState.resumed` 且栈顶仍是 `'/'` 时刷新（后台过夜 / 同步改数据后回 App）。首个回调只采样不刷新（`_lastLocation` null 哨兵），避免冷启动双查。

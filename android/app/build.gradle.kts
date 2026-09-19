@@ -42,6 +42,11 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // R8 代码压缩 + 资源收缩（classes.dex 5.6MB -> 约 3MB）。
+            // 插件反射层的 keep 规则见同目录 proguard-rules.pro；改动后需完整跑一次 release 构建回归。
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }

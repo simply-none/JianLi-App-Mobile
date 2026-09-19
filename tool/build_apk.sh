@@ -56,11 +56,30 @@ else
   FLUTTER="C:/src/flutter/bin/flutter.bat"
 fi
 
-# ---------- 3. 构建 ----------
-echo "==> 开始构建 release APK (split-per-abi) ..."
-"$FLUTTER" build apk --release --split-per-abi
+# ---------- 2.5 清理无用包体（pub 缓存重装会复原，每次构建前确保删掉） ----------
+# flutter_epub_viewer 的 epub.js.map 是源码映射，运行时无用，白占 ~1MB
+EPUB_MAP="$HOME/AppData/Local/Pub/Cache/hosted/pub.flutter-io.cn/flutter_epub_viewer-2.0.0/lib/assets/webpage/dist/epub.js.map"
+if [ -f "$EPUB_MAP" ]; then
+  rm -f "$EPUB_MAP"
+  echo "==> 已清理 epub.js.map"
+fi
 
-# ---------- 4. 产物列表 ----------
+# ---------- 3. 构建 ----------
+echo "==> 开始构建 release APK (split-per-abi + 混淆) ..."
+"$FLUTTER" build apk --release --split-per-abi \
+  --obfuscate --split-debug-info=build/symbols
+
+# ---------- 4. 产物重命名 + 列表 ----------
+# app-arm64-v8a-release.apk -> 渐离App-<版本>-arm64-v8a-release.apk（.sha1 一并同步改名）
 OUT_DIR="build/app/outputs/flutter-apk"
+for f in "$OUT_DIR"/app-*release.apk "$OUT_DIR"/app-*release.apk.sha1; do
+  [ -e "$f" ] || continue
+  base="$(basename "$f")"
+  new="$(printf '%s' "$base" | sed -E "s/^app-/渐离App-${DISPLAY_VERSION}-/")"
+  if [ "$base" != "$new" ]; then
+    mv -f "$f" "$OUT_DIR/$new"
+  fi
+done
+
 echo "==> 构建完成，产物："
 ls -lh "$OUT_DIR" 2>/dev/null || echo "（请自行查看 $OUT_DIR）"

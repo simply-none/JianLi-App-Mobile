@@ -71,12 +71,62 @@ def compress(path: Path, max_edge: int, quality: int, force: bool) -> tuple[int,
     return before, after, f"{w}x{h} -> {new_size[0]}x{new_size[1]}"
 
 
+def convert_to_webp(files: list[Path], quality: int) -> int:
+    """jpg -> webp（有损，q=quality）。源图先缩到 1200 长边（与 compress 同规格），再转格式。
+
+    只有转换产物比源图小才落盘+删源；同名 .webp 已存在则跳过（幂等）。
+    """
+    total_before = total_after = 0
+    print("mode  : jpg -> webp (lossy)")
+    print("-" * 78)
+    skipped = 0
+    for p in files:
+        out = p.with_suffix(".webp")
+        if out.exists():
+            skipped += 1
+            print(f"{p.name:<48} skip (webp already exists)")
+            continue
+        before = p.stat().st_size
+        with Image.open(p) as im:
+            im = ImageOps.exif_transpose(im)
+            w, h = im.size
+            long_edge = max(w, h)
+            if long_edge > 1200:
+                scale = 1200 / long_edge
+                im = im.resize((max(1, round(w * scale)), max(1, round(h * scale))),
+                               Image.LANCZOS)
+            if im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+            tmp = out.with_suffix(".webp.tmp")
+            im.save(tmp, format="WEBP", quality=quality, method=6)
+        if tmp.stat().st_size >= before:
+            tmp.unlink()
+            print(f"{p.name:<48} skip (webp not smaller)")
+            continue
+        tmp.replace(out)
+        p.unlink()  # 转换成功且确实变小，才删源 jpg
+        after = out.stat().st_size
+        total_before += before
+        total_after += after
+        pct = (1 - after / before) * 100 if before else 0.0
+        print(f"{p.name:<48} {human(before):>8} -> {human(after):>8}  {pct:>5.1f}%")
+    print("-" * 78)
+    saved = total_before - total_after
+    pct = saved / total_before * 100 if total_before else 0.0
+    print(f"{len(files)} files ({skipped} skipped): "
+          f"{human(total_before)} -> {human(total_after)} (saved {human(saved)}, {pct:.1f}%)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", type=Path, default=DEFAULT_DIR)
     ap.add_argument("--max-edge", type=int, default=1200)
     ap.add_argument("--quality", type=int, default=82)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--webp", action="store_true",
+                    help="jpg -> 同名 .webp（q 同 --quality，method=6），成功后删除源 jpg。"
+                         "幂等：已存在同名 .webp 则跳过。转完后需把代码里的 .jpg 引用改成 .webp。")
     args = ap.parse_args()
 
     files = sorted(
@@ -86,6 +136,9 @@ def main() -> int:
     if not files:
         print(f"no jpg found in {args.dir}", file=sys.stderr)
         return 1
+
+    if args.webp:
+        return convert_to_webp(files, args.quality)
 
     total_before = total_after = 0
     print(f"dir   : {args.dir}")

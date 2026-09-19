@@ -389,8 +389,20 @@ bash tool/build_apk.sh
 
 1. **版本号自增**：读取 `pubspec.yaml` 当前 version 与今天日期比对——跨天重置为 `+1`，当天则序号 +1，写回 pubspec；
 2. **导出全部必需环境变量**（即 §4.4 / 「flutter build 必需环境变量」整套：TMP/TEMP、pub 镜像、ANDROID_HOME、GRADLE_USER_HOME、JAVA_HOME）；
-3. 执行 `flutter build apk --release --split-per-abi`；
-4. 列出 `build/app/outputs/flutter-apk/` 产物。
+3. 清理无用包体：删 pub 缓存里 `flutter_epub_viewer` 的 `epub.js.map`（源码映射，运行时无用，pub 缓存重装会复原，所以每次构建前都清一次）；
+4. 执行 `flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols`
+   （`--obfuscate` 混淆 Dart AOT 使 libapp.so 变小 ~5-10%，符号输出到 `build/symbols/`，
+   **崩溃栈符号化需要它，请随版本归档保留**）；
+5. 产物重命名：`app-<abi>-release.apk` → **`渐离App-<版本>-<abi>-release.apk`**（如 `渐离App-26.9.19.2-arm64-v8a-release.apk`，`.sha1` 一并同步），再列出产物清单。
+
+#### 包体优化记录（2026-09-19）
+
+| 措施 | 收益 | 说明 |
+| --- | --- | --- |
+| release 开 R8 + 资源收缩 | dex ~5.6MB → 约 3MB | `build.gradle.kts` 的 `isMinifyEnabled/isShrinkResources`，keep 规则在 `android/app/proguard-rules.pro`。**若 release 运行时报 `ClassNotFoundException` 等，先怀疑混淆**，按缺失类补 keep |
+| Dart 混淆 + 拆分符号 | libapp.so -5~10% | 见上脚本第 4 步 |
+| 删 `epub.js.map` | -1.0 MB | pub 缓存补丁，脚本自动清理 |
+| 纹理 WebP 化 | -0.5 MB | 21 张中 12 张噪声少的转 WebP（q82），9 张噪点纹理 WebP 不降反升保留 JPG；代码引用已同步改，见 `lib/app/theme/card_textures.dart` |
 
 #### 版本号规则（年.月.日.版本）
 
@@ -434,7 +446,7 @@ flutter build appbundle --release
 | 类型 | 路径 |
 | --- | --- |
 | APK | `build/app/outputs/flutter-apk/app-release.apk` |
-| 分包 APK | `build/app/outputs/flutter-apk/`（`app-armeabi-v7a-release.apk`、`app-arm64-v8a-release.apk`、`app-x86_64-release.apk`） |
+| 分包 APK | `build/app/outputs/flutter-apk/`（`app-armeabi-v7a-release.apk`、`app-arm64-v8a-release.apk`、`app-x86_64-release.apk`；**走 §8.0 脚本打包时会重命名为 `渐离App-<版本>-<abi>-release.apk`**） |
 | AAB | `build/app/outputs/bundle/release/app-release.aab` |
 
 安装到设备：

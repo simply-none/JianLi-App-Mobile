@@ -67,7 +67,7 @@ adb shell am start -n <applicationId>/.MainActivity   # 等价的显式启动方
 | 在线设备 id | `emulator-5554` |
 | applicationId（包名） | `com.jianli.jianli_mobile_app`（`android/app/build.gradle.kts`，namespace 同） |
 | minSdk / targetSdk | 24（`flutter.minSdkVersion`，Flutter 3.47 默认）/ 随 Flutter 插件默认 |
-| 版本号 | `pubspec.yaml` 的 `version: 26.9.6+1`（`+`前=versionName，`+`后=versionCode；发版先改这里） |
+| 版本号 | `pubspec.yaml` 的 `version:`（规则：年.月.日+N；2026-09-19 起由 `tool/build_apk.sh` 自动维护，见下「生产打包 ⓪/①」） |
 | 签名现状（2026-09-06） | release 仍用 **debug key**（Flutter 模板 TODO，无 keystore）——自测可装可跑，**正式发布前必须按「生产打包」配正式签名** |
 | 应用名 / 图标 | 渐离App（AndroidManifest `android:label` + iOS Info.plist）；图标/启动屏由 `tool/make_icons.py` 生成，源图 `appLogo.png` |
 
@@ -109,11 +109,17 @@ flutter emulators --launch Pixel_8
 ```
 启动后 `flutter devices` 复查出现 `emulator-5554`，再 `flutter run -d emulator-5554`。**真机调试**：手机开 USB 调试连电脑 → `adb devices` 授权 → `flutter devices` 拿真机 id → `flutter run -d <真机id>`（arm64 的 libsqlite3.so 已在 jniLibs 就位，无需特殊处理）。
 
-### 生产打包（release APK / AAB，2026-09-06 全面拆解）
+### 生产打包（release APK / AAB，2026-09-06 全面拆解；2026-09-19 接入一键脚本）
 
-#### ① 版本号
-- 唯一出处：`pubspec.yaml` 的 `version: 26.9.6+1`。`+` 前 = versionName（显示名），`+` 后 = versionCode（整数，**必须严格递增**才能覆盖安装）。发版第一步改这里。
-- split APK 会自动在 versionCode 上加 `1000 × ABI 序号`（arm32=1/arm64=2/x64=3）；要强制用 pubspec 原值加 `-P force-version-code-ignoring-abi=true`。
+#### ⓪ 一键打包脚本（分发用，推荐入口）
+- `bash tool/build_apk.sh`（Git Bash）：版本号自动自增 → 导出全套环境变量 → 删 pub 缓存 `epub.js.map`（包体优化，pub 缓存重装会复原所以每次清）→ `flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols` → **产物重命名 `app-<abi>-release.apk` → `渐离App-<版本>-<abi>-release.apk`** → 列产物。
+- `--obfuscate` 使 libapp.so 缩 5~10%；**`build/symbols/` 按版本归档保管**，否则混淆后的崩溃栈无法符号化还原。
+
+#### ① 版本号（2026-09-19 起由脚本自动维护，规则：年.月.日.版本）
+- pubspec 存 `26.9.19+N`（N = 当天第几次构建，脚本跨天重置、当天自增；**只能三段 semver，四段显示名写不进 pubspec**）。
+- APK versionName 由 `android/app/build.gradle.kts` defaultConfig 拼接：N=1 → `26.9.19`；N>1 → `26.9.19.(N-1)`（第 5 次构建 = `26.9.19.4`）。
+- versionCode 由日期推导 `((yy*100+mm)*100+dd)*100 + N`（如 26091905），跨天单调递增，覆盖安装不会降级拒装；split 的 `1000 × ABI` 偏移照常叠加。
+- 手动改版本：改 pubspec `version:` 行即可，显示名/版本码 gradle 自动推导。
 
 #### ② 签名（当前 release 签 debug key，正式发布前必做，一次性配置）
 1. 生成正式 keystore（本机一次生成、永久保管，**丢了无法再以同签名发版**；文件与口令勿外传/勿提交）：
@@ -197,6 +203,8 @@ C:/apps/Android/AndroidSDK/build-tools/<版本号>/apksigner.bat verify --print-
 - iOS：需 Mac + Xcode，Windows 阶段保留 ios 目录不构建。
 - **`INSTALL_FAILED_UPDATE_INCOMPATIBLE`（覆盖安装报签名不一致）** → debug 包 ↔ 正式签名包之间切换必现：`adb uninstall com.jianli.jianli_mobile_app`（会清数据）后重装。
 - **`key.properties` / keystore 相关报错**（打包期 `FileNotFoundException` / `Password verification failed`）→ `storeFile` 相对 `android/app/` 解析；逐项核对文件存在、口令、alias。
-- **release 包闪退而 debug 正常** → 先 `flutter run --release -d <id>` 本机复现；再看 `adb logcat` 过滤 `FATAL`。Flutter 下 R8 混淆缺反射规则的场景罕见，优先怀疑插件初始化（通知/后台任务）与 release 剥离 assert 暴露的空安全问题。
+- **release 包闪退而 debug 正常** → 先 `flutter run --release -d <id>` 本机复现；再看 `adb logcat` 过滤 `FATAL`。**2026-09-19 起 release 已开 R8（isMinifyEnabled+isShrinkResources，规则在 `android/app/proguard-rules.pro`）**：报 `ClassNotFoundException` / `NoSuchMethodError` 优先怀疑混淆缺 keep 规则（按缺失类补），其次插件初始化（通知/后台任务）与 release 剥离 assert 暴露的空安全问题。
+- **纹理资源引用**：`lib/app/theme/card_textures.dart` 里 .webp/.jpg 混合（2026-09-19 起噪声少的 12 张已转 WebP），改纹理时以 `assets/images/textures/` 磁盘实际文件为准；批量转换用 `tool/compress_textures.py --webp`。
+- **改名/删除 assets 后报 `PathNotFoundException: Cannot open file ... <旧资源名>`** → 不是代码错：增量构建的 `AssetManifest.bin` / `flutter_build.d`（都在 `build/`）仍指向旧文件名。源码里 grep 旧文件名确认只剩 `build/` 命中后，`flutter clean && flutter pub get` 清缓存重建即可。
 - **`A problem occurred evaluating project ':flutter_inappwebview_android'`** → 报错 `getDefaultProguardFile('proguard-android.txt') is no longer supported`（AGP 9.x 已删除该默认文件）。根因：`flutter_inappwebview: ^6.1.5` 依赖 `flutter_inappwebview_android: ^1.1.3`，官方最新版（6.1.5，无 7.x 可用）的 `android/build.gradle` 仍引用它，assembleRelease 评估阶段即抛错。**已永久修复**：仓库内 `third_party/flutter_inappwebview_android/` 为已打补丁副本（其 `android/build.gradle` 改用 `proguard-android-optimize.txt`），app `pubspec.yaml` 用 `dependency_overrides` 指向该本地路径。⚠️ **该 override 与 `third_party/` 目录必须保留**——若被误删或 `flutter pub cache repair` 后未恢复，报错会复现。release 若因 R8 优化误删插件代码而崩，在 `third_party/flutter_inappwebview_android/android/proguard-rules.pro` 末尾加 `-dontoptimize` 兜底。
 
