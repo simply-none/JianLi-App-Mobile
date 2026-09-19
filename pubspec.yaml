@@ -54,6 +54,14 @@ dependencies:
   flutter_quill_delta_from_html: ^1.5.3
   vsc_quill_delta_to_html: ^1.0.5
   epubx: ^4.0.0
+  # EPUB 阅读器引擎：flutter_epub_viewer（epub.js + flutter_inappwebview）。
+  # 提供滑动翻页 / 文本选区高亮·下划线 / 任意位置书签 / 笔记 / 搜索，锚点走 epub CFI（与 PC 端 epubjs 同构，跨端批注零成本互通）。
+  # 注意：它传递依赖 flutter_inappwebview ^6.x，与项目现有 webview_flutter 是两套独立插件，可共存。
+  # ⚠️ 白屏优化（缩短打开白屏转圈 + eye/night 白边闪）是 fork 式补丁，直接打在 pub 缓存
+  #    `flutter_epub_viewer-2.0.0/lib/assets/webpage/html/` 的 epubView.js / swipe.html 上（非项目源码），
+  #    不进仓库；pub 缓存被重装/clean 会覆盖复原。2026-09-19 曾试 fork 到 third_party 做永久方案，
+  #    后按用户要求还原回此 hosted 依赖（补丁仍留在 pub 缓存，临时生效）。
+  flutter_epub_viewer: ^2.0.0
   archive: ^3.6.1 # EPUB 宽容解析（绕过 epubx 的 TOC 解析异常）：解压 OPF/内容文件
   xml: ^6.6.1 # EPUB 宽容解析：解析 container.xml / OPF manifest+spine
   file_picker: ^12.2.0

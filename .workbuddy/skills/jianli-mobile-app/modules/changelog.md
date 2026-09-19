@@ -1,6 +1,15 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-19（续·**修复「改字号中文正文不变」**）：用户报「字号修改，中文字体不会发生改动」。
+  - **根因**：`_readerCss` 把 `font-size` / `line-height` 只挂在 `body`（`body{font-size:X !important}`）。但 epub 正文几乎都在 `<p>/<div>/<span>` 内，书自带 CSS 给这些元素**声明了各自的 `font-size`**，会覆盖从 `body` 继承的值（与 `font-family` 是同一类问题——它早就用 `_kFontSelector` 直接打到元素上才生效，只挂 `body` 的中文正文就不跟着变）。`setFontSize`(插件) 同样只写 `body` 内联（非 important），被 `body` 的 !important 覆盖，等于失效。
+  - **修法**：新增 `_kSizeSelector`（正文块级+行内，**不含 h1-h6**，避免压平标题层级），在 `_readerCss` 里给该选择器注入 `font-size` / `line-height`（均 `!important`），与 `body` 的既有声明并存；`font-family` 仍走 `_kFontSelector`（放过 pre/code）。标题交回书自带样式，仅正文响应滑块。
+  - 校验（Agent 本轮已跑）：`dart analyze lib/features/ebook` → 仅剩 1 条已知基线误报 `EpubSource.fromFile(File)`，零新增。
+- 2026-09-19（**阅读设置优化：字号/行距/页边距/段间距改滑块 + 删除分栏**）：用户要求「字号、行距、页边距、段间距都改用 slider 滑块拖动，并删除分栏设置」。
+  - **页边距 / 段间距由离散枚举改为连续数值**（`reader_settings.dart`）：`ReaderMargin {narrow,mid,wide}` → `double margin`（左右内边距 px，默认 18，范围 8~40，上下取其 ~0.55 倍）；`ReaderSpacing {none,half,one}` → `double spacing`（em，默认 0.5，范围 0~2.0）。配套 `readerBodyPadding(double)` / `readerParagraphMargin(double)` 重写（CSS 仍是 `!important`，关掉=注入 `'0'`）。**持久化键改名** `_kMargin='ebook_reader_margin_px'` / `_kSpacing='ebook_reader_spacing_em'`（原字符串键直接丢，避免 `prefs.getDouble` 类型冲突），`fromPrefs` 读 double 失败回退默认值。
+  - **四个数值走 forui `FSlider`**（新增 `_SliderRow`，`reader_settings_sheet.dart`）：`FSliderValue` 是百分比（0~1），本组件以 `realValue + min/max` 换算百分比、`onChange` 再换算回真实值。字号 12~36、行距 1.2~3.0、页边距 8~40px、段间距 0~2.0em。setters 统一 `_clamp` + 步进（`fontSize`/`margin` 取整、`lineHeight`/`spacing` 取 0.1）。原 `_Stepper`（±按钮）废弃删除。
+  - **删除分栏设置**：移除 `ReaderSpread` 枚举、`setSpread`、`spread` 字段、`structureFingerprint` 中的 `spread.name`、`spread` 持久化键与标签映射；抽屉里 `if(showStructure)` 的「分栏」区块删除，提示文案同步改为「翻页方式 / 阅读方向」。EPUB 侧 `EpubDisplaySettings.spread` 固定为 `EpubSpread.auto`（注释说明分栏已移除）。
+  - 校验（Agent 本轮已跑，~25s）：`dart analyze lib/features/ebook` → 仅剩 1 条已知基线误报 `EpubSource.fromFile(File)`（web/IO 条件导出，`flutter` 编译正常，非本次回归），其余 **No issues found**。真机待验（交用户）：四个滑块拖动即时生效（走 `styleFingerprint` 热更新）、页边距/段间距连续变化观感顺滑、分栏区块已从 EPUB 设置消失且双栏不再出现。
 - 2026-09-18（续·十·**修复「习惯编辑页保存按钮有时点了没效果、不更新也不关闭弹窗」**）：三个叠加成因，逐个修（`habit_page.dart`）：
   - **①（主因，解释「有时」）键盘弹起时底部保存按钮被完全遮住**。习惯面板 `_habitSheetPanel` 走 lg 固定 80vh（`sheetMaxHeightFull`）+ 调用点 `resizeToAvoidBottomInset: false` ⇒ 软键盘从底部**覆盖**抽屉；按钮死贴抽屉底部 ⇒ 用户在名称框打完字直接点保存，手指落到的是键盘区域。**只在键盘弹起时复现**（不动输入框就正常），所以是「有的时候」。**修法**：`bottomBar` 包 `Padding(bottom: MediaQuery.of(context).viewInsets.bottom)`，只抬按钮、抽屉高度与滚动区不变（不违反 lg 不扣键盘的红线）。
   - **② 校验静默 return**：`if (name.isEmpty) return;` —— 名称为空时点了保存**毫无反馈**，用户只能反复点，同样被当成「按钮没效果」。改为 `showFToast('请输入习惯名称')`。
@@ -213,3 +222,114 @@
 - 2FA 卡片二轮对齐图稿：瓷片 accent(0) 固定色+SquircleBox → 主题主色渐变+普通圆角13（跟随换肤、弧度对齐画布）；名称/码显式 height 1.1 压 forui 行高（间隙过大根因）、间距 5→4；码 fontWeight w700→w900。
 - 2FA 卡片三轮打磨：ticker 1s→100ms（环/条按真实时间连续重算，流式缩短不跳变）；码 letterSpacing 2→1。
 - 2FA 流式倒计时终极方案：Timer(100ms) 仍跳（不走帧时钟）→ 改 Ticker(vsync) 每帧重算：_progress/_seconds 两个 ValueNotifier 局部刷新环/条/秒数（60fps 连续消耗，不整卡重建），码只在周期翻转（remaining 回升）时 setState 重算一次；复制改为存 _rawCode（无分组空格）；didUpdateWidget 账户变更强制重算；period<1 防御。
+
+- **2026-09-19（A）：电子书 EPUB 阅读器三处修复（用户真机 Android 15 实测：顶栏应点击才出现、顶部「划线」按钮一直旋转加载、目录每行标题为空但可跳转）**。① **顶栏沉浸化**（`epub_reader_page.dart`）：顶栏由 `FScaffold.header` 改为叠在正文之上的 `Positioned` 覆盖层（`SafeArea(bottom:false)` + `IgnorePointer` + `AnimatedOpacity/AnimatedSlide`，180ms），默认隐藏；切换信号取 `EpubViewer.onTouchDown/onTouchUp`，**只有「位移 <0.03 且时长 <400ms」才算点击**（滑动翻页、长按选词都不算），并做 400ms 去重（epub.js 在 iframe 与父文档各发一次 touchend）；显示后 5s 自动收起。② **划线按钮一直转圈的根因（重中之重，已固化红线 #28）**：`showFSheet` 的 builder 在 **Navigator overlay 子树**里，用页面 State 的 `ref.watch(...)` 会把依赖注册到**页面 element** → provider 更新只重建页面、不重建抽屉 → 抽屉永远停在首帧 `AsyncLoading`。修法 = 抽屉内容自带 `Consumer`；据此重写了批注（新文件 `features/ebook/components/annotation_sheet.dart`，lg 抽屉 + 「全部/划线/笔记」分段 + 定位/编辑笔记/删除）、书签、标注详情，以及 TXT 路径的书签 / 批注抽屉；仓库新增 `updateAnnotationNote(id, note)`。③ **目录空标题**：epub.js 的 `toc[].label` 在部分 EPUB / WebView 下为空串而 `href` 有效 → Dart 侧逐级兜底（`title.trim()` → href 推导 → `第 N 章`）并展平 `subitems`（子项缩进 16px）。④ 顺带给这几个抽屉挂三档（`AppTokens.sheetHeightLg/Md` + `resizeToAvoidBottomInset: false`），清掉 `mainAxisMaxRatio: null`；标题统一 `sheetTitleStyle`。校验：`dart analyze lib/features/ebook` → 仅 1 条**既有**基线 error（`EpubSource.fromFile(File)` 被解析到 `flutter_epub_viewer` 的 web 版 `File`，源自包的条件导出 `export 'file_loader_web.dart' if (dart.library.io) 'file_loader_io.dart'`，`dart analyze` 未定义 `dart.library.io`，`flutter analyze`/编译正常），本次改动零新增。
+
+- **2026-09-19（B）：阅读器正文顶到状态栏（顶栏浮层化的副作用，用户截图）**。现象：顶栏隐藏时正文文字直接延伸到状态栏下面（时间/电量压在文字上）。根因：`FScaffold.header` 原先替正文让开了系统栏，顶栏改成浮层后（同日条目 A）就没有任何人为正文让位了。修法：`epub_reader_page._buildEpub` 把 `EpubViewer` 包一层 `SafeArea`（上下 + 左右刘海全避），背景色仍由外层 `ColoredBox(readerBg)` 铺满状态栏区域；同时顶栏 `_buildReaderChrome` 的 `SafeArea(bottom: false)` 由「包 IgnorePointer」改为**只包 `FHeader.nested`**，让顶栏底色铺到状态栏后面（否则浮出时状态栏区域露出一条异色窄条）。校验：`dart analyze lib/features/ebook` → 仅 1 条既有基线 error。
+
+- **2026-09-19（C）：阅读设置全量升级 + 「护眼主题只染顶部、正文仍白底」修复（用户截图 → 方案确认 → 全量实施）**。
+  - **P0 根因（务必记住，别再踩）**：`EpubTheme.backgroundDecoration` **根本没有下发到 JS**。
+    `flutter_epub_viewer` 的 `epub_viewer.dart` 调 `loadBook` 时写死 `'backgroundColor': null`，
+    只有 `foregroundColor` 会传；`backgroundDecoration` 只给 **Flutter 侧的 Container** 上色
+    —— 这正是「顶部非阅读区有护眼色、正文还是白色」的成因。
+  - **修法**：底色 / 文字色 / 排版一律走 `EpubTheme.custom(customCss: ...)`。epub.js
+    `updateTheme()` 把 `customCss` 用 `Object.assign` 合并后交给
+    `rendition.themes.register("user-theme", rules)` + `select()`，最终由
+    `Contents.addStylesheetRules` → `styleSheet.insertRule(selector + "{" + props + "}")` 注入 iframe。
+    **值里可以带 `!important`**（epub.js 自己在 dist 8385 行就写 `"100%" + "!important"`）。
+  - **两个 epub.js 硬约束（写 CSS 前必读）**：
+    1. `addStylesheetRules` 是往**同一个** `<style id="epubjs-inserted-css-user-theme">`
+       **追加** `insertRule`，**不清除旧规则** → 「本次不注入某属性」= 上一次的值**永久残留**。
+       所以关闭态也必须显式注入中性值（`text-indent: 0`、字体给具体族名而非省略）。
+       这也是 `readerFontFamily()` 改成**恒返回非空串**的原因。
+    2. `insertRule` 遇到非法选择器会抛 → 选择器必须是合法 CSS（逗号分隔组可以）。
+  - **注入内容**（`epub_reader_page._readerCss`）：`html`/`body` 的
+    `background-color` + `background-image:none` + `color`（全 `!important`，书自带
+    `body{background:#fff}` / `span{color:#000}` 必须被压过，否则夜间黑底黑字）、
+    `font-family` / `font-size` / `line-height` / `padding` / `text-align` / `text-indent`、
+    块级元素字体（`_kFontSelector`，放过 `pre`/`code` 保等宽）、
+    文字元素 `color: inherit !important`（`_kColorSelector`）、`p` 的 `margin`。
+  - **设置模型扩容**（`providers/reader_settings.dart` 重写）：主题 8 档
+    （day/night/eye/sepia/kraft/gray/ink/navy，前三档取值与 PC `themePresets.ts` 一致）、
+    自定义背景 12 色 + 文字 8 色（语义对齐 PC `bgType='color'`，**空串 = 跟随主题**）、
+    字体 4 / 页边距 3 / 段间距 3 / 缩进 2 / 对齐 2 / 翻页 2 / 分栏 3 / 方向 2；
+    13 个 SharedPreferences 键 + 全量 setter + `reset()`。
+  - **热更新优先（用户选定）**：新增 `styleFingerprint` / `structureFingerprint`。
+    页面 `initState` 里 `ref.listen(readerSettingsProvider)` 分派 ——
+    **样式变** → `_applyStyle()` 调 `_epubController.updateTheme()` + `setFontSize()`
+    （不重载书，位置不丢）；**结构变**（flow/spread/direction）→ `ValueKey(structureFingerprint)`
+    重建 `EpubViewer`，位置靠 `_currentCfi` 续接。
+    ⚠️ **`ref.listen` 必须放 `build()`**（放 `initState` 会抛 `ref.listen can only be used within the build method of a ConsumerWidget`，2026-09-19 实踩；每次 build 重复调用是安全的，Riverpod 会替换上一个监听）。
+    ⚠️ 新增 `_epubReady`：`onEpubLoaded` 前不推样式（SharedPreferences 异步恢复可能晚于首帧，
+    统一在 `onEpubLoaded` 里补一次 `_applyStyle(ref.read(...))`）。
+  - **新文件 `components/reader_settings_sheet.dart`**：EPUB/TXT 共用的设置抽屉
+    （md 档 + 自带 `Consumer`，`showStructure` 控制是否显示翻页/分栏/方向），
+    替换掉原来只有「3 主题 + 字号 + 行距」的内联 `StatefulBuilder` 两份重复实现。
+    chip 选中态只改颜色（字重恒 w500、padding 恒定、不加对勾、描边宽度恒定）。
+  - **TXT 路径同步**：`_buildTxt` 改用 `resolveReaderBg/resolveReaderText`、
+    `HtmlWidget.textStyle` 带 `fontFamily`；`_renderHtml` 剥离内联配色的条件由
+    「主题 != day」放宽为「主题 != day **或**自定义了背景/文字色」。
+  - 校验：`dart analyze lib/features/ebook` → 仅 1 条**既有**基线 error
+    （`EpubSource.fromFile(File)` 的 web/IO `File` 条件导出问题），本次改动零新增。
+
+- **2026-09-19（D）：修 `ref.listen` 放在 `initState` 抛断言（承 C 的后续，真机堆栈定位）**。
+  C 里把「阅读设置变更分派」写进了 `initState`，真机一打开书籍就抛
+  `ref.listen can only be used within the build method of a ConsumerWidget`
+  （`ConsumerStatefulElement.listen` 断言 `debugDoingBuild`）。
+  ⚠️ **注意误判点**：错误 widget 被报成上层 `Navigator`（go_router 的 `Builder`），
+  看着像路由问题，其实堆栈 `#3 _EpubReaderPageState.initState` 才是真凶。
+  **修法**：把监听抽成 `_listenSettings()`，只在 `build()` 开头调。
+  ⚠️ **纠正一个错误认知**：「放 build 里会每次重建追加监听」是错的 —— Riverpod 会在
+  重建时**替换**上一个监听，不会累积，`ref.listen` 本来就是给 build 用的（已固化红线 #31）。
+  同时把 C 条目 / 红线 #30 里那句「`ref.listen` 必放 initState」改正。
+  另：C 之后把 `readerParagraphMargin` / `readerTextIndent` 也从 `String?` 改成非空 `String`
+  （「关掉」= 注入 `'0'`），构建路径上不再有任何可返回 null 的 String 助手。
+  校验：`dart analyze lib/features/ebook` → 仅 1 条既有基线 error。
+
+- **2026-09-19（E）：缩短 EPUB 打开时的「白屏 + 转圈」时长（用户选定 方案A 遮罩跟随主题 + 方案B 延后定位表生成）**。
+  - **白屏两层来源**：① 加载遮罩底色（Flutter 侧 `_loadingEpub` 的 `Container` 用 `resolveReaderBg`，
+    已跟随主题：day=#fff / eye=#c7edcc / night=#1a1a1a，本就是对的）；② 真·加载耗时 =
+    webview 冷启动 + epub.js 解析书脊 + 首屏渲染，且 `book.locations.generate(1600)` 在
+    `book.ready` 时与首屏渲染**抢同一条 JS 主线程**，把「`displayed` 事件（Flutter 里置
+    `_loadingEpub=false`、移除遮罩）」推迟，大书尤其明显。
+  - **方案B（核心修复，改 pub 缓存里的插件 JS）**：把 `epubView.js` 里
+    `book.ready.then(() => book.locations.generate(1600)...)` 这一段**包成函数
+    `generateLocations()`**，改由 `rendition.on("displayed")` 处理函数**首屏之后**调用一次
+    （用 `locationsGenerated` 守卫，仅跑一次）。这样首屏渲染不再被定位表生成阻塞，
+    `displayed` 更早触发 → 遮罩更早消失。定位表生成仍会跑（书签/进度/TOC 依赖），只是挪到首屏后，
+    用户已在读，无感知。
+    ⚠️ **XPath/CFI 续读路径已验证不受影响**：XPath 分支在 generate 后才 `xpathToCfi`→`display`，
+    CFI 分支首屏即 `display(cfi)`、`initialPositionLoaded` 在 displayed 里清，行为与原先一致。
+    ⚠️ `locationLoaded`（→ `onLocationLoaded`，本项目未使用）延后触发安全。
+  - **方案A 加固（消除 eye/night 的残留白边闪）**：插件 `epub_viewer.dart` `loadBook` 写死
+    `'backgroundColor': null`，所以 `updateTheme` 拿不到底色。在 `updateTheme` 里**兜底从
+    `customCss.html["background-color"]`（即 `_readerCss` 注入的 `#xxx !important`）**取底色，
+    给外层 `#viewer` 容器（`document.getElementById("viewer").style.backgroundColor`）上色；
+    同时把 `swipe.html` 的 `#viewer { background: white }` 改成 `transparent`，避免主题生效前白闪。
+    这样正文区四周（iframe 外、epub.js 主题只染 iframe 内）也跟随主题，不再白边。
+  - **⚠️ 致命提醒（fork 式改动）**：上述全部改在 **pub 缓存**的插件资源上
+    （`flutter_epub_viewer-2.0.0/lib/assets/webpage/html/epubView.js` 与 `swipe.html`），
+    **不是项目源码**。下次 `flutter pub get` 升级/重装该包、或 `flutter clean` 后重新拉缓存，
+    改动会被覆盖、白屏优化复原。要永久生效须 fork 包 / 本地 path 依赖 / 或给上游提 PR。
+    构建时 Flutter 会从 pub 缓存重新拷贝这些 asset，故**本地 rebuild 即可生效**（用户本机跑构建）。
+  - 校验：`node --check epubView.js` → `SYNTAX_OK`；Dart 侧本次无改动（遮罩本就用 `resolveReaderBg`）。
+
+- **2026-09-19（F）：把 E 的白屏优化做成永久方案（fork `flutter_epub_viewer` 到 `third_party/`）**。
+  - **动机**：E 的改动写在 pub 缓存里，`flutter pub get` 重装 / `flutter clean` 会覆盖复原。
+  - **做法**：用 Node `fs.cpSync` 把 pub 缓存里**已打补丁**的 `flutter_epub_viewer-2.0.0`
+    完整拷到 `third_party/flutter_epub_viewer`（该包是**纯 Dart 插件**，原生 webview 由
+    `flutter_inappwebview` 提供，故无 `android/`/`ios/` 主机目录，拷贝即完整）；
+    `jianli-mobile-app/pubspec.yaml` 的 `flutter_epub_viewer: ^2.0.0` 改为
+    `path: ../third_party/flutter_epub_viewer`；并在 fork 根加 `PATCH_NOTE.md` 说明补丁与 re-apply 提醒。
+  - **注意**：它是 Dart-only 插件，`platforms:` 声明了 android/ios/macos/web 但无对应主机目录，
+    依赖 `flutter_inappwebview`（已 vendored `third_party/flutter_inappwebview_android`）提供原生层，
+    故 fork 可直接用于构建。
+  - **用户验证**：本地跑 `flutter pub get`（切换为 path 依赖）→ `flutter build`/`run` 实测大书打开时长 +
+    day/护眼/夜间三档白屏/白边。升级插件时需把 E 的两处 web 资源改动 re-apply 或撤 fork 提 PR。
+
+- **2026-09-19（G）：还原 F —— 不采用 fork 永久方案**。
+  - 用户决定「还是不做永久方案」。已撤销：删掉 `third_party/flutter_epub_viewer` fork 目录，
+    `pubspec.yaml` 的 `flutter_epub_viewer` 改回 `^2.0.0`（hosted 依赖）。
+  - 白屏补丁（E 的两处 web 资源改动）**仍留在 pub 缓存** `flutter_epub_viewer-2.0.0/lib/assets/webpage/html/`，
+    属临时生效：本地 rebuild 即用，但 `flutter pub get` 重装 / `flutter clean` 会复原。若要永久生效，
+    仍需 fork / path 依赖 / 上游 PR（用户本次选择不做）。

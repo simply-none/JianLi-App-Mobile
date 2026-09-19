@@ -442,6 +442,113 @@ class EbookRepository {
     )..where((t) => t.id.equals(id))).go();
   }
 
+  /// 更新批注的笔记内容（阅读器「笔记与划线」抽屉里编辑笔记用）
+  ///
+  /// 只改 note 与 updatedAt，锚点 / 颜色 / 类型不动（高亮不需要重绘）。
+  Future<void> updateAnnotationNote(int id, String? note) async {
+    await (_db.update(_db.ebookAnnotation)..where((t) => t.id.equals(id)))
+        .write(
+      EbookAnnotationCompanion(
+        note: Value(note),
+        updatedAt: Value(DateTime.now().toIso8601String()),
+      ),
+    );
+  }
+
+  // ---- 进度 / 书签 / 批注：CFI 化（epub.js 引擎，跨端互通）----
+
+  /// 保存进度（CFI 定位串，替换旧的 `chapter:<i>` 占位）。
+  /// 按 content_hash 稳定键 upsert；同时回写书架表 percent / last_read_at。
+  Future<void> saveProgressCfi(
+    String contentHash,
+    String filePath,
+    String? format,
+    String cfi,
+    double percent,
+  ) async {
+    final now = DateTime.now().toIso8601String();
+    final existing = await (_db.select(_db.ebookProgress)
+          ..where((t) => t.contentHash.equals(contentHash)))
+        .getSingleOrNull();
+    if (existing == null) {
+      await _db.into(_db.ebookProgress).insert(
+            EbookProgressCompanion.insert(
+              filePath: filePath,
+              format: Value(format),
+              cfi: Value(cfi),
+              percent: Value(percent),
+              updatedAt: Value(now),
+              contentHash: Value(contentHash),
+            ),
+          );
+    } else {
+      await (_db.update(_db.ebookProgress)
+            ..where((t) => t.contentHash.equals(contentHash)))
+          .write(
+        EbookProgressCompanion(
+          cfi: Value(cfi),
+          percent: Value(percent),
+          updatedAt: Value(now),
+          filePath: Value(filePath),
+          format: Value(format),
+        ),
+      );
+    }
+    await (_db.update(_db.ebookBookshelf)
+          ..where((t) => t.contentHash.equals(contentHash)))
+        .write(
+      EbookBookshelfCompanion(
+        percent: Value(percent),
+        lastReadAt: Value(now),
+      ),
+    );
+  }
+
+  /// 新增书签（CFI 锚点，任意阅读位置）
+  Future<EbookBookmarkData> addBookmarkCfi({
+    required String filePath,
+    required String contentHash,
+    required String format,
+    required String cfi,
+    required double percent,
+    String? label,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    final id = await _db.into(_db.ebookBookmark).insert(
+          EbookBookmarkCompanion.insert(
+            filePath: Value(filePath),
+            contentHash: Value(contentHash),
+            format: Value(format),
+            cfi: Value(cfi),
+            label: Value(label ?? '书签 · ${percent.toStringAsFixed(1)}%'),
+            percent: Value(percent.toStringAsFixed(1)),
+            createdAt: Value(now),
+          ),
+        );
+    return (_db.select(_db.ebookBookmark)
+          ..where((t) => t.id.equals(id)))
+        .getSingle();
+  }
+
+  /// 是否存在某 CFI 的书签
+  Future<EbookBookmarkData?> findBookmarkByCfi(
+    String contentHash,
+    String cfi,
+  ) async {
+    return (_db.select(_db.ebookBookmark)
+          ..where(
+            (t) => t.contentHash.equals(contentHash) & t.cfi.equals(cfi),
+          ))
+        .getSingleOrNull();
+  }
+
+  /// 一次性取回本书全部批注（CFI 化后用于阅读器启动重绘高亮）
+  Future<List<EbookAnnotationData>> getAnnotations(String contentHash) async {
+    return (_db.select(_db.ebookAnnotation)
+          ..where((t) => t.contentHash.equals(contentHash)))
+        .get();
+  }
+
   // ---- 分类（ebook_category + ebook_book_category）----
 
   /// 全部分类流

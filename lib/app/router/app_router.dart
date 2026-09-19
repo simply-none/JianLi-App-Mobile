@@ -177,6 +177,8 @@ final GoRouter appRouter = GoRouter(
               initialChapter: int.tryParse(
                 state.uri.queryParameters['chapter'] ?? '',
               ),
+              // 「笔记标注 → 跳到位置」传入的初始 CFI（epubcfi 串），仅 EPUB 路径
+              initialCfi: state.uri.queryParameters['cfi'],
             ),
             state,
           ),

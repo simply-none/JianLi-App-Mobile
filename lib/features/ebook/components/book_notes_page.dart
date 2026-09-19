@@ -369,7 +369,38 @@ class _BookNotesPageState extends ConsumerState<BookNotesPage> {
               ),
             ],
           ),
-          if (chapterTitle != null) ...[
+          if (_isCfi(a.anchor)) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  FLucideIcons.mapPin,
+                  size: 13,
+                  color: t.colors.mutedForeground,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '位置标注（epubcfi）',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.typography.body.xs.copyWith(
+                      color: t.colors.mutedForeground,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => _jumpCfi(a.anchor!),
+                  child: Text(
+                    '跳到位置',
+                    style: t.typography.body.xs.copyWith(
+                      color: t.colors.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else if (chapterTitle != null) ...[
             const SizedBox(height: 8),
             Row(
               children: [
@@ -482,10 +513,20 @@ class _BookNotesPageState extends ConsumerState<BookNotesPage> {
     );
   }
 
-  /// 跳转到阅读器对应章节（路由参数 chapter 由阅读页消费）
+  /// 跳转到阅读器对应章节（路由参数 chapter 由阅读页消费，仅 TXT 路径）
   void _jumpChapter(int index) {
     context.push(
       '/ebook/reader?path=${Uri.encodeComponent(widget.filePath)}&chapter=$index',
+    );
+  }
+
+  /// 锚点是否为 epub CFI（跨端互通的精确定位串）
+  bool _isCfi(String? a) => (a ?? '').startsWith('epubcfi');
+
+  /// 跳转到阅读器对应 CFI 位置（EPUB 路径）
+  void _jumpCfi(String cfi) {
+    context.push(
+      '/ebook/reader?path=${Uri.encodeComponent(widget.filePath)}&cfi=${Uri.encodeComponent(cfi)}',
     );
   }
 
