@@ -20,6 +20,7 @@ import '../../features/twofactor/components/two_factor_page.dart';
 import '../../features/countdown/components/countdown_page.dart';
 import '../../features/reminder/components/reminder_list_page.dart';
 import '../../features/qr/components/qr_page.dart';
+import '../../features/remote/remote_page.dart';
 import '../../features/share_intake/share_intake_page.dart';
 import '../../features/password_vault/components/password_vault_page.dart';
 import '../../features/file_vault/components/file_vault_page.dart';
@@ -47,6 +48,7 @@ import '../../features/data_management/data_management_page.dart';
 import '../../features/file_transfer/components/file_transfer_page.dart';
 import '../../features/ferry/ferry_page.dart';
 import '../anim/jianli_transitions.dart';
+import '../security/app_lock_page.dart';
 import '../shell/main_shell.dart';
 
 /// 全局路由配置
@@ -248,6 +250,11 @@ final GoRouter appRouter = GoRouter(
       // WebView 平台视图对透明度动画敏感（淡入期间易空白），同样走纯横向滑入
       pageBuilder: (context, state) => slidePage(const FerryPage(), state),
     ),
+    // P3-3 遥控 PC（翻页/媒体/黑屏/锁屏，与 PC 端 /remote/* 数据路由配对）
+    GoRoute(
+      path: '/remote',
+      pageBuilder: (context, state) => slidePage(const RemotePage(), state),
+    ),
     // 浏览器（内容 hub 入口）：完整 Via 风 + 极简首页 + 单 WebView 多标签。
     // 同样必须是**纯横向滑入**（WebView 平台视图对透明动画敏感）。
     GoRoute(
@@ -341,6 +348,12 @@ final GoRouter appRouter = GoRouter(
       path: '/share-intake',
       pageBuilder: (context, state) =>
           NoTransitionPage<void>(child: const ShareIntakePage()),
+    ),
+    // P1-1 应用锁解锁页（全屏拦截层，锁定转变沿由根组件 push；无转场防闪）
+    GoRoute(
+      path: '/app-lock',
+      pageBuilder: (context, state) =>
+          NoTransitionPage<void>(child: const AppLockPage()),
     ),
   ],
 );

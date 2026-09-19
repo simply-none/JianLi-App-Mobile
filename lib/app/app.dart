@@ -17,6 +17,7 @@ import '../core/android/system_actions.dart';
 import '../core/db/db_location.dart';
 import '../features/share_intake/share_intake_controller.dart';
 import 'providers/theme_providers.dart';
+import 'security/app_lock.dart';
 import 'security/vault_auto_lock.dart';
 import 'shortcuts/app_shortcuts.dart';
 import 'theme/app_theme.dart';
@@ -50,6 +51,8 @@ class _JianliAppState extends ConsumerState<JianliApp>
       unawaited(requestDbStoragePermissionOnce(ref.read(appDatabaseProvider)));
       // P0-3 系统分享接收：注册 SEND 意图监听（冷启动补拉 initialMedia）
       ref.read(pendingShareProvider.notifier).startSystemListener();
+      // P1-1 应用锁：冷启动初始化（开了锁 → 状态沿触发 push 解锁页）
+      unawaited(ref.read(appLockControllerProvider.notifier).init());
       // P0-4 快捷磁贴/静态快捷方式：拉走冷启动前暂存的 quick_action extra
       //（快捷方式注册在原生层静态 shortcuts，Dart 无需初始化）
       unawaited(_takeQuickActionOnce());
@@ -70,12 +73,16 @@ class _JianliAppState extends ConsumerState<JianliApp>
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       lockAllVaults(ref);
+      // P1-1 应用锁：切后台记时间点（是否上锁由 resumed 按宽限期判定）
+      ref.read(appLockControllerProvider.notifier).onPaused();
     }
     // 回到前台 → 到点提醒自愈重排（节流 5 分钟）：
     // 系统/ROM 在后台清理过原生 AlarmManager 计划后，用户随手打开一次 App 就自动恢复，
     // 否则「不再进提醒页就永远不恢复」——那是提醒失效的主因。
     if (state == AppLifecycleState.resumed) {
       _healAlarms();
+      // P1-1 应用锁：超宽限期 → locked 转变沿由 build 里的 ref.listen push 解锁页
+      ref.read(appLockControllerProvider.notifier).onResumed();
       // P0-4：磁贴/快捷方式在 App 后台时拉起 → onNewIntent 暂存 extra → 此刻拉走路由
       unawaited(_takeQuickActionOnce());
     }
@@ -133,6 +140,12 @@ class _JianliAppState extends ConsumerState<JianliApp>
     // ⚠️ ref.listen 只能写在 build（红线），根组件是全局唯一的挂接点
     ref.listen<ShareIntakeItem?>(pendingShareProvider, (prev, next) {
       if (next != null) appRouter.push('/share-intake');
+    });
+    // P1-1 应用锁：锁定转变沿（false→true）→ push 全屏解锁页
+    ref.listen<AppLockState>(appLockControllerProvider, (prev, next) {
+      if (next.locked && !(prev?.locked ?? false)) {
+        appRouter.push('/app-lock');
+      }
     });
 
     return MaterialApp.router(

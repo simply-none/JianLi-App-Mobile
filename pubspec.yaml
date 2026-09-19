@@ -91,6 +91,7 @@ dependencies:
   home_widget: ^0.7.0             # 桌面小组件「渐离·今日」：待办/习惯/倒计时快照（Kotlin AppWidgetProvider 渲染）
   # 长按图标快捷方式不用 quick_actions 包（1.1.1 无 setItems 动态注册 API）：
   # 改用 Android 原生静态 shortcuts（res/xml/shortcuts.xml + quick_action extra），与磁贴共管道
+  local_auth: ^2.3.0              # P1-1 应用锁：指纹/面容解锁整个 App（BiometricPrompt）
 
 dev_dependencies:
   flutter_test:

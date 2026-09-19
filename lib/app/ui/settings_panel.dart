@@ -12,6 +12,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../anim/jianli_haptics.dart';
 import '../providers/theme_providers.dart';
+import '../security/app_lock.dart';
 import '../theme/app_theme.dart';
 import '../theme/card_textures.dart';
 import '../ui/banner_texture_sheet.dart';
@@ -198,6 +199,10 @@ class _SettingsPanel extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 26),
+                      // P1-1 应用锁（生物识别）：开关 + 宽限期；无生物识别硬件时置灰
+                      const _SectionLabel('应用锁', icon: FLucideIcons.fingerprint),
+                      _AppLockSection(originContext: originContext),
+                      const SizedBox(height: 26),
                       const _SectionLabel('数据与同步', icon: FLucideIcons.refreshCw),
                       AppCard(
                         margin: EdgeInsets.zero,
@@ -348,6 +353,78 @@ class _SectionLabel extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// P1-1 应用锁设置区：开关行 + 宽限期三档（立即/1 分钟/5 分钟）
+class _AppLockSection extends ConsumerWidget {
+  const _AppLockSection({required this.originContext});
+
+  final BuildContext originContext;
+
+  static const _graceOptions = [(0, '立即'), (60, '1 分钟'), (300, '5 分钟')];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.theme;
+    final lock = ref.watch(appLockControllerProvider);
+    final notifier = ref.read(appLockControllerProvider.notifier);
+    final graceIndex = _graceOptions
+        .indexWhere((o) => o.$1 == lock.graceSeconds);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppCard(
+          margin: EdgeInsets.zero,
+          padding: EdgeInsets.zero,
+          child: FTileGroup(
+            divider: FItemDivider.none,
+            children: [
+              FTile(
+                onPress: lock.biometricsAvailable
+                    ? () => notifier.setEnabled(!lock.enabled)
+                    : null,
+                prefix: Icon(
+                  FLucideIcons.fingerprint,
+                  color: lock.enabled
+                      ? t.colors.primary
+                      : t.colors.mutedForeground,
+                ),
+                title: const Text('生物识别应用锁'),
+                subtitle: Text(
+                  lock.biometricsAvailable
+                      ? (lock.enabled
+                          ? '已开启 · 冷启动或切后台超宽限期后需验证'
+                          : '关闭中 · 开启后下次切后台/冷启动生效')
+                      : '本机未检测到指纹/面容，无法开启',
+                ),
+                // forui 0.26 FTile 右侧槽位叫 suffix（无 trailing）；开关用 FSwitch
+                suffix: FSwitch(
+                  value: lock.enabled,
+                  onChange: lock.biometricsAvailable
+                      ? (v) => notifier.setEnabled(v)
+                      : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (lock.enabled) ...[
+          const SizedBox(height: 12),
+          // 宽限期三档（对齐主题模式的分段控件视觉）
+          JianliSegmented(
+            items: const [
+              (FLucideIcons.zap, '立即'),
+              (FLucideIcons.clock, '1 分钟'),
+              (FLucideIcons.timer, '5 分钟'),
+            ],
+            selected: graceIndex < 0 ? 0 : graceIndex,
+            onSelect: (i) => notifier.setGrace(_graceOptions[i].$1),
+          ),
+        ],
+      ],
     );
   }
 }

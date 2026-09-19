@@ -76,6 +76,7 @@ class ToolsHubPage extends StatelessWidget {
     (FLucideIcons.database, '数据管理', '存储位置 · 导入/导出数据库', '/data-management', 0),
     (FLucideIcons.arrowLeftRight, '文件互传', '双端批量收发文件', '/file-transfer', 4),
     (FLucideIcons.scanQrCode, '隔空互传', '屏幕二维码 → 摄像头直传', '/ferry', 6),
+    (FLucideIcons.monitorSmartphone, '遥控 PC', '翻页 · 媒体 · 黑屏 · 锁屏', '/remote', 3),
   ];
 
   @override

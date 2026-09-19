@@ -11,7 +11,7 @@ import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -27,7 +27,13 @@ import java.io.File
 ///
 /// 为什么不用 open_filex：它只能打开文件本身，无法打开「所在文件夹」（ActivityNot... 且目录 URI 直接传 file:// 会
 /// 触发 FileUriExposedException）。这里自持 FileProvider 生成 content://，由原生侧完成目录浏览与按应用分发。
-class MainActivity : FlutterActivity() {
+///
+/// P1-1（2026-09-19）：父类 FlutterActivity → **FlutterFragmentActivity** ——
+/// local_auth 的 BiometricPrompt 必须 FragmentActivity 支撑。⚠️ 两者是**兄弟类**不是父子
+/// （FlutterFragmentActivity 继承 FragmentActivity），任何把本 Activity 传给
+/// `FlutterActivity` 参数的 Kotlin 代码都会编译错 —— SystemActionsChannel.register 已放宽为
+/// android.app.Activity（其余通道方法体只当 Context 用，不受影响）。
+class MainActivity : FlutterFragmentActivity() {
     private val CHANNEL = "jianli/file_actions"
 
     companion object {

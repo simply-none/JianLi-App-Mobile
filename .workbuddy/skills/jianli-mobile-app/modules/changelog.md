@@ -1,6 +1,21 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-19（**P1-1 二编：MainActivity 换父类后的类型不匹配**）：`MainActivity:114` 报「Argument type mismatch: actual type is 'MainActivity', but 'FlutterActivity' was expected」。
+  - **根因实锤（勿再记错）**：**`FlutterFragmentActivity` 与 `FlutterActivity` 是兄弟类不是父子**——前者继承 `androidx.fragment.app.FragmentActivity`（local_auth 的 BiometricPrompt 需要它），后者直接继承 `Activity`。MainActivity 换父类后，任何收 `FlutterActivity` 参数的 Kotlin 代码都编译不过。
+  - 修法：`SystemActionsChannel.register(activity: FlutterActivity, ...)` 放宽为 `android.app.Activity`（通道方法体只当 Context 用：startActivity/系统服务，无需 FlutterActivity 特有 API；ReminderKeepAliveService.start/stop 本就收 Context）。全工程 grep 确认无其他 FlutterActivity 类型参数残留。
+  - 侧记：**前一轮 changelog 里「FlutterFragmentActivity 是 FlutterActivity 的子类」的记法是错的**，已纠正。
+- 2026-09-19（**P1-1 首编两错修复（API 记错实锤）**）：
+  - **local_auth 2.x 的 `canCheckBiometrics` 是 getter（Future\<bool\>）不是方法**——`await _auth.canCheckBiometrics()` 编译错「isn't a function」，正确写法 `await _auth.canCheckBiometrics || await _auth.isDeviceSupported()`。
+  - **forui 0.26 的 `FTile` 没有 `trailing` 槽位**（构造器只有 prefix/subtitle/details/suffix，行 185 候选不匹配）——右侧尾部件叫 **`suffix`**；且项目内开关统一用 **`FSwitch(value:, onChange:)`**（onChange 可空=禁用态），不用 material Switch。
+  - 校验：`dart analyze lib/app/security lib/app/ui/settings_panel.dart` → No issues found!（用户已跑 pub get，local_auth 解析成功）。
+- 2026-09-19（**P1-1 应用锁 + P3-3 遥控 PC 落地**）：按《手机端功能计划清单》执行，用户定案四点：宽限期默认「立即」可选 1/5 分钟；加「黑屏（B 键）」；锁屏长按确认；配对走 **4 位配对码** 换 token。
+  - **P1-1 应用锁**：`local_auth ^2.3.0`（**MainActivity 改 FlutterFragmentActivity**——local_auth 硬依赖，勿回退）；状态机 `lib/app/security/app_lock.dart`（enabled/grace 存 basic_info；`onPaused` 记时间戳 / `onResumed` 宽限期判定；宽限期 '0'=立即默认 / '60' / '300'）；解锁页 `app_lock_page.dart`（`/app-lock` NoTransitionPage + PopScope 禁返回，进页自动弹一次认证）；设置面板「应用锁」分区（开关 + JianliSegmented 立即/1分钟/5分钟）；app.dart 挂 `onPaused/onResumed` + `ref.listen` 锁定转变沿 push。
+  - **P3-3 遥控 PC**：PC 端 `electron/main/module/remoteControl.ts`（`registerDataRoute` 注入 `/remote/ping|pair|pair/confirm|cmd|rotate`，**命令白名单**：SendKeys PGUP/PGDN/b + keybd_event VK 0xB0-0xB3/0xAD-0xAF + rundll32 LockWorkStation）；安全模型 = **4 位配对码**（`/remote/pair` PC 弹码不过网络 → `/remote/pair/confirm` 提交码换 token（crypto.randomUUID 32 hex，存 `basic_info(remote_pair_token)`）→ 每命令带 `x-remote-token`；403 = 失效；token 轮换端点 `/remote/rotate`）。⚠️ `/remote/pair/confirm` 必须先于 `/remote/pair` 注册（registerDataRoute 按前缀先注册先匹配）。手机端 `lib/features/remote/`：`remote_service.dart`（HttpClient 47124 + token/目标清单存 basic_info `remote_token_<ip>`/`remote_targets`，零新表）+ `remote_page.dart`（目标卡：`SyncDiscovery().scan()` 只列 electron 平台 + 手动 IP；10 命令 2 列网格；**锁屏 = GestureDetector onLongPress → showSheetConfirm**；`_pendingCmd` 防连点）。路由 `/remote` + 工具分组入口（monitorSmartphone 图标）。
+  - **API 签名实锤（本轮 analyze 实踩，勿再错）**：`SheetInputBox` 是 **`hintText`**（不是 hint）；`SheetActionButton` 回调是 **`onTap`**（不是 onPress，onPress 是 forui `FTappable`/`FButton` 的）；`AppDatabase`/`BasicInfoCompanion` 须显式 `import '../../core/db/app_database.dart'`（`app_providers.dart` 只 import 不 export，引用方拿不到）；`HttpClient.close()` 返回 void **不能 await**；`context.pop()` 要 go_router import。
+  - **同文件并发 Edit 实踩**：同一消息里对同一文件发两个 Edit 会互相覆盖（后写赢、先写静默丢失，工具还报 success）——remote_page 的 go_router import、app_router 的 `/remote` 路由先后丢失，靠 analyze+grep 才抓回。**同文件多处修改必须逐条顺序发**（工作记忆已有此红线，本轮违反一次）。
+  - 校验：Agent 已跑 `dart analyze lib/app/router lib/features/hubs lib/features/remote lib/app/security` → 仅剩 4 条 local_auth 未解析（**预期**：`flutter pub get` 前包未下载），pub get 后预期零错。PC 端 TS 交用户构建验证。真机+PC 双端待验：配对全流程（PC 弹码 → 手机输码 → 命令生效）、锁屏长按确认、黑屏 B 键、媒体/音量键、应用锁生物识别与宽限期。
+
 - 2026-09-19（**TodayWidgetProvider/图标资源两条实锤（app 模块 Kotlin+资源首编）**）：
   - **home_widget 0.7 Kotlin API**：`HomeWidgetPlugin.getData(context)` **只收 1 参、返回 `SharedPreferences`**（再按 key `.getString(key, null)` 取值）——不是旧版双参 `getData(context, key)`，多传参会「Too many arguments」编译错。
   - **VectorDrawable 没有 `<circle>` 元素**：`android:cx/cy/r` 属性 AAPT 直接报 not found（Compose 语法带入 vector 的坑）；圆环一律 path 圆弧：`M12,3 a9,9 0 1,0 0,18 a9,9 0 1,0 0,-18` = 圆心(12,12) r9。已修 ic_short_check / ic_tile_habit / ic_short_focus 三枚（圆心 12,14 r8 的表盘为 `M12,6 a8,8 0 1,0 0,16 a8,8 0 1,0 0,-16`）。
