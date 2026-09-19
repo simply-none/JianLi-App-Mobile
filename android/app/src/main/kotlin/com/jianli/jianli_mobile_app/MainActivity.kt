@@ -30,6 +30,30 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "jianli/file_actions"
 
+    companion object {
+        /// P0-4 快捷动作暂存：快捷磁贴（JianliQuickTileService）拉起本 Activity 时带的
+        /// `quick_action` extra，在此暂存，由 Dart 侧经 SystemActionsChannel.takeQuickAction
+        /// 拉走消费（App 冷启动 postFrame / 回前台 resumed 两次轮询，取走即清空）。
+        @Volatile
+        var pendingQuickAction: String? = null
+    }
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        captureQuickAction(intent)
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // singleTop：App 在后台时磁贴/快捷方式再次拉起 → 走 onNewIntent，也要捕获
+        captureQuickAction(intent)
+    }
+
+    private fun captureQuickAction(intent: Intent?) {
+        val action = intent?.getStringExtra("quick_action")
+        if (!action.isNullOrEmpty()) pendingQuickAction = action
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(

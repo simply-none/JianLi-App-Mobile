@@ -19,8 +19,9 @@ import 'segmented.dart';
 import 'squircle_box.dart';
 import 'ui_atoms.dart';
 
-/// App 版本（与 pubspec.yaml 的 version 保持一致；与 about_page.dart 同值）
-const String kAppVersion = '26.9.6';
+/// App 版本（与 pubspec.yaml 的 version / APK versionName 保持一致；
+/// **由 tool/build_apk.sh 打包时自动同步，勿手动改**；about_page.dart 同值引用）
+const String kAppVersion = '26.9.19.6';
 
 /// 齿轮设置按钮（首页 / 三个分组页 右上角复用）
 class SettingsButton extends StatelessWidget {

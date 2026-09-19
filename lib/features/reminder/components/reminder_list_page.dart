@@ -601,9 +601,16 @@ class _ReminderEditorState extends ConsumerState<_ReminderEditor> {
   }
 
 
-  void _save() {
+  /// 防连点 + 写库失败可复位（§1.8 红线：保存必须 await + try/catch + saving 态）
+  bool _saving = false;
+
+  Future<void> _save() async {
+    // 🔴 校验失败绝不能静默 return（被当成「按钮没效果」），必须 showFToast 明确提示
     final title = _title.text.trim();
-    if (title.isEmpty) return;
+    if (title.isEmpty) {
+      showFToast(context: context, title: const Text('请输入提醒标题'));
+      return;
+    }
 
     final mode = _modeIndex == 1 ? 'interval' : 'time';
     final delivery = _deliveryIndex == 1 ? 'alarm' : 'notification';
@@ -628,7 +635,10 @@ class _ReminderEditorState extends ConsumerState<_ReminderEditor> {
       if (repeat == 'weekly') wd = _weekDays.toList()..sort();
       if (repeat == 'once' || repeat == 'monthly' || repeat == 'yearly') {
         final d = _dateValue;
-        if (d == null) return;
+        if (d == null) {
+          showFToast(context: context, title: const Text('请先选择日期'));
+          return;
+        }
         date =
             '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
         dayOfMonth = d.day.toString();
@@ -667,8 +677,19 @@ class _ReminderEditorState extends ConsumerState<_ReminderEditor> {
       statesSummary: null,
       loop: '1',
     );
-    ref.read(reminderRepositoryProvider).saveReminder(item);
-    Navigator.pop(context);
+    // 🔴 禁止 fire-and-forget 后立刻 pop（§1.8 红线）：写库失败时用户看到的是
+    // 「弹窗关了但没更新」，异常还会变成未处理的异步错误。await + try/catch + 防连点。
+    if (_saving) return;
+    _saving = true;
+    try {
+      await ref.read(reminderRepositoryProvider).saveReminder(item);
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _saving = false);
+        showFToast(context: context, title: const Text('保存失败，请重试'));
+      }
+    }
   }
 
   /// 选「闹钟」送达方式时惰性申请精确闹钟权限（Android 12+ 需去系统设置开「闹钟和提醒」）

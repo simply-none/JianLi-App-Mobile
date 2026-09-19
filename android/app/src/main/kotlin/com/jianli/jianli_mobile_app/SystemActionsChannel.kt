@@ -61,6 +61,14 @@ object SystemActionsChannel {
                     "isKeepAliveRunning" ->
                         result.success(ReminderKeepAliveService.isRunning)
 
+                    // P0-4 快捷动作：拉走 MainActivity 暂存的 quick_action extra（取走即清空，
+                    // 重复调用返回 null）。App 冷启动 postFrame 与回前台 resumed 各轮询一次
+                    "takeQuickAction" -> {
+                        val action = MainActivity.pendingQuickAction
+                        MainActivity.pendingQuickAction = null
+                        result.success(action)
+                    }
+
                     // 闹钟级送达：原生 setAlarmClock（息屏/Doze 必响、锁屏全屏、无需 SCHEDULE_EXACT_ALARM）
                     "setAlarmClock" -> {
                         // ⚠️ 数字参数一律按 Number 读再转 Long/Int：Flutter 的 StandardMessageCodec

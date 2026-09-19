@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P0-4 快捷磁贴图标（同 ic_short_check 的 check 圆环；QuickSettings 自动上单色滤镜） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M8.5,12.5 L11,15 L16,9.5"
+        android:strokeColor="#6C5CE7"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <!-- 圆环 = path 圆弧（VectorDrawable 无 <circle> 元素） -->
+    <path
+        android:pathData="M12,3 a9,9 0 1,0 0,18 a9,9 0 1,0 0,-18"
+        android:strokeColor="#6C5CE7"
+        android:strokeWidth="2"
+        android:fillColor="#00000000" />
+</vector>

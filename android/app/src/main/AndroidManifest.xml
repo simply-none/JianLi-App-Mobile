@@ -72,6 +72,18 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- P0-3 系统分享接收：其他 App「分享到渐离」→ 文本/链接进收件抽屉
+                 （图片/文件分享 P1 再扩 mimeType；SEND_MULTIPLE 留作将来多选转发） -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+            <!-- P0-4 长按图标静态快捷方式（res/xml/shortcuts.xml：记笔记/扫码/开始专注/习惯打卡，
+                 intent 带 quick_action extra → MainActivity 捕获 → Dart takeQuickAction 分发） -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
@@ -124,6 +136,35 @@
             android:name=".ReminderAlarmReceiver"
             android:enabled="true"
             android:exported="false" />
+        <!-- P0-2 桌面小组件「渐离·今日」：home_widget 桥接。
+             数据由 Dart 侧写 SharedPreferences（HomeWidget.saveWidgetData），
+             系统更新/解锁/Dart 触发 updateWidget 时由 onUpdate 读快照渲染 RemoteViews。
+             exported=false：APPWIDGET_UPDATE 由系统持 BIND_APPWIDGET 权限投递即可达 -->
+        <receiver
+            android:name=".TodayWidgetProvider"
+            android:enabled="true"
+            android:exported="false"
+            android:label="渐离·今日">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_today_info" />
+        </receiver>
+        <!-- P0-4 快捷磁贴：下拉控制中心「渐离打卡」→ 点击拉起 App 打卡页。
+             exported=true 必须（系统 QuickSettings 需绑定它），由 BIND_QUICK_SETTINGS_TILE 保护 -->
+        <service
+            android:name=".JianliQuickTileService"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_habit"
+            android:label="渐离打卡"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

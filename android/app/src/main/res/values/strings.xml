@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- P0-2 小组件描述（Android 12+ 选择器里显示） -->
+    <string name="widget_today_desc">今日待办 · 习惯打卡 · 专注与倒计时概览</string>
+    <!-- P0-4 静态快捷方式标签（shortcuts.xml 引用；短标签 ≤10 字符限制内） -->
+    <string name="shortcut_note">记笔记</string>
+    <string name="shortcut_scan">扫码</string>
+    <string name="shortcut_focus">开始专注</string>
+    <string name="shortcut_habit">习惯打卡</string>
+</resources>

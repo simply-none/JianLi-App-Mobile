@@ -15,8 +15,10 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/android/system_actions.dart';
 import '../core/db/db_location.dart';
+import '../features/share_intake/share_intake_controller.dart';
 import 'providers/theme_providers.dart';
 import 'security/vault_auto_lock.dart';
+import 'shortcuts/app_shortcuts.dart';
 import 'theme/app_theme.dart';
 import 'theme/jianli_palette.dart';
 import 'router/app_router.dart';
@@ -46,6 +48,11 @@ class _JianliAppState extends ConsumerState<JianliApp>
       // 首启尝试申请「所有文件访问」，让默认库落在 Download/渐离App（重装不丢数据）。
       // 仅弹一次、仅 API30+ 未授权时；不阻塞首屏（fire-and-forget）。
       unawaited(requestDbStoragePermissionOnce(ref.read(appDatabaseProvider)));
+      // P0-3 系统分享接收：注册 SEND 意图监听（冷启动补拉 initialMedia）
+      ref.read(pendingShareProvider.notifier).startSystemListener();
+      // P0-4 快捷磁贴/静态快捷方式：拉走冷启动前暂存的 quick_action extra
+      //（快捷方式注册在原生层静态 shortcuts，Dart 无需初始化）
+      unawaited(_takeQuickActionOnce());
     });
   }
 
@@ -69,8 +76,16 @@ class _JianliAppState extends ConsumerState<JianliApp>
     // 否则「不再进提醒页就永远不恢复」——那是提醒失效的主因。
     if (state == AppLifecycleState.resumed) {
       _healAlarms();
+      // P0-4：磁贴/快捷方式在 App 后台时拉起 → onNewIntent 暂存 extra → 此刻拉走路由
+      unawaited(_takeQuickActionOnce());
     }
     super.didChangeAppLifecycleState(state);
+  }
+
+  /// P0-4：拉走原生暂存的快捷动作并路由（取走即清空，重复调用返回 null 不重复路由）
+  Future<void> _takeQuickActionOnce() async {
+    final action = await takeQuickAction();
+    if (action != null && action.isNotEmpty) handleAppShortcut(action);
   }
 
   /// 回前台自愈的节流间隔（避免频繁切前后台时反复查库 + 重排原生计划）
@@ -113,6 +128,12 @@ class _JianliAppState extends ConsumerState<JianliApp>
     final baseFontSize = reading == ReadingMode.large
         ? AppTokens.baseFontSizeLarge
         : AppTokens.baseFontSizeNormal;
+
+    // P0-3 分享接收：有待处理分享 → push 透明壳落地页（弹处理抽屉）。
+    // ⚠️ ref.listen 只能写在 build（红线），根组件是全局唯一的挂接点
+    ref.listen<ShareIntakeItem?>(pendingShareProvider, (prev, next) {
+      if (next != null) appRouter.push('/share-intake');
+    });
 
     return MaterialApp.router(
       title: '渐离App',

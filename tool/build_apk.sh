@@ -41,6 +41,11 @@ fi
 sed -i -E "s/^version:.*$/version: $NEW_VERSION/" "$PUBSPEC"
 echo "==> 版本号已更新: $DISPLAY_VERSION (pubspec: $NEW_VERSION)"
 
+# ---------- 1.5 同步代码内版本号（设置面板/关于页显示的 kAppVersion） ----------
+KAPP_FILE="lib/app/ui/settings_panel.dart"
+sed -i -E "s/^const String kAppVersion = '[^']+';/const String kAppVersion = '$DISPLAY_VERSION';/" "$KAPP_FILE"
+echo "==> kAppVersion 已同步: $(grep -oE "kAppVersion = '[^']+'" "$KAPP_FILE")"
+
 # ---------- 2. 打包前环境准备 ----------
 export TMP=C:/src/tmp TEMP=C:/src/tmp
 export PUB_HOSTED_URL=https://pub.flutter-io.cn

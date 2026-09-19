@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  P0-4 长按 App 图标的**静态快捷方式**（platform ShortcutManager，替代 quick_actions 包：
+  pub 解析落 1.1.1 无动态 setItems API）。每条 intent 显式拉起 MainActivity 并带
+  quick_action extra → MainActivity companion 暂存 → Dart takeQuickAction 拉走 →
+  lib/app/shortcuts/app_shortcuts.dart::handleAppShortcut 分发（与快捷磁贴同一管道）。
+  改文案：res/values/strings.xml；改图标：res/drawable/ic_short_*.xml。
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_note"
+        android:enabled="true"
+        android:icon="@drawable/ic_short_note"
+        android:shortcutShortLabel="@string/shortcut_note"
+        android:shortcutLongLabel="@string/shortcut_note">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="${applicationId}"
+            android:targetClass="com.jianli.jianli_mobile_app.MainActivity">
+            <extra
+                android:name="quick_action"
+                android:value="new_note" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="scan"
+        android:enabled="true"
+        android:icon="@drawable/ic_short_scan"
+        android:shortcutShortLabel="@string/shortcut_scan"
+        android:shortcutLongLabel="@string/shortcut_scan">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="${applicationId}"
+            android:targetClass="com.jianli.jianli_mobile_app.MainActivity">
+            <extra
+                android:name="quick_action"
+                android:value="scan" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="focus"
+        android:enabled="true"
+        android:icon="@drawable/ic_short_focus"
+        android:shortcutShortLabel="@string/shortcut_focus"
+        android:shortcutLongLabel="@string/shortcut_focus">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="${applicationId}"
+            android:targetClass="com.jianli.jianli_mobile_app.MainActivity">
+            <extra
+                android:name="quick_action"
+                android:value="focus" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="habit"
+        android:enabled="true"
+        android:icon="@drawable/ic_short_check"
+        android:shortcutShortLabel="@string/shortcut_habit"
+        android:shortcutLongLabel="@string/shortcut_habit">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="${applicationId}"
+            android:targetClass="com.jianli.jianli_mobile_app.MainActivity">
+            <extra
+                android:name="quick_action"
+                android:value="habit" />
+        </intent>
+    </shortcut>
+</shortcuts>

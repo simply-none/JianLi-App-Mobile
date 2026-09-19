@@ -208,6 +208,18 @@ Future<bool> isKeepAliveRunning() async {
   }
 }
 
+/// 拉走原生暂存的快捷动作（P0-4 快捷磁贴产生，取走即清空；无则返回 null）。
+/// app.dart 在冷启动 postFrame 与回前台 resumed 各轮询一次。
+/// 非 Android 返回 null（无此能力，不抛）。
+Future<String?> takeQuickAction() async {
+  if (!_isAndroid) return null;
+  try {
+    return await _kChannel.invokeMethod<String>('takeQuickAction');
+  } catch (_) {
+    return null;
+  }
+}
+
 /// 「后台保活」偏好的读写与自愈续启。
 ///
 /// 偏好存 `basic_info` 基础键值表（与番茄钟展示效果/周期规则同表），键 `reminder_keep_alive`：

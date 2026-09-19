@@ -20,6 +20,7 @@ import '../../features/twofactor/components/two_factor_page.dart';
 import '../../features/countdown/components/countdown_page.dart';
 import '../../features/reminder/components/reminder_list_page.dart';
 import '../../features/qr/components/qr_page.dart';
+import '../../features/share_intake/share_intake_page.dart';
 import '../../features/password_vault/components/password_vault_page.dart';
 import '../../features/file_vault/components/file_vault_page.dart';
 import '../../features/ebook/components/bookshelf_page.dart';
@@ -334,6 +335,12 @@ final GoRouter appRouter = GoRouter(
       path: '/data-management',
       pageBuilder: (context, state) =>
           slidePage(const DataManagementPage(), state),
+    ),
+    // P0-3 分享接收落地页（透明壳，只承载分享处理抽屉；无转场避免闪灰）
+    GoRoute(
+      path: '/share-intake',
+      pageBuilder: (context, state) =>
+          NoTransitionPage<void>(child: const ShareIntakePage()),
     ),
   ],
 );

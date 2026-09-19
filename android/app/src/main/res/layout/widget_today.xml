@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P0-2 「渐离·今日」小组件布局：白卡 + 主色头 + 四行快照（待办/习惯/专注/倒计时）。
+     颜色硬编码（RemoteViews 不走 Flutter 主题），浅色风格；
+     文案内容全部由 Kotlin TodayWidgetProvider 读取快照写入，这里只留骨架 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_bg"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="12dp">
+
+    <!-- 头部：品牌 + 更新时间 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="渐离 · 今日"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#6C5CE7" />
+
+        <TextView
+            android:id="@+id/w_updated"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="10sp"
+            android:textColor="#9CA3AF" />
+    </LinearLayout>
+
+    <!-- 待办行 -->
+    <TextView
+        android:id="@+id/w_todos"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:textSize="12sp"
+        android:textColor="#374151"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <!-- 习惯行 -->
+    <TextView
+        android:id="@+id/w_habits"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textSize="12sp"
+        android:textColor="#374151"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <!-- 专注行 -->
+    <TextView
+        android:id="@+id/w_focus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textSize="12sp"
+        android:textColor="#374151"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <!-- 倒计时行（无进行中倒计时时隐藏） -->
+    <TextView
+        android:id="@+id/w_countdown"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:textColor="#6C5CE7"
+        android:maxLines="1"
+        android:ellipsize="end" />
+</LinearLayout>

@@ -120,6 +120,7 @@ flutter emulators --launch Pixel_8
 - APK versionName 由 `android/app/build.gradle.kts` defaultConfig 拼接：N=1 → `26.9.19`；N>1 → `26.9.19.(N-1)`（第 5 次构建 = `26.9.19.4`）。
 - versionCode 由日期推导 `((yy*100+mm)*100+dd)*100 + N`（如 26091905），跨天单调递增，覆盖安装不会降级拒装；split 的 `1000 × ABI` 偏移照常叠加。
 - 手动改版本：改 pubspec `version:` 行即可，显示名/版本码 gradle 自动推导。
+- **代码内显示版本**：设置面板/关于页的 `kAppVersion`（`lib/app/ui/settings_panel.dart`）由脚本每次打包自动同步为与打包版本一致，**勿手动改**（脚本 sed 替换该行，构建日志会回显同步结果）。
 
 #### ② 签名（当前 release 签 debug key，正式发布前必做，一次性配置）
 1. 生成正式 keystore（本机一次生成、永久保管，**丢了无法再以同签名发版**；文件与口令勿外传/勿提交）：

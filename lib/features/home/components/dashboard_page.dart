@@ -20,6 +20,7 @@ import '../../../app/ui/banner_texture_sheet.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../core/sync/device_nickname.dart';
 import '../providers/dashboard_providers.dart';
+import '../widget_snapshot.dart';
 import '../../reminder/components/reminder_guard_card.dart';
 
 /// 快捷入口磁贴（图标 / 语义强调色索引 / 标签 / 副标 / 路由）——
@@ -107,6 +108,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   @override
   Widget build(BuildContext context) {
     final statsAsync = ref.watch(dashboardStatsProvider);
+
+    // P0-2 桌面小组件：聚合统计每次变化（进页/切回/回前台自动刷新触发）即写快照
+    // 并触发原生重绘。ref.listen 必须写在 build（红线）；fire-and-forget，失败静默。
+    ref.listen<AsyncValue<DashboardStats>>(dashboardStatsProvider, (prev, next) {
+      final s = next.value;
+      if (s != null) updateTodayWidget(s);
+    });
 
     return FScaffold(
       childPad: false,

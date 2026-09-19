@@ -387,7 +387,7 @@ bash tool/build_apk.sh
 
 脚本依次完成：
 
-1. **版本号自增**：读取 `pubspec.yaml` 当前 version 与今天日期比对——跨天重置为 `+1`，当天则序号 +1，写回 pubspec；
+1. **版本号自增**：读取 `pubspec.yaml` 当前 version 与今天日期比对——跨天重置为 `+1`，当天则序号 +1，写回 pubspec；**同时同步 `lib/app/ui/settings_panel.dart` 的 `kAppVersion`**（设置面板/关于页显示的版本，勿手动改）；
 2. **导出全部必需环境变量**（即 §4.4 / 「flutter build 必需环境变量」整套：TMP/TEMP、pub 镜像、ANDROID_HOME、GRADLE_USER_HOME、JAVA_HOME）；
 3. 清理无用包体：删 pub 缓存里 `flutter_epub_viewer` 的 `epub.js.map`（源码映射，运行时无用，pub 缓存重装会复原，所以每次构建前都清一次）；
 4. 执行 `flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols`

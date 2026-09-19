@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 26.9.19+5
+version: 26.9.19+7
 
 environment:
   sdk: ^3.13.2
@@ -84,6 +84,13 @@ dependencies:
   material_ui: ^1.1.1  # Flutter Material 独立发行版，forui 建于其上；勿与 flutter/material 混用
   wakelock_plus: ^1.8.0  # 文件互传发送全程后台保活（#19）
   permission_handler: ^13.0.2  # 文件互传接收目录改系统 Download：申请「所有文件访问」；13.x 的 android 插件需 compileSdk 37，已升级 AGP 至 9.1.1（官方支持 API 37.0）
+  # —— P0 系统级入口三件套（2026-09-19）——
+  receive_sharing_intent: 1.8.1  # 系统分享接收：其他 App「分享到渐离」→ 存笔记/建待办/浏览器打开。
+                                 # ⚠️ 精确钉版：1.9.0（2026-06）要求 AGP 9.2.1 + Kotlin 2.4.0 + iOS SceneDelegate，
+                                 # 会顶飞项目现有 AGP 9.1.1；升 1.9.0 需先升 AGP/Gradle/Kotlin 并回归全部原生桥
+  home_widget: ^0.7.0             # 桌面小组件「渐离·今日」：待办/习惯/倒计时快照（Kotlin AppWidgetProvider 渲染）
+  # 长按图标快捷方式不用 quick_actions 包（1.1.1 无 setItems 动态注册 API）：
+  # 改用 Android 原生静态 shortcuts（res/xml/shortcuts.xml + quick_action extra），与磁贴共管道
 
 dev_dependencies:
   flutter_test:

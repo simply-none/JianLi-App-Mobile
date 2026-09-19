@@ -92,7 +92,23 @@ class SheetScaffold extends StatelessWidget {
             ),
             if (bottomBar != null)
               Padding(
-                padding: const EdgeInsets.fromLTRB(hpad, 8, hpad, 16),
+                // ⚠️ 键盘弹起时必须把底部操作条顶到键盘上方（2026-09-19 修复「保存按钮点了没反应」）：
+                // lg 档按红线走 `sheetMaxHeightFull`（固定 80vh、不扣键盘）+ 调用点
+                // `resizeToAvoidBottomInset: false` ⇒ 软键盘从屏幕底部**覆盖**抽屉。
+                // 按钮死贴抽屉底部会被键盘完全遮住 —— 用户打完字直接点保存，实际点到的是
+                // 键盘区域，观感就是「按钮点了没效果、弹窗也不关」（2026-09-18 习惯编辑页
+                // 同款实踩，先例 habit_page `_habitSheetPanel`）。这里只给 bottomBar 加
+                // 键盘等高的下边距（抽屉高度与滚动区不变，不违反「lg 不扣键盘」红线）。
+                // sm/md 走 `sheetMaxHeight`（已扣键盘、整抽屉抬到键盘上方），不重复补偿。
+                padding: EdgeInsets.fromLTRB(
+                  hpad,
+                  8,
+                  hpad,
+                  16 +
+                      (size == SheetSize.lg
+                          ? MediaQuery.of(context).viewInsets.bottom
+                          : 0),
+                ),
                 child: Row(spacing: 10, children: bottomBar!),
               ),
           ],

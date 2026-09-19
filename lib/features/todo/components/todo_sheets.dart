@@ -117,7 +117,20 @@ Widget _sheetScaffold({
           ),
           if (bottomBar != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(hpad, 8, hpad, 16),
+              // ⚠️ 键盘弹起时必须把底部操作条顶到键盘上方（2026-09-19 修复「保存按钮点了没反应」）：
+              // lg 档走 `sheetMaxHeightFull`（固定 80vh、不扣键盘）+ 调用点
+              // `resizeToAvoidBottomInset: false` ⇒ 键盘从底部覆盖抽屉、底部按钮被遮住
+              // （先例：habit_page `_habitSheetPanel` / 共享 `SheetScaffold`，同日收口）。
+              // sm/md 走 `sheetMaxHeight`（已扣键盘、整抽屉在键盘上方），不重复补偿。
+              padding: EdgeInsets.fromLTRB(
+                hpad,
+                8,
+                hpad,
+                16 +
+                    (size == SheetSize.lg
+                        ? MediaQuery.of(context).viewInsets.bottom
+                        : 0),
+              ),
               child: Row(spacing: 10, children: bottomBar),
             ),
         ],

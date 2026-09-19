@@ -272,8 +272,16 @@ class _AnnotationPanelState extends ConsumerState<_AnnotationPanel> {
                   ),
                   const Spacer(),
                   // 底部按钮固定贴底，不随内容滚动
+                  // ⚠️ 键盘弹起时必须把按钮顶到键盘上方（lg 固定 80vh 不扣键盘，
+                  // 键盘覆盖抽屉；先例 habit_page `_habitSheetPanel` / SheetScaffold）
                   Padding(
-                    padding: EdgeInsets.all(AppTokens.pagePadding),
+                    padding: EdgeInsets.fromLTRB(
+                      AppTokens.pagePadding,
+                      AppTokens.pagePadding,
+                      AppTokens.pagePadding,
+                      AppTokens.pagePadding +
+                          MediaQuery.of(c).viewInsets.bottom,
+                    ),
                     child: Row(
                       spacing: 8,
                       children: [
