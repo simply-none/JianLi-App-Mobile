@@ -374,6 +374,37 @@ flutter run -d <deviceId> --dart-define=...   :: 需要自定义编译变量时
 
 ## 8. 打包构建
 
+### 8.0 一键打包脚本（推荐）
+
+上面的环境准备 + 版本号 + 构建，已封装成一个脚本，**每次打包只需要一条命令**：
+
+```bash
+cd C:/cod/jianli/jianli-mobile-app
+bash tool/build_apk.sh
+```
+
+（在 Git Bash 中执行；脚本会自动 cd 到项目根目录。）
+
+脚本依次完成：
+
+1. **版本号自增**：读取 `pubspec.yaml` 当前 version 与今天日期比对——跨天重置为 `+1`，当天则序号 +1，写回 pubspec；
+2. **导出全部必需环境变量**（即 §4.4 / 「flutter build 必需环境变量」整套：TMP/TEMP、pub 镜像、ANDROID_HOME、GRADLE_USER_HOME、JAVA_HOME）；
+3. 执行 `flutter build apk --release --split-per-abi`；
+4. 列出 `build/app/outputs/flutter-apk/` 产物。
+
+#### 版本号规则（年.月.日.版本）
+
+| 当天构建次数 | APK versionName | pubspec.yaml 实际存储 |
+| --- | --- | --- |
+| 第 1 次 | `26.9.19` | `26.9.19+1` |
+| 第 5 次 | `26.9.19.4` | `26.9.19+5` |
+
+- pubspec 只能存三段 semver（`x.y.z+N`），四段显示名由 `android/app/build.gradle.kts` 的
+  `defaultConfig` 拼接：`versionName = "26.9.19.(N-1)"`（N=1 时无后缀）。
+- `versionCode` 由「日期+N」推导（如 `26091905`），**跨天单调递增**，覆盖安装不会报
+  `INSTALL_FAILED_VERSION_DOWNGRADE`；split-per-abi 的 `1000*ABI` 偏移由 Flutter 插件自动叠加。
+- 手动改版本号时：改 pubspec 的 `version: 26.9.19+1` 即可，显示后缀规则同上。
+
 ### 8.1 Debug APK（日常自测）
 
 ```bat
@@ -438,13 +469,16 @@ keyPassword=<你的密码>
 
 ### 8.7 版本号
 
-版本号只改 `pubspec.yaml` 一处：
+> 推荐：日常打包**不要手改版本号**，由 `tool/build_apk.sh` 自动维护（规则见 §8.0）。
+
+手动改时只动 `pubspec.yaml` 一处：
 
 ```yaml
-version: 26.9.6+1      # + 前面是 versionName，后面是 versionCode
+version: 26.9.19+1    # + 前面是日期版 versionName，后面的 N 是当天第几次构建（从 1 开始）
 ```
 
-改完重新构建即可；`android/local.properties` 里的 `flutter.versionName/versionCode` 会由 Flutter 自动同步。
+改完重新构建即可；APK 的 `versionName`（含四段 `.N-1` 后缀）与单调递增的 `versionCode`
+由 `android/app/build.gradle.kts` 的 `defaultConfig` 自动推导，无需再改 gradle。
 
 ---
 
@@ -519,7 +553,8 @@ lib/
 android/          Android 壳工程（AGP 9.1.1，compileSdk 37）
 ios/              iOS 壳工程
 test/             单元测试与 widget 测试
-tool/make_icons.py 图标生成脚本（Python）
+tool/make_icons.py  图标生成脚本（Python）
+tool/build_apk.sh   一键打包脚本（Git Bash，含版本号自增 + 环境准备，见 §8.0）
 ```
 
 更细的架构约定、drift 三大铁律、vault 加密对齐规则、同步协议与已知雷区，见工程内的开发技能文档：

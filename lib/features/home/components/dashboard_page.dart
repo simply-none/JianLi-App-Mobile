@@ -15,6 +15,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../app/theme/card_textures.dart';
 import '../../../app/providers/theme_providers.dart';
+import '../../../app/router/app_router.dart';
 import '../../../app/ui/banner_texture_sheet.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../core/sync/device_nickname.dart';
@@ -40,11 +41,71 @@ const _moreEntries = <(IconData, String, String, String)>[
 ];
 
 /// 首页
-class DashboardPage extends ConsumerWidget {
+///
+/// 数据自动刷新（2026-09-19）：dashboardStatsProvider 是普通 FutureProvider（永久缓存），
+/// 而首页分支在底部导航 indexedStack 中**常驻挂载**——切 tab / push 子页都不会触发重建，
+/// 所以必须自己感知「首页重新可见」并主动 invalidate：
+/// ① go_router 导航 → 栈顶叶子路由变回 '/'（切 tab 返回 / 从功能页 pop 返回）；
+/// ② App 回前台且停留在首页。
+class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends ConsumerState<DashboardPage>
+    with WidgetsBindingObserver {
+  /// 上一次栈顶叶子路由位置（null = 尚未采样；首个回调只采样、不刷新，避免冷启动双查）。
+  String? _lastLocation;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    appRouter.routerDelegate.addListener(_onRouteChanged);
+  }
+
+  @override
+  void dispose() {
+    appRouter.routerDelegate.removeListener(_onRouteChanged);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // ② 回前台且停留在首页 → 刷新一次（覆盖后台过夜 / 同步改了数据后回 App）。
+    if (state == AppLifecycleState.resumed && _topMatchedLocation() == '/') {
+      ref.invalidate(dashboardStatsProvider);
+    }
+  }
+
+  /// ① 每次导航通知：栈顶叶子路由变回 '/'（首页重新可见）时刷新聚合数据。
+  /// 刷新期间旧数据由 AsyncValue 默认的 skipLoadingOnRefresh:true 保留（不闪占位骨架）。
+  void _onRouteChanged() {
+    final location = _topMatchedLocation();
+    final last = _lastLocation;
+    _lastLocation = location;
+    if (location == '/' && last != null && last != '/') {
+      ref.invalidate(dashboardStatsProvider);
+    }
+  }
+
+  /// 栈顶叶子路由的匹配位置：穿透 ShellRouteMatch（底部导航壳）逐层取 matches.last，
+  /// 直到 RouteMatch（push 出来的 ImperativeRouteMatch 也算叶子）——
+  /// 这个值对「切 tab / push / pop（含系统返回手势）」都实时正确，
+  /// 而 currentConfiguration.uri 会跳过 push 产生的 ImperativeRouteMatch（pop 回首页时探测不到）。
+  String _topMatchedLocation() {
+    RouteMatchBase m = appRouter.routerDelegate.currentConfiguration.last;
+    while (m is ShellRouteMatch) {
+      m = m.matches.last;
+    }
+    return m.matchedLocation;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final statsAsync = ref.watch(dashboardStatsProvider);
 
     return FScaffold(
@@ -56,7 +117,8 @@ class DashboardPage extends ConsumerWidget {
           top: true,
           bottom: false,
           child: RefreshIndicator(
-            onRefresh: () async => ref.invalidate(dashboardStatsProvider),
+            // refresh(.future) 返回真正的查询 Future：下拉转圈等数据实际到位后才收起
+            onRefresh: () => ref.refresh(dashboardStatsProvider.future),
             child: ListView(
               // 画布：左右 16 · 顶 8 · 底 24（底部导航由 footer 预留，无需画布的 96）
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),

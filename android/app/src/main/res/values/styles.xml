@@ -15,10 +15,13 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
-    <!-- 全屏闹钟 Activity 主题：无标题栏、纯黑底、全屏（锁屏/息屏下前台显示） -->
+    <!-- 全屏闹钟 Activity 主题：无标题栏、浅色底（仿厂商闹钟响铃页，2026-09-19 方案 B）、
+         全屏（锁屏/息屏下前台显示）；windowLightStatusBar 让浅底上状态栏图标用深色
+         （API<23 自动忽略该属性，不影响低版本） -->
     <style name="AlarmFullscreen" parent="@android:style/Theme.DeviceDefault.NoActionBar">
         <item name="android:windowFullscreen">true</item>
-        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowBackground">@android:color/white</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

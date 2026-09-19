@@ -22,12 +22,19 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
-        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
-        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
-        // flag during build.
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        // 版本号规则（年.月.日.版本，由 tool/build_apk.sh 维护 pubspec）：
+        // pubspec.yaml 存 26.9.19+N（N = 当天第几次构建，从 1 开始）。
+        // versionName：N=1 -> "26.9.19"；N>1 -> "26.9.19.(N-1)"（如第 5 次构建为 26.9.19.4）。
+        // versionCode：由「日期+N」推导（如 26091905），跨天单调递增，避免覆盖安装版本降级。
+        // split-per-abi 的 1000*ABI 偏移由 Flutter 插件在此值上自动叠加。
+        val vName = flutter.versionName
+        val buildNo = flutter.versionCode
+        val dateParts = vName.split(".")
+        val dateCode = if (dateParts.size == 3)
+            ((dateParts[0].toInt() * 100 + dateParts[1].toInt()) * 100 + dateParts[2].toInt()) * 100
+        else 0
+        versionCode = dateCode + buildNo
+        versionName = if (buildNo <= 1) vName else "$vName.${buildNo - 1}"
     }
 
     buildTypes {

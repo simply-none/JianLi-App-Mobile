@@ -1,6 +1,18 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-19（**首页 Dashboard 数据自动刷新**）：用户报「首页 tab 每次显示都要自动更新数据，现在没有」。
+  - **根因**：`dashboardStatsProvider` 是普通 `FutureProvider`（结果永久缓存），而首页分支在 `StatefulShellRoute.indexedStack` 中**常驻挂载**——切 tab / push 子页 / pop 返回都不触发重建，唯一刷新入口只有手动下拉。
+  - **修法（`dashboard_page.dart`，不动数据层）**：`DashboardPage` 改 `ConsumerStatefulWidget` + `WidgetsBindingObserver`，两个刷新信号：① 监听 `appRouter.routerDelegate`（ChangeNotifier），每次导航**穿透 `ShellRouteMatch` 逐层取 `matches.last`** 得到栈顶叶子路由的 `matchedLocation`，变回 `'/'` 即 `ref.invalidate`——一个信号同时覆盖「切 tab 返回」与「从功能页 pop 返回（含系统返回手势）」；② `didChangeAppLifecycleState.resumed` 且栈顶仍是 `'/'` 时刷新（后台过夜 / 同步改数据后回 App）。首个回调只采样不刷新（`_lastLocation` null 哨兵），避免冷启动双查。
+  - **两个关键版本坑（勿回退）**：(a) **不能用 `currentConfiguration.uri` 做信号**——它跳过 push 产生的 `ImperativeRouteMatch`，pop 回首页时 uri 全程停留 `'/'`，探测不到返回；(b) **不能只比较 `currentConfiguration.last.matchedLocation`**——pop 回首页后 last 是 `ShellRouteMatch`，其 matchedLocation 是壳匹配时的残留值，必须穿透到叶子 `RouteMatch`。刷新期间旧数据由 Riverpod 3 `AsyncValue.when` 默认 `skipLoadingOnRefresh: true` 保留（**不闪占位骨架**，无需手动传参）；下拉刷新改 `ref.refresh(provider.future)`（返回真查询 Future，转圈等数据到位才收起）。
+  - 校验（Agent 本轮已跑）：`dart analyze lib/features/home` → **No issues found!**。真机待验：切 tab 返回首页 / 完成待办返回首页 / 后台过夜回 App，英雄卡与「今日节奏」数字应更新且无占位闪屏。
+- 2026-09-19（续·**响铃页方案 B：仿厂商闹钟 UI 重做 + 铃声/震动**）：用户报「闹钟送达的黑屏响铃页（停止/稍后提醒）不像手机自带闹钟」，调研 A（ACTION_SET_ALARM 写系统时钟，已有「路线 2」落地）/ B（自研通道 + 重做 UI）/ C（混合）后**选定 B 执行**。
+  - **范围**：只动响铃 UI，`setAlarmClock → 广播 → 全屏意图通知 → AlarmRingActivity` 通道与自排链零改动；与「路线 2」（`SystemActionsChannel.setSystemClockAlarm` 写系统时钟）并存不冲突。
+  - **`AlarmRingActivity.kt` 全量重写**：浅色渐变底（#E7F1F2→#F7F8FA，告别黑屏）+ 大号实时时钟（跟随系统 12/24 小时制，`Handler` 每秒刷新，秒数 20sp 灰字跳动）+ 日期行（`M月d日 EEEE`）+ 提醒标题 26sp 粗体/正文 + 底部药丸双按钮（**关闭=白底深字 / 稍后提醒=红 #FA5150 白字**，`GradientDrawable` r26 药丸、去 stateListAnimator）；**新增铃声循环**（系统默认闹钟铃声 `TYPE_ALARM→RINGTONE→NOTIFICATION` 逐级回退，`USAGE_ALARM` 音频流 + `isLooping`，MediaPlayer 显式构造、prepare 失败 release 不泄漏）+ **循环震动**（0.6s/0.5s；API26+ `VibrationEffect.createWaveform`，S+ 走 `VibratorManager.defaultVibrator`）；`stopRing()` 在按钮动作与 `onDestroy` 双兜底（响铃页 `noHistory`，任何路径离开都停铃）。
+  - **`styles.xml`**：`AlarmFullscreen` 黑底→白底 + `windowLightStatusBar`（浅底上状态栏深色图标；API<23 自动忽略不崩）。
+  - **业务逻辑保持**：稍后提醒仍走 `snoozeCode` 独立请求码 5 分钟一次性；关闭只收响铃通知（下一次已由 `AlarmRingReceiver` 自排）；返回键仍不可关。
+  - **已知边界**：亮屏使用中只弹悬浮横幅（不拉 Activity）→ 循环铃声仅在响铃页播放，横幅场景仍走渠道通知音（与重做前一致，如需亮屏也循环铃需另起响铃前台服务）。
+  - 校验：Kotlin 无 Agent 侧静态分析（`dart analyze` 不覆盖 `android/`），构建交用户本地跑；真机待验 = 闹钟送达 → 锁屏/息屏弹出浅色响铃页（大时钟走秒 + 铃声循环 + 震动），关闭/稍后提醒动作正常。
 - 2026-09-19（**修复「EPUB 选区工具栏（划线/下划线/笔记）不消失、无法翻页」**）：用户报「长按弹出工具栏后，不做划线/笔记就一直存在，点空白也不收、翻页被卡死」。
   - **根因（插件「选区期间禁导航」机制无解除路径）**：`flutter_epub_viewer` 在选区产生后 ① 向页面注入 `touch-action: pan-y` CSS 屏蔽横向滑动（Dart 侧 `_blockGesturesWhenSelected(true)`，`epub_viewer.dart`）② 劫持 epub.js 的 `next()/prev()/display()`（JS 侧 `hasActiveSelection()` 为 true 直接 return），且**故意保留 `lastCfiRange`**（`epubView.js` ≈L532 注释「keep lastCfiRange so hasActiveSelection() still returns true」）。唯一解除路径 = DOM 选区塌陷 → `selectionchange` → `selectionCleared` → 停 CSS/轮询；但 WebView + 原生浮动菜单（inappwebview `floatingContextMenu` 是 WebView 子 View）组合下点空白常常不塌陷 → 状态永久卡死。
   - **修法（App 层兜底，不动插件缓存）**：`epub_reader_page.dart` 三处 —— ① `_onViewerTouchUp` 在「判定为点击」（短按 <400ms + 位移 <0.03，现有过滤天然排除长按选词与拖选区手柄）且 `_lastSelection != null` 时主动调 `_epubController.clearSelection()`（插件公开 API：`removeAllRanges` + 清 `lastCfiRange`/`isSelecting` + 发 `selectionCleared` → 屏蔽解除、原生菜单同步收起），该分支 return **不切顶栏**；② `EpubViewer` 接 `onDeselection` 同步清 `_lastSelection`；③ 划线/下划线/笔记保存成功后也 `clearSelection()` 清残留（否则加完批注选区手柄仍挂着、滑动依旧被屏蔽）。点「划线/下划线/笔记」是原生浮层点击、不走 iframe touchend，不会误清。
