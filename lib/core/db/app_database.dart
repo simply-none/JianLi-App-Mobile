@@ -17,10 +17,9 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import 'db_location.dart';
+import 'tables/browser_tables.dart';
 import 'tables/conversation_tables.dart';
 import 'tables/ebook_tables.dart';
 import 'tables/file_transfer.dart';
@@ -37,7 +36,9 @@ part 'app_database.g.dart';
 
 /// 渐离App移动端数据库
 /// 首批 22 张表 + 工具表 3 张（countdown / qr_history / qr_template），共 25 张；
-/// v2 新增 file_transfer（文件互传历史）。
+/// v2 新增 file_transfer（文件互传历史）；
+/// v4 新增浏览器 4 张（browser_tabs / browser_pinned / browser_bookmarks / browser_history，移动端专有、不入同步白名单）；
+/// v5 新增浏览器 2 张（browser_downloads / browser_offline_pages，下载与离线页面，移动端专有、不入同步白名单）。
 @DriftDatabase(
   tables: [
     HabitDef,
@@ -66,6 +67,13 @@ part 'app_database.g.dart';
     QrHistory,
     QrTemplate,
     FileTransfer,
+    // —— 浏览器（移动端专有，v4 + v5）——
+    BrowserTabs,
+    BrowserPinned,
+    BrowserBookmarks,
+    BrowserHistory,
+    BrowserDownloads,
+    BrowserOfflinePages,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -79,7 +87,7 @@ class AppDatabase extends _$AppDatabase {
         ));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -99,6 +107,17 @@ class AppDatabase extends _$AppDatabase {
           // v2→v3：reminders 表新增 delivery 列（提醒送达方式：通知/闹钟）
           if (from < 3) {
             await m.addColumn(reminders, reminders.delivery);
+          }
+          // v3→v4：新增浏览器 4 张表（browser_tabs / browser_pinned /
+          // browser_bookmarks / browser_history）。createAll 生成的是
+          // `CREATE TABLE IF NOT EXISTS`，对已有 28 张表是空操作，数据原样保留。
+          if (from < 4) {
+            await m.createAll();
+          }
+          // v4→v5：新增浏览器 2 张表（browser_downloads / browser_offline_pages）。
+          // 同样 CREATE TABLE IF NOT EXISTS，不碰旧表、不丢数据。
+          if (from < 5) {
+            await m.createAll();
           }
         },
       );

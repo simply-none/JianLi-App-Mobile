@@ -29,6 +29,19 @@ import '../../features/conversation/components/conversation_compose_page.dart';
 import '../../features/conversation/components/conversation_page.dart';
 import '../../features/sync/components/sync_page.dart';
 import '../../features/about/about_page.dart';
+import '../../features/browser/browser_page.dart';
+import '../../features/browser/pages/browser_bookmarks_page.dart';
+import '../../features/browser/pages/browser_clear_data_page.dart';
+import '../../features/browser/pages/browser_custom_rules_page.dart';
+import '../../features/browser/pages/browser_history_page.dart';
+import '../../features/browser/pages/browser_pinned_page.dart';
+import '../../features/browser/pages/browser_settings_page.dart';
+import '../../features/browser/pages/browser_static_rules_page.dart';
+import '../../features/browser/pages/browser_view_source_page.dart';
+import '../../features/browser/pages/browser_downloads_page.dart';
+import '../../features/browser/pages/browser_offline_page.dart';
+import '../../features/browser/pages/browser_offline_viewer_page.dart';
+import '../../features/browser/pages/browser_subscriptions_page.dart';
 import '../../features/data_management/data_management_page.dart';
 import '../../features/file_transfer/components/file_transfer_page.dart';
 import '../../features/ferry/ferry_page.dart';
@@ -233,6 +246,88 @@ final GoRouter appRouter = GoRouter(
       path: '/ferry',
       // WebView 平台视图对透明度动画敏感（淡入期间易空白），同样走纯横向滑入
       pageBuilder: (context, state) => slidePage(const FerryPage(), state),
+    ),
+    // 浏览器（内容 hub 入口）：完整 Via 风 + 极简首页 + 单 WebView 多标签。
+    // 同样必须是**纯横向滑入**（WebView 平台视图对透明动画敏感）。
+    GoRoute(
+      path: '/browser',
+      pageBuilder: (context, state) => slidePage(
+        BrowserPage(initialUrl: state.uri.queryParameters['url']),
+        state,
+      ),
+    ),
+    // 浏览器子页。全部是**顶层路由**而非 `/browser` 的子路由 ——
+    // 「固定标签页管理」既从浏览器设置进、也从首页长按进，子路由会被父级栈绑定。
+    // 这些页没有 WebView，用默认淡入过渡即可。
+    GoRoute(
+      path: '/browser/bookmarks',
+      pageBuilder: (context, state) =>
+          slidePage(const BrowserBookmarksPage(), state),
+    ),
+    GoRoute(
+      path: '/browser/history',
+      pageBuilder: (context, state) =>
+          slidePage(const BrowserHistoryPage(), state),
+    ),
+    GoRoute(
+      path: '/browser/settings',
+      pageBuilder: (context, state) =>
+          slidePage(const BrowserSettingsPage(), state),
+    ),
+    GoRoute(
+      path: '/browser/pinned',
+      pageBuilder: (context, state) =>
+          slidePage(const BrowserPinnedPage(), state),
+    ),
+    GoRoute(
+      path: '/browser/rules/static',
+      pageBuilder: (context, state) =>
+          slidePage(const BrowserStaticRulesPage(), state),
+    ),
+    GoRoute(
+      path: '/browser/rules/subscriptions',
+      pageBuilder: (context, state) =>
+          slidePage(const BrowserSubscriptionsPage(), state),
+    ),
+    GoRoute(
+      path: '/browser/rules/custom',
+      pageBuilder: (context, state) =>
+          slidePage(const BrowserCustomRulesPage(), state),
+    ),
+    GoRoute(
+      path: '/browser/clear-data',
+      pageBuilder: (context, state) =>
+          slidePage(const BrowserClearDataPage(), state),
+    ),
+    // 网页源码（菜单「源码」项：抓取当前页 outerHTML 展示；extra 带 HTML 串）
+    GoRoute(
+      path: '/browser/view-source',
+      pageBuilder: (context, state) => slidePage(
+        BrowserViewSourcePage(html: state.extra is String ? state.extra as String : null),
+        state,
+      ),
+    ),
+    // 下载列表（菜单「下载」项 / WebView 触发下载）
+    GoRoute(
+      path: '/browser/downloads',
+      pageBuilder: (context, state) =>
+          slidePage(const BrowserDownloadsPage(), state),
+    ),
+    // 离线页面列表（菜单「离线页面」项）
+    GoRoute(
+      path: '/browser/offline',
+      pageBuilder: (context, state) =>
+          slidePage(const BrowserOfflineListPage(), state),
+    ),
+    // 离线页面查看器（把存的 HTML 喂给独立 InAppWebView）
+    GoRoute(
+      path: '/browser/offline/view/:key',
+      pageBuilder: (context, state) => slidePage(
+        BrowserOfflineViewerPage(
+          offlineKey: state.pathParameters['key'] ?? '',
+        ),
+        state,
+      ),
     ),
     // 数据管理页（设置面板「数据管理」入口）
     GoRoute(

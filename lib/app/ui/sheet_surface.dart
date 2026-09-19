@@ -90,9 +90,13 @@ class SheetSurface extends StatelessWidget {
 //   5. 内容超出档位由**中间滚动区**承担，绝不撑高抽屉。
 //   6. ⚠️ **调用点必须配套 `showFSheet` 参数**，否则上面的高度档位会失效：
 //      `mainAxisMaxRatio: AppTokens.sheetHeightLg`（forui 默认是 9/16≈56%，不写就到不了 80%）
-//      + `resizeToAvoidBottomInset: false`（让键盘从底部**覆盖**抽屉，而不是把它挤小/顶满；
-//      与「80vh 固定、键盘不影响」的观感是同一件事）。两参数配套才是完整规范，缺一不可。
-//      参考实现：todo 的 `_showTodoSheet`、habit 的 `_showCreateSheet`/`_showDetailSheet`。
+//      + `resizeToAvoidBottomInset`：**lg 详情/长表单档传 `false`**（键盘从底部**覆盖**抽屉、
+//      不重排；配合 `sheetMaxHeightFull` 的「80vh 固定」观感，焦点字段靠中间滚动区自动滚入）；
+//      **含输入框的 sm/md 输入类抽屉必须传 `true`** —— 此时 `sheetMaxHeight` 会扣掉键盘高、
+//      把抽屉抬到键盘上方，否则输入框被键盘盖住（2026-09-19 实踩：浏览器自定义搜索模板 /
+//      固定标签编辑抽屉）。两参数配套才是完整规范，缺一不可。
+//      参考实现：lg = todo 的 `_showTodoSheet`、habit 的 `_showCreateSheet`/`_showDetailSheet`；
+//      输入档 = browser 的 `browser_prompt` / `browser_pinned_page` 的编辑抽屉。
 //   7. **lg 弹层内部必须是「定高」而不是「最大高度」**：外壳里用 `BoxConstraints.tightFor(height: maxH)`
 //      或 `SizedBox(height: maxH)`，不能只用 `BoxConstraints(maxHeight: maxH)`。否则内容少时
 //      抽屉会 hug 内容，根本到不了 80%（实测坑：habit 新建弹层只到 ~30%）。sm/md 仍可只设上限、

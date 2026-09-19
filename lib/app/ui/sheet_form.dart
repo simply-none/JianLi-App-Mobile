@@ -13,8 +13,9 @@
 //   - [SheetActionButton] 自绘小按钮 h40（与 [SheetInputBox] 并排等高，§4.6）
 //
 // ⚠️ 高度三档制（interaction-patterns.md §一）：[SheetScaffold] 的 size 只许传
-// SheetSize.sm/md/lg；调用点 showFSheet 必须配对
-// `mainAxisMaxRatio: AppTokens.sheetHeightLg + resizeToAvoidBottomInset: false`。
+// SheetSize.sm/md/lg；调用点 showFSheet 必须配对 `mainAxisMaxRatio: AppTokens.sheetHeightLg`；
+// `resizeToAvoidBottomInset` 取值规则：**含输入框的 sm/md 传 true（抬到键盘上方），
+// 其余（含全部 lg 详情/长表单档）传 false（键盘覆盖 + 滚动区自动滚入焦点）**。
 // ⚠️ 左右内边距 = AppTokens.pagePadding 且**只在这里应用一次**（SheetSurface 不再传 padding）。
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';

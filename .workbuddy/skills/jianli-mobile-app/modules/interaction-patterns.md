@@ -30,12 +30,14 @@
 ### 1.2 高度分档：lg = 全屏固定 80vh（键盘不收），sm/md = 可用高度（扣键盘）
 
 - **lg 档（详情 / 新增 / 编辑，长表单；⚠️ 2026-09-13 定案：判定标准 = **内含输入框**，
-  只要抽屉里有 TextField / FTextField / SheetInputBox / SheetMultilineBox 就必须 lg**）**：高度 = **屏幕高 × 0.8**，取自 `sheetMaxHeightFull(context, size)`，**不扣键盘**。
+  只要抽屉里有 TextField / FTextField / SheetInputBox / SheetMultilineBox 的**长表单/编辑**就必须 lg**；轻量单/双字段快速输入见下 sm/md 输入档例外）**：高度 = **屏幕高 × 0.8**，取自 `sheetMaxHeightFull(context, size)`，**不扣键盘**。
   键盘弹出时**覆盖在抽屉上方**，抽屉不重排、不折叠；输入框聚焦后中间滚动区把该框滚入可视区，底部按钮在键盘收起后可见。
   调用点必须配对（见 §1.7）：`mainAxisMaxRatio: AppTokens.sheetHeightLg` + `resizeToAvoidBottomInset: false`；
   内部承载件**必须定高**（`BoxConstraints.tightFor(height: maxH)` 或 `SizedBox(height:)`），**绝不能只用 `ConstrainedBox(maxHeight:)`**（那只是上界，内容少会 hug，抽屉缩到 ~30% 够不到 80%，实踩 Request 5）。
-- **sm / md 档（确认 / 单选 / 多选 / 日期（**不含输入框**））**：高度 = **（屏幕高 − 键盘高）× 档位**，取自 `sheetMaxHeight(context, size)`，**必须扣键盘**。
-  **为什么必须减键盘高**（2026-09-12 实测，改前必读）：forui 的 `ShiftedSheet` 用
+- **sm / md 档（确认 / 单选 / 多选 / 日期 / 轻量输入）**：高度 = **（屏幕高 − 键盘高）× 档位**，取自 `sheetMaxHeight(context, size)`；`resizeToAvoidBottomInset` 取值**按「是否含输入框」决定**（与档位无必然绑定）：
+  * **含输入框的 sm/md 必须传 `true`**（轻量单/双字段快速输入，如浏览器 `_showBrowserPrompt` 单字段、`browser_pinned_page._showSiteSheet` 双字段「名称+网址」）：`sheetMaxHeight` 只在 `MediaQuery.viewInsets.bottom` 非零（即 `true`）时才扣键盘高，把抽屉整体抬到键盘上方；传 `false` → 抽屉高不扣键盘、forui `ShiftedSheet` 用 `dy = max(0, H − 抽屉高 − 键盘高)` 摆放、`dy` 被夹到 0、抽屉被键盘盖住、底部输入框点不到（2026-09-19 实踩：浏览器自定义搜索模板 / 固定标签编辑抽屉，已全部修为 `true`）。**这类 sm/md 输入抽屉保持 sm/md 档、不要为「含输入」强行升 lg** —— sm/md 扣键盘后本就抬到键盘上方，升 lg 反而变 80vh 覆盖式不重排、焦点靠滚动区、更差。
+  * **不含输入框的 sm/md（确认 / 单选 / 多选 / 日期网格等）传 `false`**：它们本身不弹键盘、无需抬升；`sheetMaxHeight` 公式下 keyboardHeight=0，抽屉正常落屏底。
+  **为什么（旧「含输入」sm/md 必须减键盘高）实测会盖住**（2026-09-12，仍成立、仅作用于 sm/md 输入档）：forui 的 `ShiftedSheet` 用
   `dy = max(0, H − 抽屉高 − 键盘高)` 摆放抽屉。抽屉高一旦超过「H − 键盘高」，`dy` 就被夹到 0
   **停止上移** —— 抽屉**不会**抬到键盘上方，而是被键盘从底下盖住，底部「保存 / 查询」按钮
   点不到。按可用高度算 → 抽屉永远完整落在键盘上方，且**永远到不了 100vh**。

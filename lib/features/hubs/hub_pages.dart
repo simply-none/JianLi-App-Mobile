@@ -47,6 +47,7 @@ class ContentHubPage extends StatelessWidget {
     (FLucideIcons.notebookPen, '可归类笔记', '富文本笔记与分类', '/notes', 3),
     (FLucideIcons.messageSquareText, '主题对话', '情绪与主题记录', '/conversation', 4),
     (FLucideIcons.bookOpenText, '电子书', 'EPUB / TXT 阅读器', '/ebook', 5),
+    (FLucideIcons.globe, '浏览器', '极简搜索 · 多标签浏览', '/browser', 1),
   ];
 
   @override

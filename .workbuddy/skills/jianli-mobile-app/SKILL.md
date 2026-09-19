@@ -29,9 +29,12 @@ agent_created: true
 8. 【文档同步】每次大改动后同步更新**对应模块**（功能域状态改 `modules/features.md`、雷区/约定改对应主题模块），并在 `modules/changelog.md` 追加一条日期前缀记录；发现文档与代码不符，直接修正文档。
 9. 【**弹窗（底部抽屉）高度三档 + 键盘处理分档（2026-09-12 重定，全局强制）**】完整规格见 `modules/interaction-patterns.md` §一，要点：
    ① **只有三档**：`SheetSize.sm / md / lg` = **30% / 50% / 80%**，**禁止第四种**，新增弹窗必须挂档（不要在调用点写裸比例）；比例值 = `AppTokens.sheetHeightSm/Md/Lg`。
-   ② **键盘处理分档**：
-      - **lg（详情 / 新增 / 编辑 / 长表单 / **一切含输入框的弹窗**）**：高度 = **屏幕高 × 0.8**，取自 `sheetMaxHeightFull(context, size)`（`lib/app/ui/sheet_surface.dart`），**不扣键盘**；调用点必须配对 `mainAxisMaxRatio: AppTokens.sheetHeightLg` + `resizeToAvoidBottomInset: false`（forui 默认 `mainAxisMaxRatio: 9/16≈56%` 会压住 80%、默认 `resizeToAvoidBottomInset: true` 会让键盘一弹抽屉就折叠收缩）；内部承载件**必须定高**（`BoxConstraints.tightFor(height: maxH)` 或 `SizedBox(height:)`），**绝不能只用 `ConstrainedBox(maxHeight:)`**——那只是上界，内容少会 hug，抽屉缩到 ~30% 够不到 80%（Request 5 实踩）。⚠️ **2026-09-13 用户定案：判定标准看「内含输入框」而非「表单长短」——只要抽屉里有 TextField/FTextField/SheetInputBox/SheetMultilineBox，一律 lg 80vh**（原「输入」曾归 sm/md，实测键盘一弹抽屉被压/折叠，已全部改 lg）。
-      - **sm / md（确认 / 单选 / 多选 / 日期——**不含输入框**）**：高度 = **（屏幕高 − 键盘高）× 档位**，取自 `sheetMaxHeight(context, size)`，**必须扣键盘**；forui `ShiftedSheet` 用 `dy = max(0, H − 抽屉高 − 键盘高)` 摆放，抽屉高一旦超过「H − 键盘高」`dy` 被夹到 0 不再上移，抽屉被键盘盖住、底部按钮点不到。
+   ② **键盘处理分档（`resizeToAvoidBottomInset` 取值规则，2026-09-19 精炼）**：
+      - **lg 抽屉（详情 / 新增 / 编辑 / 长表单，含 lg 输入档）**：高度 = **屏幕高 × 0.8**，取自 `sheetMaxHeightFull(context, size)`（`lib/app/ui/sheet_surface.dart`），**不扣键盘**；调用点必须配对 `mainAxisMaxRatio: AppTokens.sheetHeightLg` + `resizeToAvoidBottomInset: false`（forui 默认 `mainAxisMaxRatio: 9/16≈56%` 会压住 80%、默认 `resizeToAvoidBottomInset: true` 会让键盘一弹抽屉就折叠收缩）；内部承载件**必须定高**（`BoxConstraints.tightFor(height: maxH)` 或 `SizedBox(height:)`），**绝不能只用 `ConstrainedBox(maxHeight:)`**——那只是上界，内容少会 hug，抽屉缩到 ~30% 够不到 80%（Request 5 实踩）。⚠️ **2026-09-13 用户定案：判定标准看「内含输入框」而非「表单长短」——抽屉里有 TextField/FTextField/SheetInputBox/SheetMultilineBox 的**长表单/编辑**一律 lg 80vh**（原「输入」曾归 sm/md，实测键盘一弹抽屉被压/折叠，已全部改 lg）。**但轻量单/双字段快速输入（见下 sm/md 输入档）例外，保持 sm/md + `true`，不升 lg**。
+      - **sm / md 抽屉（确认 / 单选 / 多选 / 日期 / 轻量输入）**：高度 = **（屏幕高 − 键盘高）× 档位**，取自 `sheetMaxHeight(context, size)`；`resizeToAvoidBottomInset` 取值**按「是否含输入框」决定**（与档位无必然绑定）：
+        * **含输入框的 sm/md 必须传 `true`**（轻量单/双字段快速输入，如浏览器 `_showBrowserPrompt` 单字段、`browser_pinned_page._showSiteSheet` 双字段「名称+网址」）：`sheetMaxHeight` 只在 `MediaQuery.viewInsets.bottom` 非零（即 `true`）时才扣键盘高，把抽屉整体抬到键盘上方；传 `false` → 抽屉高不扣键盘、forui `ShiftedSheet` 用 `dy = max(0, H − 抽屉高 − 键盘高)` 摆放、`dy` 被夹到 0、抽屉被键盘盖住、底部输入框点不到（2026-09-19 实踩：浏览器自定义搜索模板 / 固定标签编辑抽屉，已全部修为 `true`）。**这类 sm/md 输入抽屉保持 sm/md 档、不要为「含输入」强行升 lg**——sm/md 扣键盘后本就抬到键盘上方，升 lg 反而变 80vh 覆盖式不重排、焦点靠滚动区、更差。
+        * **不含输入框的 sm/md（确认 / 单选 / 多选 / 日期网格等）传 `false`**：它们本身不弹键盘、无需抬升；`sheetMaxHeight` 公式下 keyboardHeight=0，抽屉正常落屏底。
+      ⚠️ **判定总诀**：`resizeToAvoidBottomInset` 与「是否含输入」强相关、**与档位无必然绑定**——lg 一律 `false`（键盘覆盖 + 滚动区滚入焦点）；sm/md **含输入** `true`（抬到键盘上方）、**不含输入** `false`（不弹键盘无需抬升）。两参数（mainAxisMaxRatio + resizeToAvoidBottomInset）配套才是完整规范，缺一不可。
    ③ 抽屉**定高**（lg 用 `tightFor` / 待办 `_sheetScaffold` 用 `SizedBox`），内容超出由**中间滚动区**承担；**画布 09/10 是 `hug_contents` 唯一例外**（用 `maxHeight` 上限）。
    ④ 弹窗标题一律 `sheetTitleStyle(context)` = **17/Bold**（画布 09/10 规格），**弹窗内任何字段的字号都不得大于它**；**条目标题（详情标题、编辑标题输入框）用 15/Bold**，比弹窗标题小 2 号，详情与编辑必须一致；⚠️ **别用裸 `typography.body.lg` 当标题**（主题按 `baseFontSizeNormal` 缩放后 body.lg ≈ 13.7，比正文还小）。
    ⑤ ⚠️ 旧结论「键盘弹起时整张抽屉抬到键盘上方」是错的（`mainAxisMaxRatio: null` 时期），已修正：lg 明确「覆盖不重排」、sm/md 按可用高度收缩。
@@ -106,6 +109,18 @@ agent_created: true
 31. 【**Riverpod 3：`ref.listen` 只能写在 `build()` 里，禁止放 `initState`（2026-09-19 实踩：打开阅读器直接抛断言）**】运行时断言 `debugDoingBuild` 失败 → `ref.listen can only be used within the build method of a ConsumerWidget`，堆栈落在 `ConsumerStatefulElement.listen` + `_XxxState.initState`，而错误 widget 被报成上层 `Navigator`（go_router 的 Builder），很容易被误判成路由问题。**正确写法**：在 `build()` 开头调 `ref.listen(provider, (prev, next) {...})`，回调里做 setState / 副作用（如「样式指纹变了 → 热更新；结构指纹变了 → 重建子 widget」）。**每次 build 重复调用是安全的**：Riverpod 会在重建时**替换**上一个监听，不会累积，不需要自己去重（`ref.listen` 与 `ref.watch` 一样是给 build 用的）。回调里记得 `if (prev == null) return;`（首帧 prev 为 null）并用 `mounted` 兜 setState。
 
 
+32. 【**新增 drift 表后必须先跑 codegen——「满屏 undefined_class」不是代码错（2026-09-19 浏览器功能域 v4 实踩）**】往 `@DriftDatabase(tables: [...])` 加了新表、`schemaVersion` +1 之后，`app_database.g.dart` **不会自动更新**，此时 `dart analyze` 会报成片的 `Undefined class 'BrowserTab'` / `The getter 'browserPinned' isn't defined for the type 'AppDatabase'` / `Undefined name 'BrowserXxxCompanion'`——**这些全部是 codegen 未跑的次生现象，改代码是白费功夫**。正确顺序：① 改表定义 + 注册 + 迁移分支 → ② `dart run build_runner build --delete-conflicting-outputs` → ③ 再 analyze。判据：报错名都是 `XxxData` / `XxxCompanion` / `db.xxxTable` getter 这类「生成的符号」= 去跑 codegen；报错落在你自己写的逻辑上才是真错。
+    ⚠️ 附带一条易漏点：**迁移分支必须与注册表同步加**（`if (from < N) await m.createAll();`），`createAll()` 生成 `CREATE TABLE IF NOT EXISTS`（对已有表是空操作、**存量数据原样保留**），**任何情况下都不许改用 `destructiveFallback`**。新增表定义与红线 #3 的 drift 三铁律必须一起读。
+
+
+33. 【**Riverpod 3 已移除 `StateProvider` —— 一次性状态一律用最小 `Notifier`（2026-09-19 浏览器跨页导航通道实踩）**】写 `final p = StateProvider<String?>((ref) => null);` 会直接报 `Undefined class 'StateProvider'` + `The function 'StateProvider' isn't defined`（想继续用必须 `import 'package:flutter_riverpod/legacy.dart'`，**不推荐**——legacy 通道迟早再被砍）。**替代写法**：`NotifierProvider<XxxNotifier, T>` + `class XxxNotifier extends Notifier<T> { @override T build() => 初值; void set(...) => state = ...; }`。好处不只在编译：把读写收口成**有语义的方法**（如 `request(url)` / `consume()`）比散落的 `.state = xxx` 更难写错。已落地：`browserPendingUrlProvider`（浏览器跨页导航通道）。
+
+34. 【**第三方包的类型名不要凭直觉写 —— `@ExchangeableEnum` 会生成「内部 `Xxx_` + 公开 `Xxx`」两个类，只有公开那个被导出（2026-09-19 实踩 `ForceDark_`）**】`flutter_inappwebview` 的 `forceDark` 字段在平台接口里声明为 `ForceDark_?`，但 `src/types/main.dart` 里是 `export 'force_dark.dart' show ForceDark, AndroidForceDark;` —— **带下划线的那个是生成器内部类、不在导出白名单里**，写了就报 `Undefined name 'ForceDark_'`，而**公开名 `ForceDark` 才是能用的那个**（`ForceDark.AUTO/OFF/ON`）。同理适用于同包所有 `@ExchangeableEnum`（`ForceDarkStrategy` / `MixedContentMode` …）。**排查口诀**：报「`Xxx_` 未定义」时，**先把下划线去掉试 `Xxx`**，再去 `lib/src/types/main.dart` 看 `export ... show` 白名单确认；**不要**因为「字段声明里写的就是 `ForceDark_`」就断定外部也能用那个名字。
+
+35. 【**跨页回传结果不要用 `pop(value)` —— 只要目标页可能被多层推入，`pop` 就只能退一层（2026-09-19 浏览器实踩）**】「书签页点条目 → 让浏览器主壳导航」这类需求，若子页是从「浏览器 → 设置 → 固定标签管理」三层推入的，`context.pop(url)` 的返回值只有**直接父级**能收到，主壳永远拿不到。**正解 = 单向状态通道**：子页 `ref.read(pendingProvider.notifier).request(url)`，主壳在 `build()` 里 `ref.listen(pendingProvider, ...)` 消费，**消费后立刻清空**（`consume()`）—— 与 push 层数无关，且顺带避免「同一地址被下次 push 重复消费」。⚠️ 清空动作必须在 listen 回调里同步做，不能等异步导航完成后再清。
+
+
+
 ## 📚 模块索引（按需读取，勿全量加载）
 
 本技能拆分为「索引 hub（本文件）+ 主题模块」。技能加载时只有本文件进上下文；
@@ -116,6 +131,7 @@ agent_created: true
 | 架构 / UI | `modules/architecture.md` | 技术栈对应、工程结构(feature-first)、UI 体系(forui)、页面操作规范、Riverpod3 / forui API 雷区 | 写 UI/组件、改页面结构、用 forui / material_ui 时 |
 | **交互模式** | `modules/interaction-patterns.md` | **弹窗三档制（30/50/80%）+ lg 固定全屏高键盘不收（sm/md 仍扣键盘）+ 标题字号上限 + 底部按钮固定贴底 + 打开不自动聚焦 + 弹窗边距只应用一次**、**列表吸顶以搜索框为锚点 + 列表边距防双重 padding**、共有交互模式目录、**待办模块设计总结** | **写/改任何弹窗、确认、筛选抽屉、列表条目点击、列表吸顶时（先读这个）** |
 | 数据层 | `modules/data-layer.md` | drift 表定义、数据库持久化与迁移铁律、vault 加密复刻(AES-256-GCM + PBKDF2) | 新增/改 drift 表、对齐桌面端列名、改加密时 |
+| **浏览器** | `modules/browser.md` | **`features/browser` 功能域**：单 WebView 多标签 / 地址栏两态 / 固定标签页槽位 + FIFO 替换 / 4 张专有表(v4) / 设置存 basic_info / 三级广告拦截(静态集+订阅+自定义) / 8 个子页 / **框架版本坑(`ForceDark_`、`StateProvider`、`SheetSize` 归属)** / 本域红线与验证命令 | **改浏览器模块、加书签历史设置页、接广告拦截、调 WebView 行为时（先读这个）** |
 | 同步 / 契约 | `modules/sync.md` | 局域网同步协议(v1)、同步日志、笔记标签 / 主题对话 / 待办 双端契约 | 加同步白名单表、改同步逻辑、对齐某功能域数据时 |
 | 构建验证 | `modules/build.md` | 环境前置、日常循环、跑模拟器/真机、本机 Android 环境、生产打包、图标再生成、排障 | 构建 APK / 跑起来 / 排查构建失败 / 打包上架时 |
 | 功能域 | `modules/features.md` | 功能域清单与状态、新增功能域落地清单、使用方式 | 盘点功能域状态、要新增功能域时 |
@@ -123,6 +139,8 @@ agent_created: true
 | 变更史 | `modules/changelog.md` | 维护说明（append-only，每完成一件事在此追加一条） | 查历史决策 / 雷区固化记录、要追加新变更时 |
 
 > ⚠️ 日常维护：每完成一个功能域或踩出新雷区，**先改对应主题模块**，再在 `modules/changelog.md` 追加一条日期前缀记录；功能域状态有变改 `modules/features.md`。不要再往本 hub 堆内容。
-> 决策类长文仍在 `references/`（file-transfer-plan.md / ui-modernization-plan.md / ferry-plan.md / **ebook-reader-v2-plan.md**），与本知识模块区分。
+> 决策类长文仍在 `references/`（file-transfer-plan.md / ui-modernization-plan.md / ferry-plan.md / **ebook-reader-v2-plan.md** / **browser-plan.md**），与本知识模块区分。
 >
 > 📖 **电子书阅读增强（划线 / 翻页 / 笔记入口）方案**见 `references/ebook-reader-v2-plan.md`（2026-09-10 制定，主线方案 = 接 `flutter_epub_viewer` ^2.0.0，内核 epub.js 与桌面端 epubjs 0.3.93 同源 → CFI 双端互通；TXT 合成最小 EPUB 并入同一管线；零改表）。落地前务必先读，尤其是 M1 Go/No-Go 门禁与「开放待确认 5 条」。
+>
+> 📖 **浏览器功能域方案**见 `references/browser-plan.md`（2026-09-19，设计稿 7 屏 ↔ 落地文件映射、用户逐轮定案的交互规则、待确认项清单）。**Phase 1 + Phase 2 均已落地**（主壳/首页/九宫格/多标签 + 书签/历史/设置/固定标签管理/三级广告拦截/清除数据）；Phase 3 = 真 favicon、会话恢复打磨、下载管理。真机尚未验证。

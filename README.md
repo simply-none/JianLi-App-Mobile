@@ -198,16 +198,98 @@ flutter pub get
 
 成功后会生成 `.dart_tool/`、`pubspec.lock`。
 
-### 5.1 仅当改动 drift 表定义时：跑代码生成
-
-新增/修改了 `lib/` 里的 drift 表（`@DriftDatabase`、列名、`MigrationStrategy`）后必须重新生成 `.g.dart`：
+### 5.1 仅当改动 drift 表定义时：跑代码生成（**最常被忘、忘了会报一堆假错**）
 
 ```bat
-flutter pub run build_runner build --delete-conflicting-outputs
+dart run build_runner build --delete-conflicting-outputs
 ```
 
-- 首次约 2~4 分钟；**必须**先设好 §4.1 的 `TMP/TEMP`，否则必崩。
-- 生成空壳 `.g.dart`（表没进去）几乎都是 `part` 声明缺失或表名/字段写错，去 `lib/core/database/` 核对。
+#### 这条命令在干什么
+
+drift 的表定义（`lib/core/db/tables/*.dart`）**不是运行时代码**，它要经过**代码生成**才会变成能用的东西。
+生成产物是 `lib/core/db/app_database.g.dart`，里面才是：
+
+- `XxxData` —— 一行数据的**只读数据类**（如 `BrowserPinnedData`，字段就是表的列）
+- `XxxCompanion` —— **写库用的"部分对象"**（只带你这次要写的列，见 `XxxCompanion.insert(...)`）
+- `AppDatabase` 上的**查询入口 getter**（如 `db.browserPinned`，配合 drift 的 DSL 写查询）
+
+该文件是 `part of app_database.dart`，**由工具生成 —— 不要手写，也不要在报错时去改它**。
+改了表定义不跑这条命令，`.g.dart` 就还是旧的，等于**表根本没生效**。
+
+#### 什么时候必须跑
+
+只要动了下面任意一项：
+
+- 在 `@DriftDatabase(tables: [...])` 里**增删表**（新表不注册，生成器看不见它）
+- 给表**加 / 删 / 改列**（含改类型、改 `nullable`、改 `.named()` 锁定列名）
+- 改主键、改 `defaultValue`、改表名
+- 改 `MigrationStrategy`（`schemaVersion` +1、`onUpgrade` 分支）
+- 新建一个 `extends Table` 的文件（哪怕还没注册）
+
+> 一句话：**动了 `lib/core/db/` 下的东西，就顺手跑一次。** 它幂等，没变化时跑也不会坏事（只是白等十几秒）。
+
+#### 不跑会怎样（**关键判据，能省你半小时**）
+
+`flutter analyze` 会报成片这样的错：
+
+```
+error   - Undefined class 'BrowserPinnedData'
+error   - The getter 'browserPinned' isn't defined for the type 'AppDatabase'
+error   - Undefined name 'BrowserPinnedCompanion'
+warning - Unused import: '...'          ← 连带的假警告
+```
+
+⚠️ **这些全都是「codegen 没跑」的次生现象，不是你的 Dart 写错了 —— 此时去改代码是白费功夫。**
+
+**判据**：报错名里出现 `XxxData` / `XxxCompanion` / `db.xxx表名` 这类**本该由工具生成的符号** → 先跑 codegen。
+反过来，如果报错落在你自己写的逻辑上（方法名拼错、类型不匹配、参数少了），那才是真错。
+
+#### `--delete-conflicting-outputs` 是干什么的
+
+build_runner 是**增量**构建：它把「输入文件的指纹」和「已生成的产物」记在缓存里。当你
+**删了表 / 改了类名 / 挪了文件位置**时，新的输出会和磁盘上那份**陈旧的 `.g.dart`** 撞名，
+此时它会直接停下并报：
+
+```
+Conflicting outputs were detected and the build is unable to prompt for permission to delete them.
+```
+
+`--delete-conflicting-outputs` 就是**授权它删掉并覆盖那些冲突的产物**，让构建继续。
+**日常无脑带上它**即可 —— 尤其是删过表定义、或刚从别人分支切过来的时候。
+
+#### 关于写法：`dart run` vs `flutter pub run`
+
+两者等价，但 `flutter pub run` 在新版 Flutter 里**已废弃**（会打印
+`Deprecated. Use 'dart run' instead.`），所以本工程统一用：
+
+```bat
+dart run build_runner build --delete-conflicting-outputs
+```
+
+#### 前置与耗时
+
+- **必须先设好 §4.1 的 `TMP` / `TEMP`**（指向纯 ASCII 目录），否则 build_runner 自举编译直接崩
+  （`Unable to read program.dill`）。
+- 首次 **2~4 分钟**（要先编译生成器本身），之后增量通常十几秒。
+- **成功标志**：日志末尾出现 `Succeeded after ...`，且能在 `lib/core/db/app_database.g.dart` 里
+  搜到新表对应的 `class XxxData`。
+- 生成完把 `app_database.g.dart` **一起提交**（它是源码的一部分，不是可忽略的中间产物）。
+
+#### 生成结果不对怎么查
+
+| 现象 | 原因 |
+| --- | --- |
+| 生成的是空壳、新表没进去 | `part 'app_database.g.dart';` 缺失；或表名 / 字段写错；或新表**没注册**进 `@DriftDatabase(tables: [...])` |
+| 整库解析失败、`.g.dart` 几乎为空 | getter 命名与 drift 内置方法冲突（**不能叫 `text` / `dateTime`**）→ 改名并用 `.named('桌面原列名')` 锁定 |
+| `Conflicting outputs were detected...` | 有陈旧产物残留 → 加 `--delete-conflicting-outputs` |
+| `Unable to read program.dill` | `%TEMP%` 含中文 → 回到 §4.1 |
+
+⚠️ **改一张表要同时改两处**：表定义文件 + `app_database.dart` 的 `@DriftDatabase` 注册；
+扩表 / 加列还要 **`schemaVersion` +1 并在 `onUpgrade` 里补迁移分支**
+（`if (from < N) { await m.createAll(); }` 或 `m.addColumn(表, 表.列)`）。
+
+`createAll()` 生成的是 `CREATE TABLE IF NOT EXISTS` —— **对已存在的表是空操作，存量数据原样保留**；
+**任何情况下都不许改用 `destructiveFallback`**（那是 drop 全部表再重建 = 清空用户数据）。
 
 ### 5.2 不要动的配置
 
@@ -377,6 +459,8 @@ version: 26.9.6+1      # + 前面是 versionName，后面是 versionCode
 | `flutter.sdk not set in local.properties` | 按 §3 手写 `android/local.properties` |
 | 启动即崩 / `sqlite3_open` 报 `no such table` | 检查 `android/app/src/main/jniLibs/` 三个 ABI 的 `libsqlite3.so` 是否齐全（已入库，别误删）；以及 drift 迁移是否漏了新表 |
 | 改了表但数据没变 | 忘了跑 `build_runner`（§5.1） |
+| 报 `Undefined class 'XxxData'` / `The getter 'xxx' isn't defined for the type 'AppDatabase'` / `Undefined name 'XxxCompanion'` | **改了 `lib/core/db/` 但没跑代码生成** → §5.1。⚠️ 这些是**假错**（本该由工具生成的符号没生成），**不要改 Dart 代码** |
+| `Conflicting outputs were detected and the build is unable to prompt for permission to delete them` | 有陈旧的 `.g.dart` 残留（删过表 / 改过类名 / 切过分支）→ 跑代码生成时加 `--delete-conflicting-outputs`（§5.1） |
 | 通知不弹 | Android 13+ 需在系统设置里给「通知」权限；`awesome_notifications` 初始化要在 `main()` 里完成 |
 | 局域网同步 / 文件互传扫不到 PC | 手机与 PC 需在**同一 Wi-Fi**；若 PC 连的是手机热点，扫描逻辑已覆盖该场景，仍不行就检查防火墙放行 UDP 47123 / TCP 47124 |
 | **模拟器**上同步/互传扫不到 PC | 模拟器在 NAT 后（10.0.2.15），UDP 广播过不去，**扫不出来是必然的**。见 §10 |
@@ -421,10 +505,17 @@ curl http://127.0.0.1:47125/ping
 
 ```
 lib/
-  core/           基础设施：database(drift)、sync、theme、router、notifications
-  features/       功能域：dashboard / habit / todo / pomodoro / reminder /
-                  countdown / note(笔记) / chat(主题对话) / ebook / totp(2FA) /
-                  password(密码库) / vault(文件保险箱) / qrcode / file_transfer
+  app/            应用层：app.dart(入口) / shell(主壳) / router(go_router) / theme(主题) /
+                  ui(通用组件) / anim(动效) / di·providers(依赖注入) / security /
+                  alarm_bootstrap.dart(闹钟自愈)
+  core/           基础设施：db(drift) / sync / crypto / notifications / android /
+                  storage / text
+                  db/ — 表定义在 db/tables/*.dart，入口 db/app_database.dart，
+                        生成产物 db/app_database.g.dart（**改表后必须跑 §5.1 的 codegen**）
+  features/       功能域（一个域一个目录，内部再按 components/ models/ data/ providers/ 拆）：
+                  home / habit / todo / pomodoro / reminder / countdown / notes /
+                  conversation / ebook / twofactor / password_vault / file_vault /
+                  qr / ferry / sync / file_transfer / browser / about / data_management
 android/          Android 壳工程（AGP 9.1.1，compileSdk 37）
 ios/              iOS 壳工程
 test/             单元测试与 widget 测试

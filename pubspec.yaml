@@ -75,6 +75,10 @@ dependencies:
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0
   webview_flutter: ^4.10.0 # 隔空互传：WebView 加载本地 QRFerry 站，摄像头扫码接收（替代 flutter_inappwebview，规避模拟器渲染/loadStop 异常）
+  # 浏览器功能域：完整 WebView 能力（多标签 / 拦截请求 / 自定义 UA 等）。
+  # 6.1.5 早已在依赖树里（flutter_epub_viewer 传递引入），此处只是**提升为直接依赖**，
+  # 零新增下载；与上面的 webview_flutter 是两套独立插件，可共存。
+  flutter_inappwebview: ^6.1.5
   forui: ^0.26.0
   material_ui: ^1.1.1  # Flutter Material 独立发行版，forui 建于其上；勿与 flutter/material 混用
   wakelock_plus: ^1.8.0  # 文件互传发送全程后台保活（#19）

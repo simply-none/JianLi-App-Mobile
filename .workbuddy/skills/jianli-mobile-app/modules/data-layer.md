@@ -1,8 +1,10 @@
 # 模块：数据层（drift）与 vault 加密
 
 ## 数据层（drift，对齐桌面端 db.sqlite）
-- 移动端自有库文件：默认落在系统 **`Download/渐离App/db.sqlite`**（公共 Download，需「所有文件访问」MANAGE_EXTERNAL_STORAGE，API30+ 才有此要求；该目录不在应用沙盒内，**卸载/重装不会被清**，文件管理器可直接浏览）。未授权「所有文件访问」或 非 Android → 回退沙盒 `<filesDir>/databases/db.sqlite`（`getApplicationSupportDirectory()`，path_provider 2.1.6 无 `getDatabasesPath()`，drift `LazyDatabase` 后台 isolate 打开）。落位与「首启从最新候选源单向拷贝」的迁移逻辑收口在 `lib/core/db/db_location.dart`。当前 `schemaVersion = 3`（v1 首批 25 张表 + v2 新增 `file_transfer` + v3 给 `reminders` 加 `delivery` 列）。**扩表/加列必须 schemaVersion+1 并写 onUpgrade 迁移**（见下方「持久化与迁移铁律」）。
-- 25 张表（22 张首批对齐桌面端 + countdown / qr_history / qr_template 三张工具表，工具表与桌面端同构）：habit_def、habit_checkin、todo_list、todo_tags、reminders、note_book、basic_info、pomodoro_status、pomodoro_mini_config、conversation×3、file_vault×2、ebook×7、screenshots、countdown、qr_history、qr_template。
+- 移动端自有库文件：默认落在系统 **`Download/渐离App/db.sqlite`**（公共 Download，需「所有文件访问」MANAGE_EXTERNAL_STORAGE，API30+ 才有此要求；该目录不在应用沙盒内，**卸载/重装不会被清**，文件管理器可直接浏览）。未授权「所有文件访问」或 非 Android → 回退沙盒 `<filesDir>/databases/db.sqlite`（`getApplicationSupportDirectory()`，path_provider 2.1.6 无 `getDatabasesPath()`，drift `LazyDatabase` 后台 isolate 打开）。落位与「首启从最新候选源单向拷贝」的迁移逻辑收口在 `lib/core/db/db_location.dart`。当前 `schemaVersion = 4`（v1 首批 25 张表 + v2 新增 `file_transfer` + v3 给 `reminders` 加 `delivery` 列 + **v4 新增浏览器 4 张专有表**）。**扩表/加列必须 schemaVersion+1 并写 onUpgrade 迁移**（见下方「持久化与迁移铁律」）。
+- 32 张表 = 28 张（22 张首批对齐桌面端 + countdown / qr_history / qr_template 三张工具表 + file_transfer，工具表与桌面端同构）**+ 4 张移动端专有（浏览器：`browser_tabs` / `browser_pinned` / `browser_bookmarks` / `browser_history`）**：habit_def、habit_checkin、todo_list、todo_tags、reminders、note_book、basic_info、pomodoro_status、pomodoro_mini_config、conversation×3、file_vault×2、ebook×7、screenshots、countdown、qr_history、qr_template、file_transfer、browser×4。
+  - ⚠️ **浏览器 4 表是「移动端专有」**（桌面端没有浏览器模块）→ **不入同步白名单**（`lib/core/sync/sync_service.dart` 的 `kSyncableTables` 不动，桌面端 `syncModule.ts` 也不动）；标签会话 / 历史 / 固定标签都是「本机行为」，跨端同步无意义。表定义在 `lib/core/db/tables/browser_tables.dart`，域内细节见 `modules/browser.md`。
+
   ⚠️ 库文件位置在 **2026-09-07 从 `app_flutter/db.sqlite`（getApplicationDocumentsDirectory() 返回的 `flutter` 目录）迁移到 `filesDir/databases/db.sqlite`（getApplicationSupportDirectory() 返回的 filesDir）**，原因见「持久化与迁移铁律」。老用户首次启动会单向拷贝旧文件，无需手动迁移。
   ⚠️ **库文件默认位置 2026-09-17 再从 `filesDir/databases` 迁到公共 `Download/渐离App`（需求：重装/卸载不丢数据）**：详见下方「持久化与迁移铁律」第 5 点。落位与首启迁移在 `lib/core/db/db_location.dart`；外部数据库导入（按主键合并）在 `lib/core/db/db_import.dart`，入口在「数据管理」页（`features/data_management`）。
 - **三大铁律**：
@@ -45,6 +47,10 @@ dart analyze lib/core/db/app_database.dart
 # 3) 真机/模拟器验证：先在有数据的旧 build 上操作，升级安装（adb install -r）后数据在；
 #    若验证「卸载重装不丢」，需确认设备已登录账号且开启云备份，重装后等待恢复。
 ```
+
+> ⚠️ **`-d` 就是 `--delete-conflicting-outputs`**：build_runner 是增量构建，当你**删过表 / 改过类名 / 挪过文件**时，新输出会和磁盘上**陈旧的 `.g.dart`** 撞名并直接停下报 `Conflicting outputs were detected and the build is unable to prompt for permission to delete them` —— 这个 flag 授权它覆盖那些冲突产物。**日常一律带上。**
+> ⚠️ **假错判据（能省半小时）**：改完表定义**没跑 codegen** 时，`dart analyze` 会报成片 `Undefined class 'XxxData'` / `The getter 'xxx' isn't defined for the type 'AppDatabase'` / `Undefined name 'XxxCompanion'`（还连带 `unused_import` 假警告）—— 这些**全部是没跑 codegen 的次生现象，不要改 Dart 代码**（见 SKILL.md 红线 #32）。判据 = 报错名是「本该由工具生成的符号」（`XxxData` / `XxxCompanion` / `db.xxx表名`）。
+> 📖 **完整说明**（这条命令具体在干什么、什么时候必须跑、成功标志、生成结果不对怎么查）已写进工程 README **§5.1**。
 
 ## 加密（vault 复刻）
 - 入口：`lib/core/crypto/vault_codec.dart` —— `deriveVaultKey`（PBKDF2-SHA256 200000 次）、`decryptVaultEnvelope` / `encryptVaultEnvelope`（JSON 信封）、`encryptVaultBytes` / `decryptVaultBytes`（二进制流）。

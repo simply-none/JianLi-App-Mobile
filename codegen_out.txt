@@ -1,0 +1,10 @@
+W These options have been removed and were ignored: --delete-conflicting-outputs
+  0s drift_dev on 804 inputs; lib/app/alarm_bootstrap.dart
+  12s drift_dev on 804 inputs: 1 same; spent 10s analyzing, 2s resolving; lib/app/anim/jianli_haptics.dart
+  24s drift_dev on 804 inputs: 3 skipped, 2 same; spent 20s analyzing, 3s resolving; lib/app/di/app_providers.dart
+  26s drift_dev on 804 inputs: 100 skipped, 26 output, 118 same; spent 22s analyzing, 3s resolving; lib/core/db/db_export.dart
+  27s drift_dev on 804 inputs: 212 skipped, 49 output, 213 same, 13 no-op; spent 22s analyzing, 3s resolving, 1s building; lib/core/db/app_database.dart.types.temp.dart
+  27s drift_dev on 804 inputs: 411 skipped, 49 output, 213 same, 131 no-op; spent 22s analyzing, 3s resolving, 1s building
+  0s source_gen:combining_builder on 402 inputs; lib/app/alarm_bootstrap.dart
+  0s source_gen:combining_builder on 402 inputs: 382 skipped, 1 output, 19 no-op
+  Built with build_runner/aot in 33s; wrote 263 outputs.

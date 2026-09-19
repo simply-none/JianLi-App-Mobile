@@ -15235,6 +15235,2664 @@ class FileTransferCompanion extends UpdateCompanion<FileTransferData> {
   }
 }
 
+class $BrowserTabsTable extends BrowserTabs
+    with TableInfo<$BrowserTabsTable, BrowserTab> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BrowserTabsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, url, title, position, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'browser_tabs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BrowserTab> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  BrowserTab map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BrowserTab(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      ),
+    );
+  }
+
+  @override
+  $BrowserTabsTable createAlias(String alias) {
+    return $BrowserTabsTable(attachedDatabase, alias);
+  }
+}
+
+class BrowserTab extends DataClass implements Insertable<BrowserTab> {
+  /// 会话内唯一 id（uuid）
+  final String key;
+
+  /// 当前地址；**空 = 新标签页**（显示极简首页）
+  final String? url;
+
+  /// 页面标题（onLoadStop 取回；空则地址栏显示域名）
+  final String? title;
+
+  /// 标签栏顺序（0 起，越小越靠左）
+  final int? position;
+
+  /// 最后活动时间(ms)，用于「恢复上次会话」排序
+  final int? updatedAt;
+  const BrowserTab({
+    required this.key,
+    this.url,
+    this.title,
+    this.position,
+    this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    if (!nullToAbsent || url != null) {
+      map['url'] = Variable<String>(url);
+    }
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    if (!nullToAbsent || position != null) {
+      map['position'] = Variable<int>(position);
+    }
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<int>(updatedAt);
+    }
+    return map;
+  }
+
+  BrowserTabsCompanion toCompanion(bool nullToAbsent) {
+    return BrowserTabsCompanion(
+      key: Value(key),
+      url: url == null && nullToAbsent ? const Value.absent() : Value(url),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
+      position: position == null && nullToAbsent
+          ? const Value.absent()
+          : Value(position),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+    );
+  }
+
+  factory BrowserTab.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BrowserTab(
+      key: serializer.fromJson<String>(json['key']),
+      url: serializer.fromJson<String?>(json['url']),
+      title: serializer.fromJson<String?>(json['title']),
+      position: serializer.fromJson<int?>(json['position']),
+      updatedAt: serializer.fromJson<int?>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'url': serializer.toJson<String?>(url),
+      'title': serializer.toJson<String?>(title),
+      'position': serializer.toJson<int?>(position),
+      'updatedAt': serializer.toJson<int?>(updatedAt),
+    };
+  }
+
+  BrowserTab copyWith({
+    String? key,
+    Value<String?> url = const Value.absent(),
+    Value<String?> title = const Value.absent(),
+    Value<int?> position = const Value.absent(),
+    Value<int?> updatedAt = const Value.absent(),
+  }) => BrowserTab(
+    key: key ?? this.key,
+    url: url.present ? url.value : this.url,
+    title: title.present ? title.value : this.title,
+    position: position.present ? position.value : this.position,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+  );
+  BrowserTab copyWithCompanion(BrowserTabsCompanion data) {
+    return BrowserTab(
+      key: data.key.present ? data.key.value : this.key,
+      url: data.url.present ? data.url.value : this.url,
+      title: data.title.present ? data.title.value : this.title,
+      position: data.position.present ? data.position.value : this.position,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserTab(')
+          ..write('key: $key, ')
+          ..write('url: $url, ')
+          ..write('title: $title, ')
+          ..write('position: $position, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, url, title, position, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BrowserTab &&
+          other.key == this.key &&
+          other.url == this.url &&
+          other.title == this.title &&
+          other.position == this.position &&
+          other.updatedAt == this.updatedAt);
+}
+
+class BrowserTabsCompanion extends UpdateCompanion<BrowserTab> {
+  final Value<String> key;
+  final Value<String?> url;
+  final Value<String?> title;
+  final Value<int?> position;
+  final Value<int?> updatedAt;
+  final Value<int> rowid;
+  const BrowserTabsCompanion({
+    this.key = const Value.absent(),
+    this.url = const Value.absent(),
+    this.title = const Value.absent(),
+    this.position = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BrowserTabsCompanion.insert({
+    required String key,
+    this.url = const Value.absent(),
+    this.title = const Value.absent(),
+    this.position = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : key = Value(key);
+  static Insertable<BrowserTab> custom({
+    Expression<String>? key,
+    Expression<String>? url,
+    Expression<String>? title,
+    Expression<int>? position,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (url != null) 'url': url,
+      if (title != null) 'title': title,
+      if (position != null) 'position': position,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BrowserTabsCompanion copyWith({
+    Value<String>? key,
+    Value<String?>? url,
+    Value<String?>? title,
+    Value<int?>? position,
+    Value<int?>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return BrowserTabsCompanion(
+      key: key ?? this.key,
+      url: url ?? this.url,
+      title: title ?? this.title,
+      position: position ?? this.position,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserTabsCompanion(')
+          ..write('key: $key, ')
+          ..write('url: $url, ')
+          ..write('title: $title, ')
+          ..write('position: $position, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $BrowserPinnedTable extends BrowserPinned
+    with TableInfo<$BrowserPinnedTable, BrowserPinnedData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BrowserPinnedTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _letterMeta = const VerificationMeta('letter');
+  @override
+  late final GeneratedColumn<String> letter = GeneratedColumn<String>(
+    'letter',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<int> addedAt = GeneratedColumn<int>(
+    'added_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    key,
+    title,
+    url,
+    letter,
+    color,
+    position,
+    addedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'browser_pinned';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BrowserPinnedData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    }
+    if (data.containsKey('letter')) {
+      context.handle(
+        _letterMeta,
+        letter.isAcceptableOrUnknown(data['letter']!, _letterMeta),
+      );
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  BrowserPinnedData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BrowserPinnedData(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      ),
+      letter: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}letter'],
+      ),
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color'],
+      ),
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      ),
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}added_at'],
+      ),
+    );
+  }
+
+  @override
+  $BrowserPinnedTable createAlias(String alias) {
+    return $BrowserPinnedTable(attachedDatabase, alias);
+  }
+}
+
+class BrowserPinnedData extends DataClass
+    implements Insertable<BrowserPinnedData> {
+  final String key;
+  final String? title;
+  final String? url;
+
+  /// 无 favicon 时的占位字（单字：中文取首字 / 英文取首字母）
+  final String? letter;
+
+  /// 占位字品牌色 `#RRGGBB`（落地换 favicon 后仅作兜底）
+  final String? color;
+
+  /// 九宫格槽位 0..7（替换时复用被替换者的槽位，视觉上「就地替换」）
+  final int? position;
+
+  /// 加入时间(ms) —— **FIFO 替换的唯一判据**
+  final int? addedAt;
+  const BrowserPinnedData({
+    required this.key,
+    this.title,
+    this.url,
+    this.letter,
+    this.color,
+    this.position,
+    this.addedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    if (!nullToAbsent || url != null) {
+      map['url'] = Variable<String>(url);
+    }
+    if (!nullToAbsent || letter != null) {
+      map['letter'] = Variable<String>(letter);
+    }
+    if (!nullToAbsent || color != null) {
+      map['color'] = Variable<String>(color);
+    }
+    if (!nullToAbsent || position != null) {
+      map['position'] = Variable<int>(position);
+    }
+    if (!nullToAbsent || addedAt != null) {
+      map['added_at'] = Variable<int>(addedAt);
+    }
+    return map;
+  }
+
+  BrowserPinnedCompanion toCompanion(bool nullToAbsent) {
+    return BrowserPinnedCompanion(
+      key: Value(key),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
+      url: url == null && nullToAbsent ? const Value.absent() : Value(url),
+      letter: letter == null && nullToAbsent
+          ? const Value.absent()
+          : Value(letter),
+      color: color == null && nullToAbsent
+          ? const Value.absent()
+          : Value(color),
+      position: position == null && nullToAbsent
+          ? const Value.absent()
+          : Value(position),
+      addedAt: addedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(addedAt),
+    );
+  }
+
+  factory BrowserPinnedData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BrowserPinnedData(
+      key: serializer.fromJson<String>(json['key']),
+      title: serializer.fromJson<String?>(json['title']),
+      url: serializer.fromJson<String?>(json['url']),
+      letter: serializer.fromJson<String?>(json['letter']),
+      color: serializer.fromJson<String?>(json['color']),
+      position: serializer.fromJson<int?>(json['position']),
+      addedAt: serializer.fromJson<int?>(json['addedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'title': serializer.toJson<String?>(title),
+      'url': serializer.toJson<String?>(url),
+      'letter': serializer.toJson<String?>(letter),
+      'color': serializer.toJson<String?>(color),
+      'position': serializer.toJson<int?>(position),
+      'addedAt': serializer.toJson<int?>(addedAt),
+    };
+  }
+
+  BrowserPinnedData copyWith({
+    String? key,
+    Value<String?> title = const Value.absent(),
+    Value<String?> url = const Value.absent(),
+    Value<String?> letter = const Value.absent(),
+    Value<String?> color = const Value.absent(),
+    Value<int?> position = const Value.absent(),
+    Value<int?> addedAt = const Value.absent(),
+  }) => BrowserPinnedData(
+    key: key ?? this.key,
+    title: title.present ? title.value : this.title,
+    url: url.present ? url.value : this.url,
+    letter: letter.present ? letter.value : this.letter,
+    color: color.present ? color.value : this.color,
+    position: position.present ? position.value : this.position,
+    addedAt: addedAt.present ? addedAt.value : this.addedAt,
+  );
+  BrowserPinnedData copyWithCompanion(BrowserPinnedCompanion data) {
+    return BrowserPinnedData(
+      key: data.key.present ? data.key.value : this.key,
+      title: data.title.present ? data.title.value : this.title,
+      url: data.url.present ? data.url.value : this.url,
+      letter: data.letter.present ? data.letter.value : this.letter,
+      color: data.color.present ? data.color.value : this.color,
+      position: data.position.present ? data.position.value : this.position,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserPinnedData(')
+          ..write('key: $key, ')
+          ..write('title: $title, ')
+          ..write('url: $url, ')
+          ..write('letter: $letter, ')
+          ..write('color: $color, ')
+          ..write('position: $position, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(key, title, url, letter, color, position, addedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BrowserPinnedData &&
+          other.key == this.key &&
+          other.title == this.title &&
+          other.url == this.url &&
+          other.letter == this.letter &&
+          other.color == this.color &&
+          other.position == this.position &&
+          other.addedAt == this.addedAt);
+}
+
+class BrowserPinnedCompanion extends UpdateCompanion<BrowserPinnedData> {
+  final Value<String> key;
+  final Value<String?> title;
+  final Value<String?> url;
+  final Value<String?> letter;
+  final Value<String?> color;
+  final Value<int?> position;
+  final Value<int?> addedAt;
+  final Value<int> rowid;
+  const BrowserPinnedCompanion({
+    this.key = const Value.absent(),
+    this.title = const Value.absent(),
+    this.url = const Value.absent(),
+    this.letter = const Value.absent(),
+    this.color = const Value.absent(),
+    this.position = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BrowserPinnedCompanion.insert({
+    required String key,
+    this.title = const Value.absent(),
+    this.url = const Value.absent(),
+    this.letter = const Value.absent(),
+    this.color = const Value.absent(),
+    this.position = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : key = Value(key);
+  static Insertable<BrowserPinnedData> custom({
+    Expression<String>? key,
+    Expression<String>? title,
+    Expression<String>? url,
+    Expression<String>? letter,
+    Expression<String>? color,
+    Expression<int>? position,
+    Expression<int>? addedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (title != null) 'title': title,
+      if (url != null) 'url': url,
+      if (letter != null) 'letter': letter,
+      if (color != null) 'color': color,
+      if (position != null) 'position': position,
+      if (addedAt != null) 'added_at': addedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BrowserPinnedCompanion copyWith({
+    Value<String>? key,
+    Value<String?>? title,
+    Value<String?>? url,
+    Value<String?>? letter,
+    Value<String?>? color,
+    Value<int?>? position,
+    Value<int?>? addedAt,
+    Value<int>? rowid,
+  }) {
+    return BrowserPinnedCompanion(
+      key: key ?? this.key,
+      title: title ?? this.title,
+      url: url ?? this.url,
+      letter: letter ?? this.letter,
+      color: color ?? this.color,
+      position: position ?? this.position,
+      addedAt: addedAt ?? this.addedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (letter.present) {
+      map['letter'] = Variable<String>(letter.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<int>(addedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserPinnedCompanion(')
+          ..write('key: $key, ')
+          ..write('title: $title, ')
+          ..write('url: $url, ')
+          ..write('letter: $letter, ')
+          ..write('color: $color, ')
+          ..write('position: $position, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $BrowserBookmarksTable extends BrowserBookmarks
+    with TableInfo<$BrowserBookmarksTable, BrowserBookmark> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BrowserBookmarksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isFolderMeta = const VerificationMeta(
+    'isFolder',
+  );
+  @override
+  late final GeneratedColumn<String> isFolder = GeneratedColumn<String>(
+    'is_folder',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _parentKeyMeta = const VerificationMeta(
+    'parentKey',
+  );
+  @override
+  late final GeneratedColumn<String> parentKey = GeneratedColumn<String>(
+    'parent_key',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    key,
+    title,
+    url,
+    isFolder,
+    parentKey,
+    position,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'browser_bookmarks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BrowserBookmark> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    }
+    if (data.containsKey('is_folder')) {
+      context.handle(
+        _isFolderMeta,
+        isFolder.isAcceptableOrUnknown(data['is_folder']!, _isFolderMeta),
+      );
+    }
+    if (data.containsKey('parent_key')) {
+      context.handle(
+        _parentKeyMeta,
+        parentKey.isAcceptableOrUnknown(data['parent_key']!, _parentKeyMeta),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  BrowserBookmark map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BrowserBookmark(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      ),
+      isFolder: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}is_folder'],
+      ),
+      parentKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}parent_key'],
+      ),
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      ),
+    );
+  }
+
+  @override
+  $BrowserBookmarksTable createAlias(String alias) {
+    return $BrowserBookmarksTable(attachedDatabase, alias);
+  }
+}
+
+class BrowserBookmark extends DataClass implements Insertable<BrowserBookmark> {
+  final String key;
+  final String? title;
+
+  /// 文件夹行为空
+  final String? url;
+
+  /// `'1'` = 文件夹；`'0'` / 空 = 普通书签
+  final String? isFolder;
+
+  /// 父文件夹 key；空 = 根级
+  final String? parentKey;
+  final int? position;
+  final int? createdAt;
+  const BrowserBookmark({
+    required this.key,
+    this.title,
+    this.url,
+    this.isFolder,
+    this.parentKey,
+    this.position,
+    this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    if (!nullToAbsent || url != null) {
+      map['url'] = Variable<String>(url);
+    }
+    if (!nullToAbsent || isFolder != null) {
+      map['is_folder'] = Variable<String>(isFolder);
+    }
+    if (!nullToAbsent || parentKey != null) {
+      map['parent_key'] = Variable<String>(parentKey);
+    }
+    if (!nullToAbsent || position != null) {
+      map['position'] = Variable<int>(position);
+    }
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<int>(createdAt);
+    }
+    return map;
+  }
+
+  BrowserBookmarksCompanion toCompanion(bool nullToAbsent) {
+    return BrowserBookmarksCompanion(
+      key: Value(key),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
+      url: url == null && nullToAbsent ? const Value.absent() : Value(url),
+      isFolder: isFolder == null && nullToAbsent
+          ? const Value.absent()
+          : Value(isFolder),
+      parentKey: parentKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentKey),
+      position: position == null && nullToAbsent
+          ? const Value.absent()
+          : Value(position),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
+    );
+  }
+
+  factory BrowserBookmark.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BrowserBookmark(
+      key: serializer.fromJson<String>(json['key']),
+      title: serializer.fromJson<String?>(json['title']),
+      url: serializer.fromJson<String?>(json['url']),
+      isFolder: serializer.fromJson<String?>(json['isFolder']),
+      parentKey: serializer.fromJson<String?>(json['parentKey']),
+      position: serializer.fromJson<int?>(json['position']),
+      createdAt: serializer.fromJson<int?>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'title': serializer.toJson<String?>(title),
+      'url': serializer.toJson<String?>(url),
+      'isFolder': serializer.toJson<String?>(isFolder),
+      'parentKey': serializer.toJson<String?>(parentKey),
+      'position': serializer.toJson<int?>(position),
+      'createdAt': serializer.toJson<int?>(createdAt),
+    };
+  }
+
+  BrowserBookmark copyWith({
+    String? key,
+    Value<String?> title = const Value.absent(),
+    Value<String?> url = const Value.absent(),
+    Value<String?> isFolder = const Value.absent(),
+    Value<String?> parentKey = const Value.absent(),
+    Value<int?> position = const Value.absent(),
+    Value<int?> createdAt = const Value.absent(),
+  }) => BrowserBookmark(
+    key: key ?? this.key,
+    title: title.present ? title.value : this.title,
+    url: url.present ? url.value : this.url,
+    isFolder: isFolder.present ? isFolder.value : this.isFolder,
+    parentKey: parentKey.present ? parentKey.value : this.parentKey,
+    position: position.present ? position.value : this.position,
+    createdAt: createdAt.present ? createdAt.value : this.createdAt,
+  );
+  BrowserBookmark copyWithCompanion(BrowserBookmarksCompanion data) {
+    return BrowserBookmark(
+      key: data.key.present ? data.key.value : this.key,
+      title: data.title.present ? data.title.value : this.title,
+      url: data.url.present ? data.url.value : this.url,
+      isFolder: data.isFolder.present ? data.isFolder.value : this.isFolder,
+      parentKey: data.parentKey.present ? data.parentKey.value : this.parentKey,
+      position: data.position.present ? data.position.value : this.position,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserBookmark(')
+          ..write('key: $key, ')
+          ..write('title: $title, ')
+          ..write('url: $url, ')
+          ..write('isFolder: $isFolder, ')
+          ..write('parentKey: $parentKey, ')
+          ..write('position: $position, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(key, title, url, isFolder, parentKey, position, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BrowserBookmark &&
+          other.key == this.key &&
+          other.title == this.title &&
+          other.url == this.url &&
+          other.isFolder == this.isFolder &&
+          other.parentKey == this.parentKey &&
+          other.position == this.position &&
+          other.createdAt == this.createdAt);
+}
+
+class BrowserBookmarksCompanion extends UpdateCompanion<BrowserBookmark> {
+  final Value<String> key;
+  final Value<String?> title;
+  final Value<String?> url;
+  final Value<String?> isFolder;
+  final Value<String?> parentKey;
+  final Value<int?> position;
+  final Value<int?> createdAt;
+  final Value<int> rowid;
+  const BrowserBookmarksCompanion({
+    this.key = const Value.absent(),
+    this.title = const Value.absent(),
+    this.url = const Value.absent(),
+    this.isFolder = const Value.absent(),
+    this.parentKey = const Value.absent(),
+    this.position = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BrowserBookmarksCompanion.insert({
+    required String key,
+    this.title = const Value.absent(),
+    this.url = const Value.absent(),
+    this.isFolder = const Value.absent(),
+    this.parentKey = const Value.absent(),
+    this.position = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : key = Value(key);
+  static Insertable<BrowserBookmark> custom({
+    Expression<String>? key,
+    Expression<String>? title,
+    Expression<String>? url,
+    Expression<String>? isFolder,
+    Expression<String>? parentKey,
+    Expression<int>? position,
+    Expression<int>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (title != null) 'title': title,
+      if (url != null) 'url': url,
+      if (isFolder != null) 'is_folder': isFolder,
+      if (parentKey != null) 'parent_key': parentKey,
+      if (position != null) 'position': position,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BrowserBookmarksCompanion copyWith({
+    Value<String>? key,
+    Value<String?>? title,
+    Value<String?>? url,
+    Value<String?>? isFolder,
+    Value<String?>? parentKey,
+    Value<int?>? position,
+    Value<int?>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return BrowserBookmarksCompanion(
+      key: key ?? this.key,
+      title: title ?? this.title,
+      url: url ?? this.url,
+      isFolder: isFolder ?? this.isFolder,
+      parentKey: parentKey ?? this.parentKey,
+      position: position ?? this.position,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (isFolder.present) {
+      map['is_folder'] = Variable<String>(isFolder.value);
+    }
+    if (parentKey.present) {
+      map['parent_key'] = Variable<String>(parentKey.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserBookmarksCompanion(')
+          ..write('key: $key, ')
+          ..write('title: $title, ')
+          ..write('url: $url, ')
+          ..write('isFolder: $isFolder, ')
+          ..write('parentKey: $parentKey, ')
+          ..write('position: $position, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $BrowserHistoryTable extends BrowserHistory
+    with TableInfo<$BrowserHistoryTable, BrowserHistoryData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BrowserHistoryTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _visitedAtMeta = const VerificationMeta(
+    'visitedAt',
+  );
+  @override
+  late final GeneratedColumn<int> visitedAt = GeneratedColumn<int>(
+    'visited_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _visitCountMeta = const VerificationMeta(
+    'visitCount',
+  );
+  @override
+  late final GeneratedColumn<int> visitCount = GeneratedColumn<int>(
+    'visit_count',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    key,
+    title,
+    url,
+    visitedAt,
+    visitCount,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'browser_history';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BrowserHistoryData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    }
+    if (data.containsKey('visited_at')) {
+      context.handle(
+        _visitedAtMeta,
+        visitedAt.isAcceptableOrUnknown(data['visited_at']!, _visitedAtMeta),
+      );
+    }
+    if (data.containsKey('visit_count')) {
+      context.handle(
+        _visitCountMeta,
+        visitCount.isAcceptableOrUnknown(data['visit_count']!, _visitCountMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  BrowserHistoryData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BrowserHistoryData(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      ),
+      visitedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}visited_at'],
+      ),
+      visitCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}visit_count'],
+      ),
+    );
+  }
+
+  @override
+  $BrowserHistoryTable createAlias(String alias) {
+    return $BrowserHistoryTable(attachedDatabase, alias);
+  }
+}
+
+class BrowserHistoryData extends DataClass
+    implements Insertable<BrowserHistoryData> {
+  final String key;
+  final String? title;
+  final String? url;
+
+  /// 最近一次访问时间(ms)
+  final int? visitedAt;
+
+  /// 累计访问次数
+  final int? visitCount;
+  const BrowserHistoryData({
+    required this.key,
+    this.title,
+    this.url,
+    this.visitedAt,
+    this.visitCount,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    if (!nullToAbsent || url != null) {
+      map['url'] = Variable<String>(url);
+    }
+    if (!nullToAbsent || visitedAt != null) {
+      map['visited_at'] = Variable<int>(visitedAt);
+    }
+    if (!nullToAbsent || visitCount != null) {
+      map['visit_count'] = Variable<int>(visitCount);
+    }
+    return map;
+  }
+
+  BrowserHistoryCompanion toCompanion(bool nullToAbsent) {
+    return BrowserHistoryCompanion(
+      key: Value(key),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
+      url: url == null && nullToAbsent ? const Value.absent() : Value(url),
+      visitedAt: visitedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(visitedAt),
+      visitCount: visitCount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(visitCount),
+    );
+  }
+
+  factory BrowserHistoryData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BrowserHistoryData(
+      key: serializer.fromJson<String>(json['key']),
+      title: serializer.fromJson<String?>(json['title']),
+      url: serializer.fromJson<String?>(json['url']),
+      visitedAt: serializer.fromJson<int?>(json['visitedAt']),
+      visitCount: serializer.fromJson<int?>(json['visitCount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'title': serializer.toJson<String?>(title),
+      'url': serializer.toJson<String?>(url),
+      'visitedAt': serializer.toJson<int?>(visitedAt),
+      'visitCount': serializer.toJson<int?>(visitCount),
+    };
+  }
+
+  BrowserHistoryData copyWith({
+    String? key,
+    Value<String?> title = const Value.absent(),
+    Value<String?> url = const Value.absent(),
+    Value<int?> visitedAt = const Value.absent(),
+    Value<int?> visitCount = const Value.absent(),
+  }) => BrowserHistoryData(
+    key: key ?? this.key,
+    title: title.present ? title.value : this.title,
+    url: url.present ? url.value : this.url,
+    visitedAt: visitedAt.present ? visitedAt.value : this.visitedAt,
+    visitCount: visitCount.present ? visitCount.value : this.visitCount,
+  );
+  BrowserHistoryData copyWithCompanion(BrowserHistoryCompanion data) {
+    return BrowserHistoryData(
+      key: data.key.present ? data.key.value : this.key,
+      title: data.title.present ? data.title.value : this.title,
+      url: data.url.present ? data.url.value : this.url,
+      visitedAt: data.visitedAt.present ? data.visitedAt.value : this.visitedAt,
+      visitCount: data.visitCount.present
+          ? data.visitCount.value
+          : this.visitCount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserHistoryData(')
+          ..write('key: $key, ')
+          ..write('title: $title, ')
+          ..write('url: $url, ')
+          ..write('visitedAt: $visitedAt, ')
+          ..write('visitCount: $visitCount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, title, url, visitedAt, visitCount);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BrowserHistoryData &&
+          other.key == this.key &&
+          other.title == this.title &&
+          other.url == this.url &&
+          other.visitedAt == this.visitedAt &&
+          other.visitCount == this.visitCount);
+}
+
+class BrowserHistoryCompanion extends UpdateCompanion<BrowserHistoryData> {
+  final Value<String> key;
+  final Value<String?> title;
+  final Value<String?> url;
+  final Value<int?> visitedAt;
+  final Value<int?> visitCount;
+  final Value<int> rowid;
+  const BrowserHistoryCompanion({
+    this.key = const Value.absent(),
+    this.title = const Value.absent(),
+    this.url = const Value.absent(),
+    this.visitedAt = const Value.absent(),
+    this.visitCount = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BrowserHistoryCompanion.insert({
+    required String key,
+    this.title = const Value.absent(),
+    this.url = const Value.absent(),
+    this.visitedAt = const Value.absent(),
+    this.visitCount = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : key = Value(key);
+  static Insertable<BrowserHistoryData> custom({
+    Expression<String>? key,
+    Expression<String>? title,
+    Expression<String>? url,
+    Expression<int>? visitedAt,
+    Expression<int>? visitCount,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (title != null) 'title': title,
+      if (url != null) 'url': url,
+      if (visitedAt != null) 'visited_at': visitedAt,
+      if (visitCount != null) 'visit_count': visitCount,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BrowserHistoryCompanion copyWith({
+    Value<String>? key,
+    Value<String?>? title,
+    Value<String?>? url,
+    Value<int?>? visitedAt,
+    Value<int?>? visitCount,
+    Value<int>? rowid,
+  }) {
+    return BrowserHistoryCompanion(
+      key: key ?? this.key,
+      title: title ?? this.title,
+      url: url ?? this.url,
+      visitedAt: visitedAt ?? this.visitedAt,
+      visitCount: visitCount ?? this.visitCount,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (visitedAt.present) {
+      map['visited_at'] = Variable<int>(visitedAt.value);
+    }
+    if (visitCount.present) {
+      map['visit_count'] = Variable<int>(visitCount.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserHistoryCompanion(')
+          ..write('key: $key, ')
+          ..write('title: $title, ')
+          ..write('url: $url, ')
+          ..write('visitedAt: $visitedAt, ')
+          ..write('visitCount: $visitCount, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $BrowserDownloadsTable extends BrowserDownloads
+    with TableInfo<$BrowserDownloadsTable, BrowserDownload> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BrowserDownloadsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _filenameMeta = const VerificationMeta(
+    'filename',
+  );
+  @override
+  late final GeneratedColumn<String> filename = GeneratedColumn<String>(
+    'filename',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mimeTypeMeta = const VerificationMeta(
+    'mimeType',
+  );
+  @override
+  late final GeneratedColumn<String> mimeType = GeneratedColumn<String>(
+    'mime_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sizeBytesMeta = const VerificationMeta(
+    'sizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> sizeBytes = GeneratedColumn<int>(
+    'size_bytes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('pending'),
+  );
+  static const VerificationMeta _localPathMeta = const VerificationMeta(
+    'localPath',
+  );
+  @override
+  late final GeneratedColumn<String> localPath = GeneratedColumn<String>(
+    'local_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _completedAtMeta = const VerificationMeta(
+    'completedAt',
+  );
+  @override
+  late final GeneratedColumn<int> completedAt = GeneratedColumn<int>(
+    'completed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    key,
+    url,
+    filename,
+    mimeType,
+    sizeBytes,
+    status,
+    localPath,
+    createdAt,
+    completedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'browser_downloads';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BrowserDownload> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_urlMeta);
+    }
+    if (data.containsKey('filename')) {
+      context.handle(
+        _filenameMeta,
+        filename.isAcceptableOrUnknown(data['filename']!, _filenameMeta),
+      );
+    }
+    if (data.containsKey('mime_type')) {
+      context.handle(
+        _mimeTypeMeta,
+        mimeType.isAcceptableOrUnknown(data['mime_type']!, _mimeTypeMeta),
+      );
+    }
+    if (data.containsKey('size_bytes')) {
+      context.handle(
+        _sizeBytesMeta,
+        sizeBytes.isAcceptableOrUnknown(data['size_bytes']!, _sizeBytesMeta),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('local_path')) {
+      context.handle(
+        _localPathMeta,
+        localPath.isAcceptableOrUnknown(data['local_path']!, _localPathMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('completed_at')) {
+      context.handle(
+        _completedAtMeta,
+        completedAt.isAcceptableOrUnknown(
+          data['completed_at']!,
+          _completedAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  BrowserDownload map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BrowserDownload(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      )!,
+      filename: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}filename'],
+      ),
+      mimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mime_type'],
+      ),
+      sizeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}size_bytes'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      localPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_path'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      ),
+      completedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}completed_at'],
+      ),
+    );
+  }
+
+  @override
+  $BrowserDownloadsTable createAlias(String alias) {
+    return $BrowserDownloadsTable(attachedDatabase, alias);
+  }
+}
+
+class BrowserDownload extends DataClass implements Insertable<BrowserDownload> {
+  final String key;
+  final String url;
+
+  /// 落盘文件名（优先用服务端 suggestedFilename，否则从地址推）
+  final String? filename;
+
+  /// 服务端回报的 MIME（嗅探下载可能为空）
+  final String? mimeType;
+
+  /// 服务端回报大小；抓取完成后再用文件真实大小回填（字节）
+  final int? sizeBytes;
+
+  /// 状态：`pending` | `done` | `failed`
+  final String status;
+
+  /// 本地落盘路径（done 后有值，供 open_filex 打开）
+  final String? localPath;
+  final int? createdAt;
+  final int? completedAt;
+  const BrowserDownload({
+    required this.key,
+    required this.url,
+    this.filename,
+    this.mimeType,
+    this.sizeBytes,
+    required this.status,
+    this.localPath,
+    this.createdAt,
+    this.completedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['url'] = Variable<String>(url);
+    if (!nullToAbsent || filename != null) {
+      map['filename'] = Variable<String>(filename);
+    }
+    if (!nullToAbsent || mimeType != null) {
+      map['mime_type'] = Variable<String>(mimeType);
+    }
+    if (!nullToAbsent || sizeBytes != null) {
+      map['size_bytes'] = Variable<int>(sizeBytes);
+    }
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || localPath != null) {
+      map['local_path'] = Variable<String>(localPath);
+    }
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<int>(createdAt);
+    }
+    if (!nullToAbsent || completedAt != null) {
+      map['completed_at'] = Variable<int>(completedAt);
+    }
+    return map;
+  }
+
+  BrowserDownloadsCompanion toCompanion(bool nullToAbsent) {
+    return BrowserDownloadsCompanion(
+      key: Value(key),
+      url: Value(url),
+      filename: filename == null && nullToAbsent
+          ? const Value.absent()
+          : Value(filename),
+      mimeType: mimeType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mimeType),
+      sizeBytes: sizeBytes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sizeBytes),
+      status: Value(status),
+      localPath: localPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(localPath),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
+      completedAt: completedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(completedAt),
+    );
+  }
+
+  factory BrowserDownload.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BrowserDownload(
+      key: serializer.fromJson<String>(json['key']),
+      url: serializer.fromJson<String>(json['url']),
+      filename: serializer.fromJson<String?>(json['filename']),
+      mimeType: serializer.fromJson<String?>(json['mimeType']),
+      sizeBytes: serializer.fromJson<int?>(json['sizeBytes']),
+      status: serializer.fromJson<String>(json['status']),
+      localPath: serializer.fromJson<String?>(json['localPath']),
+      createdAt: serializer.fromJson<int?>(json['createdAt']),
+      completedAt: serializer.fromJson<int?>(json['completedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'url': serializer.toJson<String>(url),
+      'filename': serializer.toJson<String?>(filename),
+      'mimeType': serializer.toJson<String?>(mimeType),
+      'sizeBytes': serializer.toJson<int?>(sizeBytes),
+      'status': serializer.toJson<String>(status),
+      'localPath': serializer.toJson<String?>(localPath),
+      'createdAt': serializer.toJson<int?>(createdAt),
+      'completedAt': serializer.toJson<int?>(completedAt),
+    };
+  }
+
+  BrowserDownload copyWith({
+    String? key,
+    String? url,
+    Value<String?> filename = const Value.absent(),
+    Value<String?> mimeType = const Value.absent(),
+    Value<int?> sizeBytes = const Value.absent(),
+    String? status,
+    Value<String?> localPath = const Value.absent(),
+    Value<int?> createdAt = const Value.absent(),
+    Value<int?> completedAt = const Value.absent(),
+  }) => BrowserDownload(
+    key: key ?? this.key,
+    url: url ?? this.url,
+    filename: filename.present ? filename.value : this.filename,
+    mimeType: mimeType.present ? mimeType.value : this.mimeType,
+    sizeBytes: sizeBytes.present ? sizeBytes.value : this.sizeBytes,
+    status: status ?? this.status,
+    localPath: localPath.present ? localPath.value : this.localPath,
+    createdAt: createdAt.present ? createdAt.value : this.createdAt,
+    completedAt: completedAt.present ? completedAt.value : this.completedAt,
+  );
+  BrowserDownload copyWithCompanion(BrowserDownloadsCompanion data) {
+    return BrowserDownload(
+      key: data.key.present ? data.key.value : this.key,
+      url: data.url.present ? data.url.value : this.url,
+      filename: data.filename.present ? data.filename.value : this.filename,
+      mimeType: data.mimeType.present ? data.mimeType.value : this.mimeType,
+      sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
+      status: data.status.present ? data.status.value : this.status,
+      localPath: data.localPath.present ? data.localPath.value : this.localPath,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      completedAt: data.completedAt.present
+          ? data.completedAt.value
+          : this.completedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserDownload(')
+          ..write('key: $key, ')
+          ..write('url: $url, ')
+          ..write('filename: $filename, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('status: $status, ')
+          ..write('localPath: $localPath, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('completedAt: $completedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    key,
+    url,
+    filename,
+    mimeType,
+    sizeBytes,
+    status,
+    localPath,
+    createdAt,
+    completedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BrowserDownload &&
+          other.key == this.key &&
+          other.url == this.url &&
+          other.filename == this.filename &&
+          other.mimeType == this.mimeType &&
+          other.sizeBytes == this.sizeBytes &&
+          other.status == this.status &&
+          other.localPath == this.localPath &&
+          other.createdAt == this.createdAt &&
+          other.completedAt == this.completedAt);
+}
+
+class BrowserDownloadsCompanion extends UpdateCompanion<BrowserDownload> {
+  final Value<String> key;
+  final Value<String> url;
+  final Value<String?> filename;
+  final Value<String?> mimeType;
+  final Value<int?> sizeBytes;
+  final Value<String> status;
+  final Value<String?> localPath;
+  final Value<int?> createdAt;
+  final Value<int?> completedAt;
+  final Value<int> rowid;
+  const BrowserDownloadsCompanion({
+    this.key = const Value.absent(),
+    this.url = const Value.absent(),
+    this.filename = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.status = const Value.absent(),
+    this.localPath = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.completedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BrowserDownloadsCompanion.insert({
+    required String key,
+    required String url,
+    this.filename = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.status = const Value.absent(),
+    this.localPath = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.completedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       url = Value(url);
+  static Insertable<BrowserDownload> custom({
+    Expression<String>? key,
+    Expression<String>? url,
+    Expression<String>? filename,
+    Expression<String>? mimeType,
+    Expression<int>? sizeBytes,
+    Expression<String>? status,
+    Expression<String>? localPath,
+    Expression<int>? createdAt,
+    Expression<int>? completedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (url != null) 'url': url,
+      if (filename != null) 'filename': filename,
+      if (mimeType != null) 'mime_type': mimeType,
+      if (sizeBytes != null) 'size_bytes': sizeBytes,
+      if (status != null) 'status': status,
+      if (localPath != null) 'local_path': localPath,
+      if (createdAt != null) 'created_at': createdAt,
+      if (completedAt != null) 'completed_at': completedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BrowserDownloadsCompanion copyWith({
+    Value<String>? key,
+    Value<String>? url,
+    Value<String?>? filename,
+    Value<String?>? mimeType,
+    Value<int?>? sizeBytes,
+    Value<String>? status,
+    Value<String?>? localPath,
+    Value<int?>? createdAt,
+    Value<int?>? completedAt,
+    Value<int>? rowid,
+  }) {
+    return BrowserDownloadsCompanion(
+      key: key ?? this.key,
+      url: url ?? this.url,
+      filename: filename ?? this.filename,
+      mimeType: mimeType ?? this.mimeType,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      status: status ?? this.status,
+      localPath: localPath ?? this.localPath,
+      createdAt: createdAt ?? this.createdAt,
+      completedAt: completedAt ?? this.completedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (filename.present) {
+      map['filename'] = Variable<String>(filename.value);
+    }
+    if (mimeType.present) {
+      map['mime_type'] = Variable<String>(mimeType.value);
+    }
+    if (sizeBytes.present) {
+      map['size_bytes'] = Variable<int>(sizeBytes.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (localPath.present) {
+      map['local_path'] = Variable<String>(localPath.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (completedAt.present) {
+      map['completed_at'] = Variable<int>(completedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserDownloadsCompanion(')
+          ..write('key: $key, ')
+          ..write('url: $url, ')
+          ..write('filename: $filename, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('status: $status, ')
+          ..write('localPath: $localPath, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('completedAt: $completedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $BrowserOfflinePagesTable extends BrowserOfflinePages
+    with TableInfo<$BrowserOfflinePagesTable, BrowserOfflinePage> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BrowserOfflinePagesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _htmlMeta = const VerificationMeta('html');
+  @override
+  late final GeneratedColumn<String> html = GeneratedColumn<String>(
+    'html',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sizeBytesMeta = const VerificationMeta(
+    'sizeBytes',
+  );
+  @override
+  late final GeneratedColumn<int> sizeBytes = GeneratedColumn<int>(
+    'size_bytes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _savedAtMeta = const VerificationMeta(
+    'savedAt',
+  );
+  @override
+  late final GeneratedColumn<int> savedAt = GeneratedColumn<int>(
+    'saved_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    key,
+    url,
+    title,
+    html,
+    sizeBytes,
+    savedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'browser_offline_pages';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BrowserOfflinePage> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_urlMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('html')) {
+      context.handle(
+        _htmlMeta,
+        html.isAcceptableOrUnknown(data['html']!, _htmlMeta),
+      );
+    }
+    if (data.containsKey('size_bytes')) {
+      context.handle(
+        _sizeBytesMeta,
+        sizeBytes.isAcceptableOrUnknown(data['size_bytes']!, _sizeBytesMeta),
+      );
+    }
+    if (data.containsKey('saved_at')) {
+      context.handle(
+        _savedAtMeta,
+        savedAt.isAcceptableOrUnknown(data['saved_at']!, _savedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  BrowserOfflinePage map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BrowserOfflinePage(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
+      html: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}html'],
+      ),
+      sizeBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}size_bytes'],
+      ),
+      savedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}saved_at'],
+      ),
+    );
+  }
+
+  @override
+  $BrowserOfflinePagesTable createAlias(String alias) {
+    return $BrowserOfflinePagesTable(attachedDatabase, alias);
+  }
+}
+
+class BrowserOfflinePage extends DataClass
+    implements Insertable<BrowserOfflinePage> {
+  final String key;
+  final String url;
+  final String? title;
+
+  /// 整页 HTML（可能较大，存 TEXT 列）
+  final String? html;
+
+  /// HTML 字节数（展示用）
+  final int? sizeBytes;
+  final int? savedAt;
+  const BrowserOfflinePage({
+    required this.key,
+    required this.url,
+    this.title,
+    this.html,
+    this.sizeBytes,
+    this.savedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['url'] = Variable<String>(url);
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    if (!nullToAbsent || html != null) {
+      map['html'] = Variable<String>(html);
+    }
+    if (!nullToAbsent || sizeBytes != null) {
+      map['size_bytes'] = Variable<int>(sizeBytes);
+    }
+    if (!nullToAbsent || savedAt != null) {
+      map['saved_at'] = Variable<int>(savedAt);
+    }
+    return map;
+  }
+
+  BrowserOfflinePagesCompanion toCompanion(bool nullToAbsent) {
+    return BrowserOfflinePagesCompanion(
+      key: Value(key),
+      url: Value(url),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
+      html: html == null && nullToAbsent ? const Value.absent() : Value(html),
+      sizeBytes: sizeBytes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sizeBytes),
+      savedAt: savedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(savedAt),
+    );
+  }
+
+  factory BrowserOfflinePage.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BrowserOfflinePage(
+      key: serializer.fromJson<String>(json['key']),
+      url: serializer.fromJson<String>(json['url']),
+      title: serializer.fromJson<String?>(json['title']),
+      html: serializer.fromJson<String?>(json['html']),
+      sizeBytes: serializer.fromJson<int?>(json['sizeBytes']),
+      savedAt: serializer.fromJson<int?>(json['savedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'url': serializer.toJson<String>(url),
+      'title': serializer.toJson<String?>(title),
+      'html': serializer.toJson<String?>(html),
+      'sizeBytes': serializer.toJson<int?>(sizeBytes),
+      'savedAt': serializer.toJson<int?>(savedAt),
+    };
+  }
+
+  BrowserOfflinePage copyWith({
+    String? key,
+    String? url,
+    Value<String?> title = const Value.absent(),
+    Value<String?> html = const Value.absent(),
+    Value<int?> sizeBytes = const Value.absent(),
+    Value<int?> savedAt = const Value.absent(),
+  }) => BrowserOfflinePage(
+    key: key ?? this.key,
+    url: url ?? this.url,
+    title: title.present ? title.value : this.title,
+    html: html.present ? html.value : this.html,
+    sizeBytes: sizeBytes.present ? sizeBytes.value : this.sizeBytes,
+    savedAt: savedAt.present ? savedAt.value : this.savedAt,
+  );
+  BrowserOfflinePage copyWithCompanion(BrowserOfflinePagesCompanion data) {
+    return BrowserOfflinePage(
+      key: data.key.present ? data.key.value : this.key,
+      url: data.url.present ? data.url.value : this.url,
+      title: data.title.present ? data.title.value : this.title,
+      html: data.html.present ? data.html.value : this.html,
+      sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
+      savedAt: data.savedAt.present ? data.savedAt.value : this.savedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserOfflinePage(')
+          ..write('key: $key, ')
+          ..write('url: $url, ')
+          ..write('title: $title, ')
+          ..write('html: $html, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('savedAt: $savedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, url, title, html, sizeBytes, savedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BrowserOfflinePage &&
+          other.key == this.key &&
+          other.url == this.url &&
+          other.title == this.title &&
+          other.html == this.html &&
+          other.sizeBytes == this.sizeBytes &&
+          other.savedAt == this.savedAt);
+}
+
+class BrowserOfflinePagesCompanion extends UpdateCompanion<BrowserOfflinePage> {
+  final Value<String> key;
+  final Value<String> url;
+  final Value<String?> title;
+  final Value<String?> html;
+  final Value<int?> sizeBytes;
+  final Value<int?> savedAt;
+  final Value<int> rowid;
+  const BrowserOfflinePagesCompanion({
+    this.key = const Value.absent(),
+    this.url = const Value.absent(),
+    this.title = const Value.absent(),
+    this.html = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.savedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BrowserOfflinePagesCompanion.insert({
+    required String key,
+    required String url,
+    this.title = const Value.absent(),
+    this.html = const Value.absent(),
+    this.sizeBytes = const Value.absent(),
+    this.savedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       url = Value(url);
+  static Insertable<BrowserOfflinePage> custom({
+    Expression<String>? key,
+    Expression<String>? url,
+    Expression<String>? title,
+    Expression<String>? html,
+    Expression<int>? sizeBytes,
+    Expression<int>? savedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (url != null) 'url': url,
+      if (title != null) 'title': title,
+      if (html != null) 'html': html,
+      if (sizeBytes != null) 'size_bytes': sizeBytes,
+      if (savedAt != null) 'saved_at': savedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BrowserOfflinePagesCompanion copyWith({
+    Value<String>? key,
+    Value<String>? url,
+    Value<String?>? title,
+    Value<String?>? html,
+    Value<int?>? sizeBytes,
+    Value<int?>? savedAt,
+    Value<int>? rowid,
+  }) {
+    return BrowserOfflinePagesCompanion(
+      key: key ?? this.key,
+      url: url ?? this.url,
+      title: title ?? this.title,
+      html: html ?? this.html,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      savedAt: savedAt ?? this.savedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (html.present) {
+      map['html'] = Variable<String>(html.value);
+    }
+    if (sizeBytes.present) {
+      map['size_bytes'] = Variable<int>(sizeBytes.value);
+    }
+    if (savedAt.present) {
+      map['saved_at'] = Variable<int>(savedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BrowserOfflinePagesCompanion(')
+          ..write('key: $key, ')
+          ..write('url: $url, ')
+          ..write('title: $title, ')
+          ..write('html: $html, ')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('savedAt: $savedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -15273,6 +17931,17 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $QrHistoryTable qrHistory = $QrHistoryTable(this);
   late final $QrTemplateTable qrTemplate = $QrTemplateTable(this);
   late final $FileTransferTable fileTransfer = $FileTransferTable(this);
+  late final $BrowserTabsTable browserTabs = $BrowserTabsTable(this);
+  late final $BrowserPinnedTable browserPinned = $BrowserPinnedTable(this);
+  late final $BrowserBookmarksTable browserBookmarks = $BrowserBookmarksTable(
+    this,
+  );
+  late final $BrowserHistoryTable browserHistory = $BrowserHistoryTable(this);
+  late final $BrowserDownloadsTable browserDownloads = $BrowserDownloadsTable(
+    this,
+  );
+  late final $BrowserOfflinePagesTable browserOfflinePages =
+      $BrowserOfflinePagesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -15304,6 +17973,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     qrHistory,
     qrTemplate,
     fileTransfer,
+    browserTabs,
+    browserPinned,
+    browserBookmarks,
+    browserHistory,
+    browserDownloads,
+    browserOfflinePages,
   ];
 }
 
@@ -23027,6 +25702,1475 @@ typedef $$FileTransferTableProcessedTableManager =
       FileTransferData,
       PrefetchHooks Function()
     >;
+typedef $$BrowserTabsTableCreateCompanionBuilder =
+    BrowserTabsCompanion Function({
+      required String key,
+      Value<String?> url,
+      Value<String?> title,
+      Value<int?> position,
+      Value<int?> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$BrowserTabsTableUpdateCompanionBuilder =
+    BrowserTabsCompanion Function({
+      Value<String> key,
+      Value<String?> url,
+      Value<String?> title,
+      Value<int?> position,
+      Value<int?> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$BrowserTabsTableFilterComposer
+    extends Composer<_$AppDatabase, $BrowserTabsTable> {
+  $$BrowserTabsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BrowserTabsTableOrderingComposer
+    extends Composer<_$AppDatabase, $BrowserTabsTable> {
+  $$BrowserTabsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BrowserTabsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BrowserTabsTable> {
+  $$BrowserTabsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$BrowserTabsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BrowserTabsTable,
+          BrowserTab,
+          $$BrowserTabsTableFilterComposer,
+          $$BrowserTabsTableOrderingComposer,
+          $$BrowserTabsTableAnnotationComposer,
+          $$BrowserTabsTableCreateCompanionBuilder,
+          $$BrowserTabsTableUpdateCompanionBuilder,
+          (
+            BrowserTab,
+            BaseReferences<_$AppDatabase, $BrowserTabsTable, BrowserTab>,
+          ),
+          BrowserTab,
+          PrefetchHooks Function()
+        > {
+  $$BrowserTabsTableTableManager(_$AppDatabase db, $BrowserTabsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BrowserTabsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BrowserTabsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BrowserTabsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<int?> position = const Value.absent(),
+                Value<int?> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserTabsCompanion(
+                key: key,
+                url: url,
+                title: title,
+                position: position,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                Value<String?> url = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<int?> position = const Value.absent(),
+                Value<int?> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserTabsCompanion.insert(
+                key: key,
+                url: url,
+                title: title,
+                position: position,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$BrowserTabsTable, BrowserTab>(table),
+                  BaseReferences<_$AppDatabase, $BrowserTabsTable, BrowserTab>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BrowserTabsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BrowserTabsTable,
+      BrowserTab,
+      $$BrowserTabsTableFilterComposer,
+      $$BrowserTabsTableOrderingComposer,
+      $$BrowserTabsTableAnnotationComposer,
+      $$BrowserTabsTableCreateCompanionBuilder,
+      $$BrowserTabsTableUpdateCompanionBuilder,
+      (
+        BrowserTab,
+        BaseReferences<_$AppDatabase, $BrowserTabsTable, BrowserTab>,
+      ),
+      BrowserTab,
+      PrefetchHooks Function()
+    >;
+typedef $$BrowserPinnedTableCreateCompanionBuilder =
+    BrowserPinnedCompanion Function({
+      required String key,
+      Value<String?> title,
+      Value<String?> url,
+      Value<String?> letter,
+      Value<String?> color,
+      Value<int?> position,
+      Value<int?> addedAt,
+      Value<int> rowid,
+    });
+typedef $$BrowserPinnedTableUpdateCompanionBuilder =
+    BrowserPinnedCompanion Function({
+      Value<String> key,
+      Value<String?> title,
+      Value<String?> url,
+      Value<String?> letter,
+      Value<String?> color,
+      Value<int?> position,
+      Value<int?> addedAt,
+      Value<int> rowid,
+    });
+
+class $$BrowserPinnedTableFilterComposer
+    extends Composer<_$AppDatabase, $BrowserPinnedTable> {
+  $$BrowserPinnedTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get letter => $composableBuilder(
+    column: $table.letter,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BrowserPinnedTableOrderingComposer
+    extends Composer<_$AppDatabase, $BrowserPinnedTable> {
+  $$BrowserPinnedTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get letter => $composableBuilder(
+    column: $table.letter,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BrowserPinnedTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BrowserPinnedTable> {
+  $$BrowserPinnedTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get letter =>
+      $composableBuilder(column: $table.letter, builder: (column) => column);
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<int> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+}
+
+class $$BrowserPinnedTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BrowserPinnedTable,
+          BrowserPinnedData,
+          $$BrowserPinnedTableFilterComposer,
+          $$BrowserPinnedTableOrderingComposer,
+          $$BrowserPinnedTableAnnotationComposer,
+          $$BrowserPinnedTableCreateCompanionBuilder,
+          $$BrowserPinnedTableUpdateCompanionBuilder,
+          (
+            BrowserPinnedData,
+            BaseReferences<
+              _$AppDatabase,
+              $BrowserPinnedTable,
+              BrowserPinnedData
+            >,
+          ),
+          BrowserPinnedData,
+          PrefetchHooks Function()
+        > {
+  $$BrowserPinnedTableTableManager(_$AppDatabase db, $BrowserPinnedTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BrowserPinnedTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BrowserPinnedTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BrowserPinnedTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<String?> letter = const Value.absent(),
+                Value<String?> color = const Value.absent(),
+                Value<int?> position = const Value.absent(),
+                Value<int?> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserPinnedCompanion(
+                key: key,
+                title: title,
+                url: url,
+                letter: letter,
+                color: color,
+                position: position,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                Value<String?> title = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<String?> letter = const Value.absent(),
+                Value<String?> color = const Value.absent(),
+                Value<int?> position = const Value.absent(),
+                Value<int?> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserPinnedCompanion.insert(
+                key: key,
+                title: title,
+                url: url,
+                letter: letter,
+                color: color,
+                position: position,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$BrowserPinnedTable, BrowserPinnedData>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $BrowserPinnedTable,
+                    BrowserPinnedData
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BrowserPinnedTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BrowserPinnedTable,
+      BrowserPinnedData,
+      $$BrowserPinnedTableFilterComposer,
+      $$BrowserPinnedTableOrderingComposer,
+      $$BrowserPinnedTableAnnotationComposer,
+      $$BrowserPinnedTableCreateCompanionBuilder,
+      $$BrowserPinnedTableUpdateCompanionBuilder,
+      (
+        BrowserPinnedData,
+        BaseReferences<_$AppDatabase, $BrowserPinnedTable, BrowserPinnedData>,
+      ),
+      BrowserPinnedData,
+      PrefetchHooks Function()
+    >;
+typedef $$BrowserBookmarksTableCreateCompanionBuilder =
+    BrowserBookmarksCompanion Function({
+      required String key,
+      Value<String?> title,
+      Value<String?> url,
+      Value<String?> isFolder,
+      Value<String?> parentKey,
+      Value<int?> position,
+      Value<int?> createdAt,
+      Value<int> rowid,
+    });
+typedef $$BrowserBookmarksTableUpdateCompanionBuilder =
+    BrowserBookmarksCompanion Function({
+      Value<String> key,
+      Value<String?> title,
+      Value<String?> url,
+      Value<String?> isFolder,
+      Value<String?> parentKey,
+      Value<int?> position,
+      Value<int?> createdAt,
+      Value<int> rowid,
+    });
+
+class $$BrowserBookmarksTableFilterComposer
+    extends Composer<_$AppDatabase, $BrowserBookmarksTable> {
+  $$BrowserBookmarksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get isFolder => $composableBuilder(
+    column: $table.isFolder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get parentKey => $composableBuilder(
+    column: $table.parentKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BrowserBookmarksTableOrderingComposer
+    extends Composer<_$AppDatabase, $BrowserBookmarksTable> {
+  $$BrowserBookmarksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get isFolder => $composableBuilder(
+    column: $table.isFolder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get parentKey => $composableBuilder(
+    column: $table.parentKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BrowserBookmarksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BrowserBookmarksTable> {
+  $$BrowserBookmarksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get isFolder =>
+      $composableBuilder(column: $table.isFolder, builder: (column) => column);
+
+  GeneratedColumn<String> get parentKey =>
+      $composableBuilder(column: $table.parentKey, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$BrowserBookmarksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BrowserBookmarksTable,
+          BrowserBookmark,
+          $$BrowserBookmarksTableFilterComposer,
+          $$BrowserBookmarksTableOrderingComposer,
+          $$BrowserBookmarksTableAnnotationComposer,
+          $$BrowserBookmarksTableCreateCompanionBuilder,
+          $$BrowserBookmarksTableUpdateCompanionBuilder,
+          (
+            BrowserBookmark,
+            BaseReferences<
+              _$AppDatabase,
+              $BrowserBookmarksTable,
+              BrowserBookmark
+            >,
+          ),
+          BrowserBookmark,
+          PrefetchHooks Function()
+        > {
+  $$BrowserBookmarksTableTableManager(
+    _$AppDatabase db,
+    $BrowserBookmarksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BrowserBookmarksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BrowserBookmarksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BrowserBookmarksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<String?> isFolder = const Value.absent(),
+                Value<String?> parentKey = const Value.absent(),
+                Value<int?> position = const Value.absent(),
+                Value<int?> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserBookmarksCompanion(
+                key: key,
+                title: title,
+                url: url,
+                isFolder: isFolder,
+                parentKey: parentKey,
+                position: position,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                Value<String?> title = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<String?> isFolder = const Value.absent(),
+                Value<String?> parentKey = const Value.absent(),
+                Value<int?> position = const Value.absent(),
+                Value<int?> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserBookmarksCompanion.insert(
+                key: key,
+                title: title,
+                url: url,
+                isFolder: isFolder,
+                parentKey: parentKey,
+                position: position,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$BrowserBookmarksTable, BrowserBookmark>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $BrowserBookmarksTable,
+                    BrowserBookmark
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BrowserBookmarksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BrowserBookmarksTable,
+      BrowserBookmark,
+      $$BrowserBookmarksTableFilterComposer,
+      $$BrowserBookmarksTableOrderingComposer,
+      $$BrowserBookmarksTableAnnotationComposer,
+      $$BrowserBookmarksTableCreateCompanionBuilder,
+      $$BrowserBookmarksTableUpdateCompanionBuilder,
+      (
+        BrowserBookmark,
+        BaseReferences<_$AppDatabase, $BrowserBookmarksTable, BrowserBookmark>,
+      ),
+      BrowserBookmark,
+      PrefetchHooks Function()
+    >;
+typedef $$BrowserHistoryTableCreateCompanionBuilder =
+    BrowserHistoryCompanion Function({
+      required String key,
+      Value<String?> title,
+      Value<String?> url,
+      Value<int?> visitedAt,
+      Value<int?> visitCount,
+      Value<int> rowid,
+    });
+typedef $$BrowserHistoryTableUpdateCompanionBuilder =
+    BrowserHistoryCompanion Function({
+      Value<String> key,
+      Value<String?> title,
+      Value<String?> url,
+      Value<int?> visitedAt,
+      Value<int?> visitCount,
+      Value<int> rowid,
+    });
+
+class $$BrowserHistoryTableFilterComposer
+    extends Composer<_$AppDatabase, $BrowserHistoryTable> {
+  $$BrowserHistoryTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get visitedAt => $composableBuilder(
+    column: $table.visitedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get visitCount => $composableBuilder(
+    column: $table.visitCount,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BrowserHistoryTableOrderingComposer
+    extends Composer<_$AppDatabase, $BrowserHistoryTable> {
+  $$BrowserHistoryTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get visitedAt => $composableBuilder(
+    column: $table.visitedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get visitCount => $composableBuilder(
+    column: $table.visitCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BrowserHistoryTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BrowserHistoryTable> {
+  $$BrowserHistoryTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<int> get visitedAt =>
+      $composableBuilder(column: $table.visitedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get visitCount => $composableBuilder(
+    column: $table.visitCount,
+    builder: (column) => column,
+  );
+}
+
+class $$BrowserHistoryTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BrowserHistoryTable,
+          BrowserHistoryData,
+          $$BrowserHistoryTableFilterComposer,
+          $$BrowserHistoryTableOrderingComposer,
+          $$BrowserHistoryTableAnnotationComposer,
+          $$BrowserHistoryTableCreateCompanionBuilder,
+          $$BrowserHistoryTableUpdateCompanionBuilder,
+          (
+            BrowserHistoryData,
+            BaseReferences<
+              _$AppDatabase,
+              $BrowserHistoryTable,
+              BrowserHistoryData
+            >,
+          ),
+          BrowserHistoryData,
+          PrefetchHooks Function()
+        > {
+  $$BrowserHistoryTableTableManager(
+    _$AppDatabase db,
+    $BrowserHistoryTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BrowserHistoryTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BrowserHistoryTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BrowserHistoryTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<int?> visitedAt = const Value.absent(),
+                Value<int?> visitCount = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserHistoryCompanion(
+                key: key,
+                title: title,
+                url: url,
+                visitedAt: visitedAt,
+                visitCount: visitCount,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                Value<String?> title = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<int?> visitedAt = const Value.absent(),
+                Value<int?> visitCount = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserHistoryCompanion.insert(
+                key: key,
+                title: title,
+                url: url,
+                visitedAt: visitedAt,
+                visitCount: visitCount,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$BrowserHistoryTable, BrowserHistoryData>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $BrowserHistoryTable,
+                    BrowserHistoryData
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BrowserHistoryTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BrowserHistoryTable,
+      BrowserHistoryData,
+      $$BrowserHistoryTableFilterComposer,
+      $$BrowserHistoryTableOrderingComposer,
+      $$BrowserHistoryTableAnnotationComposer,
+      $$BrowserHistoryTableCreateCompanionBuilder,
+      $$BrowserHistoryTableUpdateCompanionBuilder,
+      (
+        BrowserHistoryData,
+        BaseReferences<_$AppDatabase, $BrowserHistoryTable, BrowserHistoryData>,
+      ),
+      BrowserHistoryData,
+      PrefetchHooks Function()
+    >;
+typedef $$BrowserDownloadsTableCreateCompanionBuilder =
+    BrowserDownloadsCompanion Function({
+      required String key,
+      required String url,
+      Value<String?> filename,
+      Value<String?> mimeType,
+      Value<int?> sizeBytes,
+      Value<String> status,
+      Value<String?> localPath,
+      Value<int?> createdAt,
+      Value<int?> completedAt,
+      Value<int> rowid,
+    });
+typedef $$BrowserDownloadsTableUpdateCompanionBuilder =
+    BrowserDownloadsCompanion Function({
+      Value<String> key,
+      Value<String> url,
+      Value<String?> filename,
+      Value<String?> mimeType,
+      Value<int?> sizeBytes,
+      Value<String> status,
+      Value<String?> localPath,
+      Value<int?> createdAt,
+      Value<int?> completedAt,
+      Value<int> rowid,
+    });
+
+class $$BrowserDownloadsTableFilterComposer
+    extends Composer<_$AppDatabase, $BrowserDownloadsTable> {
+  $$BrowserDownloadsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get filename => $composableBuilder(
+    column: $table.filename,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localPath => $composableBuilder(
+    column: $table.localPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BrowserDownloadsTableOrderingComposer
+    extends Composer<_$AppDatabase, $BrowserDownloadsTable> {
+  $$BrowserDownloadsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get filename => $composableBuilder(
+    column: $table.filename,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localPath => $composableBuilder(
+    column: $table.localPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BrowserDownloadsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BrowserDownloadsTable> {
+  $$BrowserDownloadsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get filename =>
+      $composableBuilder(column: $table.filename, builder: (column) => column);
+
+  GeneratedColumn<String> get mimeType =>
+      $composableBuilder(column: $table.mimeType, builder: (column) => column);
+
+  GeneratedColumn<int> get sizeBytes =>
+      $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get localPath =>
+      $composableBuilder(column: $table.localPath, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$BrowserDownloadsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BrowserDownloadsTable,
+          BrowserDownload,
+          $$BrowserDownloadsTableFilterComposer,
+          $$BrowserDownloadsTableOrderingComposer,
+          $$BrowserDownloadsTableAnnotationComposer,
+          $$BrowserDownloadsTableCreateCompanionBuilder,
+          $$BrowserDownloadsTableUpdateCompanionBuilder,
+          (
+            BrowserDownload,
+            BaseReferences<
+              _$AppDatabase,
+              $BrowserDownloadsTable,
+              BrowserDownload
+            >,
+          ),
+          BrowserDownload,
+          PrefetchHooks Function()
+        > {
+  $$BrowserDownloadsTableTableManager(
+    _$AppDatabase db,
+    $BrowserDownloadsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BrowserDownloadsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BrowserDownloadsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BrowserDownloadsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<String?> filename = const Value.absent(),
+                Value<String?> mimeType = const Value.absent(),
+                Value<int?> sizeBytes = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> localPath = const Value.absent(),
+                Value<int?> createdAt = const Value.absent(),
+                Value<int?> completedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserDownloadsCompanion(
+                key: key,
+                url: url,
+                filename: filename,
+                mimeType: mimeType,
+                sizeBytes: sizeBytes,
+                status: status,
+                localPath: localPath,
+                createdAt: createdAt,
+                completedAt: completedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                required String url,
+                Value<String?> filename = const Value.absent(),
+                Value<String?> mimeType = const Value.absent(),
+                Value<int?> sizeBytes = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> localPath = const Value.absent(),
+                Value<int?> createdAt = const Value.absent(),
+                Value<int?> completedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserDownloadsCompanion.insert(
+                key: key,
+                url: url,
+                filename: filename,
+                mimeType: mimeType,
+                sizeBytes: sizeBytes,
+                status: status,
+                localPath: localPath,
+                createdAt: createdAt,
+                completedAt: completedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$BrowserDownloadsTable, BrowserDownload>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $BrowserDownloadsTable,
+                    BrowserDownload
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BrowserDownloadsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BrowserDownloadsTable,
+      BrowserDownload,
+      $$BrowserDownloadsTableFilterComposer,
+      $$BrowserDownloadsTableOrderingComposer,
+      $$BrowserDownloadsTableAnnotationComposer,
+      $$BrowserDownloadsTableCreateCompanionBuilder,
+      $$BrowserDownloadsTableUpdateCompanionBuilder,
+      (
+        BrowserDownload,
+        BaseReferences<_$AppDatabase, $BrowserDownloadsTable, BrowserDownload>,
+      ),
+      BrowserDownload,
+      PrefetchHooks Function()
+    >;
+typedef $$BrowserOfflinePagesTableCreateCompanionBuilder =
+    BrowserOfflinePagesCompanion Function({
+      required String key,
+      required String url,
+      Value<String?> title,
+      Value<String?> html,
+      Value<int?> sizeBytes,
+      Value<int?> savedAt,
+      Value<int> rowid,
+    });
+typedef $$BrowserOfflinePagesTableUpdateCompanionBuilder =
+    BrowserOfflinePagesCompanion Function({
+      Value<String> key,
+      Value<String> url,
+      Value<String?> title,
+      Value<String?> html,
+      Value<int?> sizeBytes,
+      Value<int?> savedAt,
+      Value<int> rowid,
+    });
+
+class $$BrowserOfflinePagesTableFilterComposer
+    extends Composer<_$AppDatabase, $BrowserOfflinePagesTable> {
+  $$BrowserOfflinePagesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get html => $composableBuilder(
+    column: $table.html,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get savedAt => $composableBuilder(
+    column: $table.savedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BrowserOfflinePagesTableOrderingComposer
+    extends Composer<_$AppDatabase, $BrowserOfflinePagesTable> {
+  $$BrowserOfflinePagesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get html => $composableBuilder(
+    column: $table.html,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sizeBytes => $composableBuilder(
+    column: $table.sizeBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get savedAt => $composableBuilder(
+    column: $table.savedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BrowserOfflinePagesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BrowserOfflinePagesTable> {
+  $$BrowserOfflinePagesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get html =>
+      $composableBuilder(column: $table.html, builder: (column) => column);
+
+  GeneratedColumn<int> get sizeBytes =>
+      $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
+
+  GeneratedColumn<int> get savedAt =>
+      $composableBuilder(column: $table.savedAt, builder: (column) => column);
+}
+
+class $$BrowserOfflinePagesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BrowserOfflinePagesTable,
+          BrowserOfflinePage,
+          $$BrowserOfflinePagesTableFilterComposer,
+          $$BrowserOfflinePagesTableOrderingComposer,
+          $$BrowserOfflinePagesTableAnnotationComposer,
+          $$BrowserOfflinePagesTableCreateCompanionBuilder,
+          $$BrowserOfflinePagesTableUpdateCompanionBuilder,
+          (
+            BrowserOfflinePage,
+            BaseReferences<
+              _$AppDatabase,
+              $BrowserOfflinePagesTable,
+              BrowserOfflinePage
+            >,
+          ),
+          BrowserOfflinePage,
+          PrefetchHooks Function()
+        > {
+  $$BrowserOfflinePagesTableTableManager(
+    _$AppDatabase db,
+    $BrowserOfflinePagesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BrowserOfflinePagesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BrowserOfflinePagesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$BrowserOfflinePagesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<String?> html = const Value.absent(),
+                Value<int?> sizeBytes = const Value.absent(),
+                Value<int?> savedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserOfflinePagesCompanion(
+                key: key,
+                url: url,
+                title: title,
+                html: html,
+                sizeBytes: sizeBytes,
+                savedAt: savedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                required String url,
+                Value<String?> title = const Value.absent(),
+                Value<String?> html = const Value.absent(),
+                Value<int?> sizeBytes = const Value.absent(),
+                Value<int?> savedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BrowserOfflinePagesCompanion.insert(
+                key: key,
+                url: url,
+                title: title,
+                html: html,
+                sizeBytes: sizeBytes,
+                savedAt: savedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$BrowserOfflinePagesTable, BrowserOfflinePage>(
+                    table,
+                  ),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $BrowserOfflinePagesTable,
+                    BrowserOfflinePage
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BrowserOfflinePagesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BrowserOfflinePagesTable,
+      BrowserOfflinePage,
+      $$BrowserOfflinePagesTableFilterComposer,
+      $$BrowserOfflinePagesTableOrderingComposer,
+      $$BrowserOfflinePagesTableAnnotationComposer,
+      $$BrowserOfflinePagesTableCreateCompanionBuilder,
+      $$BrowserOfflinePagesTableUpdateCompanionBuilder,
+      (
+        BrowserOfflinePage,
+        BaseReferences<
+          _$AppDatabase,
+          $BrowserOfflinePagesTable,
+          BrowserOfflinePage
+        >,
+      ),
+      BrowserOfflinePage,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -23083,4 +27227,16 @@ class $AppDatabaseManager {
       $$QrTemplateTableTableManager(_db, _db.qrTemplate);
   $$FileTransferTableTableManager get fileTransfer =>
       $$FileTransferTableTableManager(_db, _db.fileTransfer);
+  $$BrowserTabsTableTableManager get browserTabs =>
+      $$BrowserTabsTableTableManager(_db, _db.browserTabs);
+  $$BrowserPinnedTableTableManager get browserPinned =>
+      $$BrowserPinnedTableTableManager(_db, _db.browserPinned);
+  $$BrowserBookmarksTableTableManager get browserBookmarks =>
+      $$BrowserBookmarksTableTableManager(_db, _db.browserBookmarks);
+  $$BrowserHistoryTableTableManager get browserHistory =>
+      $$BrowserHistoryTableTableManager(_db, _db.browserHistory);
+  $$BrowserDownloadsTableTableManager get browserDownloads =>
+      $$BrowserDownloadsTableTableManager(_db, _db.browserDownloads);
+  $$BrowserOfflinePagesTableTableManager get browserOfflinePages =>
+      $$BrowserOfflinePagesTableTableManager(_db, _db.browserOfflinePages);
 }
