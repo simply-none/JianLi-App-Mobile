@@ -1,6 +1,11 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-19（**修复「浏览器首页搜索 / 顶部地址栏点不动」**）：用户报「首页的搜索和顶部的搜索栏无法点击」。
+  - **根因（焦点回灌死锁）**：地址栏非输入态渲染的是 `Text`（没挂 `TextField`），`_addressFocus` 此时**未挂到任何 widget**；点药丸 `focusNode.requestFocus()` 与点首页搜索 `onTapSearch: () => _addressFocus.requestFocus()` 都是对「未挂载节点」请求焦点 → 无效 → `hasFocus` 恒 false → `_onFocusChanged` 永远不把 `_editing` 翻成 `true` → 两个入口都「点不动」。
+  - **修法**：页面新增 `_enterEditing()` **直接 `setState(_editing=true)`** 并提前把地址/选区写进 `controller`；`_AddressInput` 的 `TextField` 加 `autofocus:true` 在挂载时抢焦点（页面侧再 `addPostFrameCallback(requestFocus)` 兜底）。`BrowserAddressBar` 新增 `onActivate` 回调（页面传 `_enterEditing`），非输入态点药丸走 `onActivate` 而非裸 `requestFocus`；首页 `onTapSearch` 改为 `_enterEditing`。退出输入态仍靠 `_addressFocus.unfocus()` → `_onFocusChanged` 翻回 false（TextField 已挂载，路径正常）。
+  - 校验（Agent 本轮已跑）：`dart analyze lib/features/browser/components/browser_address_bar.dart lib/features/browser/browser_page.dart` → **0 errors / 0 warnings**（仅 6 条与本次无关的既有 `deprecated_member_use`，行 390–828 的页内查找 API）。真机待验：点首页搜索 / 点地址栏药丸都能进入输入态并弹出键盘、回填当前网址并全选。
+  - 文档回写：`modules/browser.md` 红线 #2 加交叉引用 + 框架坑新增 **红线 #19**（地址栏点击死锁）；本条目。
 - 2026-09-19（续·**底部抽屉键盘遮挡排查 + 规范写回**）：用户指令「排查所有的底部抽屉，都改成这个逻辑，同时技能写回」。
   - **审计结论**：全工程遍历每个 `showFSheet` + `resizeToAvoidBottomInset` + `SheetSize`，并按输入控件（`SheetInputBox`/`SheetMultilineBox`/`TextField`/`FTextField`）交叉分类。**只有 1 个抽屉仍踩键盘遮挡 bug** = `browser_pinned_page._showSiteSheet`（md 档、双输入框「名称+网址」），已修为 `resizeToAvoidBottomInset: true`（含解释注释）。`browser_prompt._showBrowserPrompt`（上一轮已修为 `true`）同属此类。其余含输入框的抽屉**全是 lg 档**（`todo_sheets`/`habit`/`note_sheets`/`epub_reader_page` 3 处 + `annotation_sheet` + `conversation_page` + `showRecordProgressSheet`），按三档制传 `false` 正确、无需改动。落页内输入框（`file_transfer` 手动 IP、`sync`/`qr`/`pomodoro`/`browser_address_bar`/`pinned_search_row` 等）本就不在抽屉里，不在排查范围。
   - **「这个逻辑」的精确定义**（避免误读成「所有抽屉都设 true」——那会破坏 lg 档）：`resizeToAvoidBottomInset` 取值与「是否含输入」强相关、**与档位无必然绑定**——lg 一律 `false`（键盘覆盖 + 中间滚动区滚入焦点）；sm/md **含输入** `true`（`sheetMaxHeight` 扣键盘高、抬到键盘上方）、**不含输入** `false`（不弹键盘无需抬升）。机制根因：`sheetMaxHeight` 只在 `MediaQuery.viewInsets.bottom` 非零时才扣键盘，而该值只在 `resizeToAvoidBottomInset: true` 时非零；lg 走 `sheetMaxHeightFull`（屏幕高×0.8，恒不扣键盘）故不受该 flag 影响。

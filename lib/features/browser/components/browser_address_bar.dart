@@ -25,6 +25,7 @@ class BrowserAddressBar extends StatelessWidget {
     required this.onSubmit,
     required this.onCancel,
     this.onClear,
+    this.onActivate,
   });
 
   final TextEditingController controller;
@@ -47,6 +48,11 @@ class BrowserAddressBar extends StatelessWidget {
 
   /// 点 ✕：清空输入（保留输入态）
   final VoidCallback? onClear;
+
+  /// 非输入态点药丸 → 进入输入态（由页面持有：直接翻 editing 状态，
+  /// 避免「requestFocus 一个未挂载的节点」而永远进不了输入态）。
+  /// 为 null 时退回 `focusNode.requestFocus` 兜底。
+  final VoidCallback? onActivate;
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +84,9 @@ class BrowserAddressBar extends StatelessWidget {
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   // 非输入态点一下即进入输入态（对齐 Chrome：点地址栏开始输入）
-                  onTap: editing ? null : focusNode.requestFocus,
+                  // ⚠️ 必须走 onActivate（页面直接翻 editing），不能只 requestFocus——
+                  // 非输入态时 TextField 未挂载，requestFocus 作用于未挂载的节点会失效。
+                  onTap: editing ? null : (onActivate ?? focusNode.requestFocus),
                   child: Container(
                     height: 44,
                     padding: const EdgeInsets.only(left: 14, right: 8),
@@ -199,6 +207,9 @@ class _AddressInput extends StatelessWidget {
       child: TextField(
         controller: controller,
         focusNode: focusNode,
+        // ⚠️ 进输入态时本 TextField 是「刚挂载」的（非输入态是纯 Text），
+        // 用 autofocus 在挂载瞬间抢焦点；页面侧也会显式 requestFocus 兜底。
+        autofocus: true,
         onSubmitted: onSubmit,
         textInputAction: TextInputAction.go,
         keyboardType: TextInputType.url,

@@ -258,6 +258,32 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
     }
   }
 
+  /// 进入输入态：直接用状态驱动，而不是等「焦点回灌」再翻 `_editing`。
+  ///
+  /// ⚠️ 关键修复：非输入态时地址栏渲染的是 `Text`（没有挂载 `TextField`），
+  /// 此时 `_addressFocus` 这个 FocusNode **没有挂到任何 widget**——
+  /// 直接 `requestFocus()` 作用于「未挂载的节点」什么都不做，
+  /// `hasFocus` 永远是 false → `_onFocusChanged` 永远不把 `_editing` 翻成 true，
+  /// 于是「点地址栏」「点首页搜索」都没反应（表现为无法点击）。
+  /// 故进入输入态必须在此**直接 setState(_editing=true)**，
+  /// 让 `_AddressInput` 挂载、由 autofocus 抢焦点；文本与选区提前写入 controller。
+  void _enterEditing() {
+    if (!mounted || _editing) return;
+    setState(() {
+      _editing = true;
+      // 回填当前地址并全选（TextField 此刻尚未挂载，但 controller 已持有文本与选区）
+      _address.text = _currentUrl == kBrowserBlankUrl ? '' : _currentUrl;
+      _address.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _address.text.length,
+      );
+    });
+    // 兜底：下一帧节点已挂载，再显式请求一次焦点（autofocus 已覆盖，双保险）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _addressFocus.requestFocus();
+    });
+  }
+
   void _exitEditing() {
     _addressFocus.unfocus();
     if (mounted) setState(() => _editing = false);
@@ -699,7 +725,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
             child: BrowserNewTabHome(
               sites: pinned,
               showPinned: settings.showPinnedOnHome,
-              onTapSearch: () => _addressFocus.requestFocus(),
+              onTapSearch: () => _enterEditing(),
               onOpenSite: (site) {
                 final url = (site.url ?? '').trim();
                 if (url.isNotEmpty) unawaited(_load(normalizeUrl(url)));
@@ -780,6 +806,8 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
                 progress: _progress,
                 onSubmit: (raw) => unawaited(_submitInput(raw)),
                 onCancel: _exitEditing,
+                // ⚠️ 点药丸进输入态必须走 _enterEditing（直接翻状态），不能只 requestFocus
+                onActivate: _enterEditing,
               ),
               Expanded(
                 child: Stack(

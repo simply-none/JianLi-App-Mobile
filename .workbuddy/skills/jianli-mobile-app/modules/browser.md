@@ -84,7 +84,7 @@ lib/features/browser/
 ## 四、必须遵守的红线（本域特有）
 
 1. **单 WebView 多标签**：全程只有一个 `InAppWebView`，切标签 = 重新 `loadUrl`，**不要做多 WebView 常驻**（内存）。空白标签用 `about:blank`（`kBrowserBlankUrl`）表示，首页是**盖在 WebView 之上的覆盖层**（WebView 不销毁，切回旧标签能继续用）。
-2. **首页没有自己的输入框**：`_SearchEntry` 只是「点击区」→ 让顶部地址栏进入输入态。**统一由地址栏承担输入**，否则会出现「同一个输入在不同入口行为不同」。
+2. **首页没有自己的输入框**：`_SearchEntry` 只是「点击区」→ 让顶部地址栏进入输入态。**统一由地址栏承担输入**，否则会出现「同一个输入在不同入口行为不同」。**⚠️ 进入输入态必须让页面 `setState(_editing=true)` 再挂载 `TextField` 抢焦点，绝不能只 `focusNode.requestFocus()`（非输入态 `TextField` 未挂载，requestFocus 作用于未挂载节点会失效，表现为「点不动」）—— 详见红线 #19。**
 3. **导航唯一入口 `_load(url)`**；输入解析唯一入口 `resolveInput(raw, engine:, customTemplate:)`（`models/browser_models.dart`）。**不要在页面里另写一套 `looksLikeUrl` 判断**。
 4. **路由必须纯横向滑入**（`slidePage`，禁淡入）——WebView 平台视图对透明度动画敏感，淡入期间易空白。先例：`/ferry`。
 5. **抽屉内容自带 `Consumer`**（红线 #28）：`showFSheet` 的 builder 属于 Navigator overlay 子树，页面 `ref.watch` 不会让抽屉重建。已落地：`browser_tab_sheet.dart`、`browser_menu_sheet.dart`。
@@ -103,6 +103,7 @@ lib/features/browser/
 16. **`SheetSize` 定义在 `app/ui/sheet_surface.dart`，不在 `sheet_form.dart`** → 用 `SheetScaffold(size: SheetSize.md)` 的文件必须**两个都导**。`sheet_form.dart` 不会帮你 re-export。
 17. **`WebResourceRequest.url` 在 6.x 是非空类型**（写 `?.toString() ?? ''` 会有 `invalid_null_aware_operator` 警告）。`WebResourceResponse` 的 `headers`/`statusCode`/`reasonPhrase` **要么都给要么都不给**，只给一个会被原生化抛异常。
 18. **私有具名参数（Dart 3.6+）**：`required this._blockHosts` 是合法的，对外形参名仍是 `blockHosts`（下划线自动剥掉），调用点写法不变 —— 这就是 `prefer_initializing_formals` 想让你写的形态。
+19. **地址栏 / 首页搜索「点不动」= 焦点回灌死锁（2026-09-19 实踩，真机表现就是「无法点击」）**：地址栏**非输入态渲染的是 `Text`、没有挂载 `TextField`** → 此时 `_addressFocus` 这个 `FocusNode` **没有挂到任何 widget**。若点药丸 / 点首页搜索只调 `focusNode.requestFocus()`，是对「未挂载的节点」请求焦点 → 什么都不做 → `hasFocus` 恒 false → `_onFocusChanged` 永远不把 `_editing` 翻成 `true` → 地址栏永远停在常态、首页搜索永远进不了输入态，两种表现都是「点不动」。**修法（已落地）**：进入输入态必须**直接 `setState(_editing = true)`**（页面侧 `_enterEditing()`），让 `_AddressInput` 挂载、`TextField` 用 `autofocus: true` 抢焦点；文本与选区提前写进 `controller`，挂载即呈现。`BrowserAddressBar` 新增 `onActivate` 回调（页面传 `_enterEditing`），非输入态点药丸走 `onActivate` 而非裸 `requestFocus`；首页 `onTapSearch` 也从 `requestFocus` 改为 `_enterEditing`。⚠️ 退出输入态仍靠 `_addressFocus.unfocus()` → `_onFocusChanged` 把 `_editing` 翻回 false（这条路径正常，因为 TextField 已挂载）。
 
 ## 五、关键实现备注
 
