@@ -129,6 +129,18 @@ object SystemActionsChannel {
                         )
                     }
 
+                    // 路线 2 收口（2026-09-19）：登记表对账 + 清理孤儿时钟闹钟。
+                    // 删除/停用/改时间后，旧时钟闹钟必须跟着撤 —— 详见 removeSystemClockAlarm。
+                    "listSystemClockAlarms" ->
+                        result.success(listSystemClockAlarms(activity))
+
+                    "removeSystemClockAlarm" -> {
+                        val key = call.argument<String>("key") ?: ""
+                        val hour = call.argument<Number>("hour")?.toInt() ?: 0
+                        val minute = call.argument<Number>("minute")?.toInt() ?: 0
+                        result.success(removeSystemClockAlarm(activity, key, hour, minute))
+                    }
+
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
@@ -193,6 +205,79 @@ object SystemActionsChannel {
             Log.e("SystemActionsChannel", "setSystemClockAlarm failed", e)
             false
         }
+    }
+
+    /**
+     * 列出时钟闹钟登记表（key → hour/minute/days）。Dart 侧拿它和「现存启用中的
+     * 委托型提醒」做对账，找出孤儿闹钟再逐条 removeSystemClockAlarm。
+     */
+    private fun listSystemClockAlarms(context: Context): List<Map<String, Any?>> {
+        return try {
+            val prefs = context.getSharedPreferences(CLOCK_ALARM_PREF, Context.MODE_PRIVATE)
+            prefs.all.mapNotNull { (k, v) ->
+                val sig = v as? String ?: return@mapNotNull null
+                val p = sig.split("|")
+                mapOf(
+                    "key" to k,
+                    "hour" to (p.getOrNull(0)?.toIntOrNull() ?: 0),
+                    "minute" to (p.getOrNull(1)?.toIntOrNull() ?: 0),
+                    "days" to (p.getOrNull(2)?.split(",")
+                        ?.mapNotNull { it.toIntOrNull() } ?: emptyList<Int>()),
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("SystemActionsChannel", "listSystemClockAlarms failed", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * 清理一条孤儿时钟闹钟（提醒已删除 / 停用 / 改时间）。
+     *
+     * 用标准 `AlarmClock.ACTION_DISMISS_ALARM`（API 23+，AOSP 时钟合同）+ `ALARM_SEARCH_MODE_TIME`
+     * 按时间匹配撤销：AOSP DeskClock 系实现按「到点时刻的时:分相等」命中并静默撤销；
+     * **OEM 时钟不一定实现该 action** —— resolveActivity 判定支持才发，不支持返回 false
+     * （此时旧闹钟只能留在时钟里手动删，标签「渐离App·」前缀便于识别）。
+     * 登记表条目无论支持与否都移除：孤儿不再跟踪，也绝不能被 rescheduleAll 重写回去。
+     *
+     * 共享同一 HH:mm 的场景由 Dart 侧对账保证：只要还有存活的委托型提醒用这个时间，
+     * 就不会调到这里（时钟闹钟继续为存活提醒服务）。
+     */
+    private fun removeSystemClockAlarm(
+        context: Context,
+        key: String,
+        hour: Int,
+        minute: Int
+    ): Boolean {
+        return try {
+            val intent = Intent(AlarmClock.ACTION_DISMISS_ALARM).apply {
+                putExtra(AlarmClock.EXTRA_ALARM_SEARCH_MODE, AlarmClock.ALARM_SEARCH_MODE_TIME)
+                putExtra(AlarmClock.EXTRA_ALARM_SEARCH_MODE_TIME, nextOccurrenceMillis(hour, minute))
+                putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+            }
+            val supported = intent.resolveActivity(context.packageManager) != null
+            if (supported) context.startActivity(intent)
+            context.getSharedPreferences(CLOCK_ALARM_PREF, Context.MODE_PRIVATE)
+                .edit().remove(key).apply()
+            Log.i("SystemActionsChannel", "system clock alarm removed: key=$key supported=$supported")
+            supported
+        } catch (e: Exception) {
+            Log.e("SystemActionsChannel", "removeSystemClockAlarm failed", e)
+            false
+        }
+    }
+
+    /** 下一个 HH:mm 触发时刻（今天已过则明天；DISMISS 按时:分匹配，具体日期不影响命中） */
+    private fun nextOccurrenceMillis(hour: Int, minute: Int): Long {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, hour)
+        cal.set(java.util.Calendar.MINUTE, minute)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        if (cal.timeInMillis <= System.currentTimeMillis()) {
+            cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        return cal.timeInMillis
     }
 
     /** 是否已忽略电池优化（Android 6 以下无此概念，恒 true） */

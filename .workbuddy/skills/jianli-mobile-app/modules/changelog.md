@@ -1,6 +1,17 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-19（**「已删除提醒仍弹通知」补刀：reminder 漏了 hashCode 时代迁移 → 全局在排通知对账**）：用户追问通知送达类型是否覆盖——**上一轮只修了闹钟委托链，通知类确有漏网**。
+  - **根因**：① **stableId 改造（2026-09-16）前用 `String.hashCode` 排期的 awesome 周期通知**（repeats:true 永续）——hashCode 每次重启漂移且无法反推，habit/todo 仓库都有「rescheduleAll 显式取消旧 hashCode 残留」迁移、**唯独 reminder 漏了**；已删除提醒的旧计划永远没人取消，现存提醒也可能新旧双计划双响。② awesome「稍后提醒」贪睡通知 id = base+50000+毫秒随机（0..999），删除时未覆盖。
+  - **修法（反向对账，一次清完不再逐版本补迁移）**：新建 `lib/core/notifications/scheduled_sweep.dart::ScheduledSweep.sweepOrphans(db)` —— `AwesomeNotifications().listScheduledNotifications()` 枚举全部在排计划，id 不落在「现存数据可推出的合法段」内的一律 cancel。合法段 = 每个 key 的 `stableId(key)` 的 **base..base+7**（周变体）∪ **base+50000..base+50999**（贪睡段）；key 全集 = reminders 表**全量行 id（不过滤 source——习惯/待办托管提醒排期用的就是 reminders 表行 id，见 habit_repository.rescheduleAll 的 `r.id`）** + todos 表 key + countdowns 表 `'countdown:$key'` + 固定串 `pomodoro:end`/`pomodoro:now`。挂接 `ReminderRepository.rescheduleAll` 末尾（冷启动 healAlarmSchedules + 回前台都经过）。**宁可少杀不可误杀**：合法段放宽，误杀 = 某模块提醒不响 = 回归；扫前先跑各模块重排，刚排的计划必带合法 id。
+  - drift 细节：`listScheduledNotifications()` 返回 `List<NotificationModel>`，id 取 `n.content?.id`；sweep 文件要 `import 'package:drift/drift.dart'` 才能用 Expression 的 `|`。
+  - 校验：`dart analyze lib/core/notifications/scheduled_sweep.dart lib/features/reminder` → No issues found!。真机待验：重装后冷启动一次，已删除提醒的周期通知应不再弹出（hashCode 孤儿在启动即被清）。
+- 2026-09-19（**路线 2 收口：「已删除提醒仍弹」= 孤儿时钟闹钟，登记表对账 + ACTION_DISMISS_ALARM 自动清理**）：用户报「手机端弹出已删除内容的提醒」。
+  - **根因**：路线 2 把「闹钟送达 + 每天/每周」委托写入系统时钟 App 后，公开 API 删不掉时钟内闹钟（原注释承认的「已知代价」）→ **删除提醒 / 停用开关 / 改时间后，时钟里的旧闹钟继续每天响「渐离App·旧标题」**。`deleteReminder` 只取消了 awesome + 自建 setAlarmClock，对系统时钟委托闹钟零处理。
+  - **修法（对账式清理）**：① Kotlin `SystemActionsChannel` 新增 `listSystemClockAlarms`（登记表 entries → key/hour/minute/days）与 `removeSystemClockAlarm`（标准 **`AlarmClock.ACTION_DISMISS_ALARM`** + `EXTRA_ALARM_SEARCH_MODE=ALARM_SEARCH_MODE_TIME` + `EXTRA_ALARM_SEARCH_MODE_TIME`=下一触发时刻 + SKIP_UI，resolveActivity 判支持才发；**登记表条目无论支持与否都移除**，防 rescheduleAll 重写回去）；② Dart `ReminderRepository._reconcileClockAlarms()`：现存启用中的委托型提醒 HH:mm 集合 vs 登记表对账，不在集合的一律撤销。挂接 **deleteReminder / saveReminder（覆盖关开关、改时间、改送达方式）/ rescheduleAll（冷启动清历史遗留）** 三入口。
+  - **⚠️ 按 HH:mm 对账而非按提醒 id**：两个提醒共用同一时间时删掉其一**不能**撤钟（时钟闹钟还在为存活者服务）；DISMISS 也只能按时间匹配（时钟内部 id 第三方拿不到）。
+  - **兜底**：OEM 时钟可能不实现 ACTION_DISMISS_ALARM（AOSP DeskClock 系支持，API 23+）→ 撤不动时旧闹钟留时钟里手动删（标签「渐离App·」前缀），守护抽屉文案已同步。`deleteReminder` 顺带补贪睡码（±1000）兜底取消。
+  - 校验：`dart analyze lib/features/reminder lib/core/android/system_actions.dart` → No issues found!。Kotlin 交用户构建；真机待验：删除/停用 alarm 送达的每日提醒 → 时钟内闹钟应同步消失（支持的机型）。
 - 2026-09-19（**P0-4 真机实锤：静态快捷方式全部「已失效」——`${applicationId}` 不进 res/xml**）：真机长按图标四个快捷方式点着全报「该桌面快捷方式已经失效，请移除」。
   - **根因（aapt2 dump xmltree 解剖 app-debug.apk 实证）**：`res/xml/shortcuts.xml` 的 `android:targetPackage="${applicationId}"` 编译进 APK 后**仍是字面量 `"${applicationId}"`** —— AGP 的 manifest 占位符替换**只作用于 AndroidManifest.xml，不处理 res/xml 资源文件**。启动器拿假包名解析 intent 失败 → ROM 启动器报快捷方式失效。
   - **修法**：targetPackage 硬编码 `com.jianli.jianli_mobile_app`（本项目 applicationId 无 suffix；若将来加 applicationIdSuffix 记得同步）。快捷方式资源文件里的包名一律硬编码，勿信 manifest 占位符。

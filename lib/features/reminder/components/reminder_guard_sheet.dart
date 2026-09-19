@@ -266,8 +266,8 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
           _noteBlock(
             context,
             '「闹钟送达」的每天/每周提醒已直接写入系统时钟 App（标签以「渐离App」开头），'
-            '由系统触发、最可靠。注意：删除或修改提醒后，系统时钟里的旧闹钟不会自动消失，'
-            '请在时钟 App 中手动删除对应条目。',
+            '由系统触发、最可靠。删除/停用/修改提醒后会自动清理对应时钟闹钟；'
+            '若个别机型时钟不支持自动清理（旧闹钟仍残留），请在时钟 App 中手动删除对应条目。',
           ),
           const SizedBox(height: 18),
           _label(context, '厂商后台限制'),

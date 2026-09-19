@@ -123,8 +123,8 @@ Future<bool> cancelAlarmClock(int code) async {
 ///   每天 = 传全 7 天，每周 = 传所选周几；
 /// - 标签建议加「渐离App·」前缀，便于用户在时钟 App 里识别。
 ///
-/// ⚠️ **已知代价：公开 API 无法枚举/删除系统时钟里的闹钟** —— 删除/修改提醒后，
-/// 旧闹钟会留在时钟 App 里需用户手动删除（守护抽屉有说明）。写入失败（无时钟应用等）返回 false。
+/// ⚠️ 删除/停用/改时间后的孤儿时钟闹钟由 [removeSystemClockAlarm] 对账清理
+/// （OEM 时钟不支持 DISMISS 时仍需手动删，守护抽屉有说明）。写入失败（无时钟应用等）返回 false。
 Future<bool> setSystemClockAlarm({
   required String key,
   required int hour,
@@ -147,8 +147,44 @@ Future<bool> setSystemClockAlarm({
   }
 }
 
-/// 原生提醒排程诊断快照（「提醒为什么没响」的取证口）。///
-/// 真机上「到底排上没有」此前完全不可观测，只能靠现象猜。这里把原生的客观事实一次取回：
+/// 列出时钟闹钟登记表（key → hour/minute/days）。配合 [removeSystemClockAlarm]
+/// 做「孤儿时钟闹钟」对账：删除/停用/改时间后旧闹钟自动撤销（2026-09-19）。
+Future<List<Map<String, Object?>>> listSystemClockAlarms() async {
+  if (!_isAndroid) return const [];
+  try {
+    final raw = await _kChannel.invokeMethod('listSystemClockAlarms');
+    if (raw is List) {
+      return raw
+          .whereType<Map>()
+          .map((m) => m.map((k, v) => MapEntry(k.toString(), v)))
+          .toList();
+    }
+  } catch (_) {}
+  return const [];
+}
+
+/// 撤销一条孤儿时钟闹钟（提醒已删除/停用/改时间）：走标准 ACTION_DISMISS_ALARM
+/// 按时:分匹配静默撤销（OEM 时钟可能不支持 → 返回 false，只能手动删）。
+/// 登记表条目原生侧无论如何都会移除，防止 rescheduleAll 重写回去。
+Future<bool> removeSystemClockAlarm({
+  required String key,
+  required int hour,
+  required int minute,
+}) async {
+  if (!_isAndroid) return false;
+  try {
+    return await _kChannel.invokeMethod<bool>('removeSystemClockAlarm', {
+          'key': key,
+          'hour': hour,
+          'minute': minute,
+        }) ??
+        false;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// 原生提醒排程诊断快照（「提醒为什么没响」的取证口）。/// 真机上「到底排上没有」此前完全不可观测，只能靠现象猜。这里把原生的客观事实一次取回：
 /// - `scheduled`：原生认为已排上的闹钟条数（= `AlarmScheduler` 登记表大小）
 /// - `entries`：`code -> 触发时刻(ms)`，最近 8 条（可看出下一条是哪条、是否在预期时间）
 /// - `nextSystemAlarmAt`：`AlarmManager.getNextAlarmClock()` 的触发时刻（-1 = 系统里没有）

@@ -26,6 +26,7 @@ import 'package:drift/drift.dart';
 import '../../../core/android/system_actions.dart' as sys;
 import '../../../core/db/app_database.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/notifications/scheduled_sweep.dart';
 import '../models/reminder_item.dart';
 
 /// 提醒仓库
@@ -60,6 +61,12 @@ class ReminderRepository {
         } catch (_) {}
       }
     }
+    // 冷启动/回前台兜底：清掉历史遗留的孤儿时钟闹钟（如老版本删除时未清理的）
+    await _reconcileClockAlarms();
+    // 全局在排通知对账：清掉 stableId 改造前 hashCode 时代排的孤儿周期通知
+    // （已删除提醒的旧计划永远取消不掉的那批；habit/todo 有显式迁移、reminder 漏了，
+    // 改为反向对账一次清完，详见 scheduled_sweep.dart 文件头）
+    await ScheduledSweep.sweepOrphans(_db);
   }
 
   /// 新增 / 编辑统一入口：upsert（按 id 幂等）+ 重排程。
@@ -74,9 +81,11 @@ class ReminderRepository {
         await scheduleNotification(item);
       } catch (_) {}
     }
+    // 停用开关 / 改时间后旧时钟闹钟也要跟着撤（对账内部会判定是否还需要）
+    await _reconcileClockAlarms();
   }
 
-  /// 删除提醒（取消通知 + 删库）
+  /// 删除提醒（取消通知 + 删库 + 对账清理孤儿时钟闹钟）
   Future<void> deleteReminder(String id) async {
     final baseId = NotificationService.stableId(id);
     // awesome（含 weekly 变体）+ 原生闹钟（baseId..baseId+7 覆盖所有可能周几码）
@@ -84,9 +93,64 @@ class ReminderRepository {
       await NotificationService.cancelReminder(id, weekly: true);
     } catch (_) {}
     try {
-      await sys.cancelAlarmClocks([for (var i = 0; i <= 7; i++) baseId + i]);
+      // +1000/-1000 = 贪睡码（AlarmScheduler.snoozeCode）：响铃页贪睡后立刻删除的场景
+      // 也一并取消，否则已删除提醒还会再弹一次（2026-09-19 补）
+      await sys.cancelAlarmClocks([
+        for (var i = 0; i <= 7; i++) baseId + i,
+        baseId + 1000,
+        baseId - 1000,
+      ]);
     } catch (_) {}
     await (_db.delete(_db.reminders)..where((tbl) => tbl.id.equals(id))).go();
+    await _reconcileClockAlarms();
+  }
+
+  /// 孤儿时钟闹钟对账（路线 2 收口，2026-09-19）。
+  ///
+  /// 「闹钟送达 + 每天/每周」的提醒被委托写入系统时钟 App 后，公开 API 原本删不掉：
+  /// 删除 / 停用开关 / 改时间后，时钟里的旧闹钟继续每天响「渐离App·旧标题」，
+  /// 表现为「弹出已删除内容的提醒」。现在：登记表 entries 与「现存启用中的委托型
+  /// 提醒的 HH:mm 集合」对账，不在集合里的一律走 ACTION_DISMISS_ALARM 撤销
+  /// （OEM 时钟不支持该 action 时撤不动，仍需手动删 —— 登记表已清，不会重写回）。
+  ///
+  /// ⚠️ 按 HH:mm 对账而非按提醒 id：两个提醒共用同一时间时，删掉其一不能撤钟
+  /// （时钟闹钟还在为存活的那个服务）；ACTION_DISMISS_ALARM 也只能按时间匹配，
+  /// 时钟应用内部 id 第三方拿不到。
+  Future<void> _reconcileClockAlarms() async {
+    try {
+      final rows = await (_db.select(_db.reminders)
+            ..where((tbl) => tbl.source.isNull() | tbl.source.equals('')))
+          .get();
+      final needed = <String>{};
+      for (final row in rows) {
+        final item = ReminderItem.fromRow(row);
+        if (!item.enabled || item.isStateful) continue;
+        final repeat = item.repeat ?? 'daily';
+        // 与 scheduleNotification 的委托条件保持一致：alarm 送达 + time 模式 + 每天/每周
+        if (!(item.isAlarm &&
+            item.mode == 'time' &&
+            (repeat == 'daily' || repeat == 'weekly'))) {
+          continue;
+        }
+        final tp = (item.time ?? '').split(':');
+        final h = int.tryParse(tp.isNotEmpty ? tp[0] : '');
+        final m = tp.length > 1 ? int.tryParse(tp[1]) : null;
+        if (h == null || m == null) continue;
+        needed.add('$h|$m');
+      }
+      final entries = await sys.listSystemClockAlarms();
+      for (final e in entries) {
+        final key = e['key'] as String? ?? '';
+        if (key.isEmpty) continue;
+        final h = (e['hour'] as num?)?.toInt() ?? 0;
+        final m = (e['minute'] as num?)?.toInt() ?? 0;
+        if (!needed.contains('$h|$m')) {
+          await sys.removeSystemClockAlarm(key: key, hour: h, minute: m);
+        }
+      }
+    } catch (_) {
+      // 对账失败不影响主流程（旧闹钟留时钟里手动删，守护抽屉有说明）
+    }
   }
 
   /// 启停提醒（同步增删本地通知计划）
@@ -103,8 +167,8 @@ class ReminderRepository {
     // 到点广播（锁屏/切后台不响、回 App 补发）；而厂商时钟是**系统应用**，任何 ROM
     // 都不会扣它的闹钟 —— 用 ACTION_SET_ALARM 静默写入（原生侧同参数去重，rescheduleAll
     // 反复跑不会重复建）。接管成功后**不再走自建链**，避免双响。
-    // ⚠️ 公开 API 无法删除时钟内闹钟：删除/修改提醒后旧闹钟需在系统时钟手动清理
-    // （标签以「渐离App·」开头，守护抽屉有说明）。
+    // 2026-09-19 收口：删除/停用/改时间后的旧时钟闹钟由 _reconcileClockAlarms 对账清理
+    // （ACTION_DISMISS_ALARM，OEM 时钟不支持时需手动删；标签以「渐离App·」开头便于识别）。
     // 其余形态（notify / once / hourly / monthly / yearly / interval）时钟 App 无法表达，
     // 维持路线 1（原生 setAlarmClock 优先 + awesome 兜底）。
     final repeat = item.repeat ?? 'daily';
