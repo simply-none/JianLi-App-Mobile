@@ -10,6 +10,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/db/app_database.dart';
+import '../../../core/notifications/native_notify.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../models/todo.dart';
 
@@ -256,9 +257,20 @@ class TodoRepository {
   // ===== 截止提醒 → 本地通知（对齐 PC update-todo-reminders） =====
   /// 调度单条截止提醒（到点一次性通知；周期为「提前 remindCount×unit」多次由 PC 引擎负责，
   /// 移动端保底在截止时刻提醒一次）。
+  ///
+  /// 2026-09-19 起优先原生 setAlarmClock（mode=notify）——awesome 的 scheduleOnce 在
+  /// 切后台/锁屏/Doze 下会被系统推迟到回 App 才补发（真机 Android 15 实证），原生失败才回退。
+  /// repeatSpec=null 一次性；已过期的截止不排也不取消（已排的原生计划留着「回 App 补响」）。
   Future<void> scheduleDeadlineReminder(TodoItem item) async {
     final due = _parseDateTime(item.dueDate!);
     if (due == null || due.isBefore(DateTime.now())) return;
+    final nativeOk = await scheduleNativeNotifyOnce(
+      code: NotificationService.stableId(item.key),
+      title: '待办即将到期：${item.title}',
+      body: '截止时间 ${item.dueDate}',
+      at: due,
+    );
+    if (nativeOk) return;
     await NotificationService.scheduleOnce(
       id: NotificationService.stableId(item.key),
       channelKey: NotificationChannels.todo,
@@ -268,8 +280,11 @@ class TodoRepository {
     );
   }
 
-  /// 取消某待办的截止提醒
+  /// 取消某待办的截止提醒（awesome + 原生两条链都取消）
   Future<void> cancelDeadlineReminder(String key) async {
+    try {
+      await cancelNativeAlarms([NotificationService.stableId(key)]);
+    } catch (_) {}
     await NotificationService.cancel(NotificationService.stableId(key));
   }
 

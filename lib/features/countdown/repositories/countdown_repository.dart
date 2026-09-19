@@ -14,6 +14,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
+import '../../../core/notifications/native_notify.dart';
 import '../../../core/notifications/notification_service.dart';
 
 /// 倒计时仓库
@@ -34,7 +35,10 @@ class CountdownRepository {
   static int _notifyId(String key) =>
       NotificationService.stableId('countdown:$key');
 
-  /// 排「到点系统通知」：end_time 在未来才排；精确闹钟可用时走 precise（到点不延迟）。
+  /// 排「到点系统通知」：end_time 在未来才排。
+  /// 2026-09-19 起优先原生 setAlarmClock（mode=notify）——awesome 的 scheduleOnce 在
+  /// 切后台/锁屏/Doze 下被系统推迟到回 App 才补发（真机 Android 15 实证），原生失败才回退
+  /// awesome（此时保持原「精确闹钟可用才 precise」逻辑）。
   Future<void> _armNotification({
     required String key,
     required String? name,
@@ -42,6 +46,13 @@ class CountdownRepository {
   }) async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (endMs == null || endMs <= nowMs) return;
+    final nativeOk = await scheduleNativeNotifyOnce(
+      code: _notifyId(key),
+      title: '⏳ 倒计时结束',
+      body: '「${name ?? '倒计时'}」时间到',
+      at: DateTime.fromMillisecondsSinceEpoch(endMs),
+    );
+    if (nativeOk) return;
     final precise = await NotificationService.exactAlarmAllowed;
     await NotificationService.scheduleOnce(
       id: _notifyId(key),
@@ -53,9 +64,13 @@ class CountdownRepository {
     );
   }
 
-  /// 取消一条倒计时的到点通知
-  static Future<void> _cancelNotification(String key) =>
-      NotificationService.cancel(_notifyId(key));
+  /// 取消一条倒计时的到点通知（awesome + 原生两条链都取消）
+  static Future<void> _cancelNotification(String key) async {
+    try {
+      await cancelNativeAlarms([_notifyId(key)]);
+    } catch (_) {}
+    await NotificationService.cancel(_notifyId(key));
+  }
 
   /// 新建倒计时（duration 模式：立即开始；datetime 模式：end 为目标时刻）
   Future<void> create({

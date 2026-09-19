@@ -96,6 +96,37 @@ class ReminderRepository {
   /// 按 mode + delivery 把提醒翻译为本地通知计划
   Future<void> scheduleNotification(ReminderItem item) async {
     if (item.isStateful) return; // 状态机不走系统通知
+
+    // —— 路线 2（2026-09-19）：「闹钟送达」+ 每天/每周 → 委托系统时钟 App ——
+    //
+    // 真机实证：自建 setAlarmClock 计划「系统认账、分组豁免、FGS 在跑」仍被 ROM 扣住
+    // 到点广播（锁屏/切后台不响、回 App 补发）；而厂商时钟是**系统应用**，任何 ROM
+    // 都不会扣它的闹钟 —— 用 ACTION_SET_ALARM 静默写入（原生侧同参数去重，rescheduleAll
+    // 反复跑不会重复建）。接管成功后**不再走自建链**，避免双响。
+    // ⚠️ 公开 API 无法删除时钟内闹钟：删除/修改提醒后旧闹钟需在系统时钟手动清理
+    // （标签以「渐离App·」开头，守护抽屉有说明）。
+    // 其余形态（notify / once / hourly / monthly / yearly / interval）时钟 App 无法表达，
+    // 维持路线 1（原生 setAlarmClock 优先 + awesome 兜底）。
+    final repeat = item.repeat ?? 'daily';
+    if (item.isAlarm && item.mode == 'time' && (repeat == 'daily' || repeat == 'weekly')) {
+      final timeParts = (item.time ?? '').split(':');
+      final hour = int.tryParse(timeParts[0]);
+      final minute = timeParts.length > 1 ? int.tryParse(timeParts[1]) : null;
+      if (hour != null && minute != null) {
+        final days = (repeat == 'weekly' && item.weekDays.isNotEmpty)
+            ? item.weekDays
+            : const <int>[0, 1, 2, 3, 4, 5, 6];
+        final delegated = await sys.setSystemClockAlarm(
+          key: item.id,
+          hour: hour,
+          minute: minute,
+          message: '渐离App·${item.title}',
+          daysPc: days,
+        );
+        if (delegated) return;
+      }
+    }
+
     // 周期模式：无论「通知」还是「闹钟」送达，都**优先**走原生 AlarmManager 桥（alarm=全屏 / notify=普通通知）。
     // awesome 的 NotificationInterval 在 Android 12+ 被 Doze/省电严重节流并会自我停摆，
     // 表现为「只响 2 次就停 + 间隔不准」，正是周期提醒失效根因，故不再走 awesome。

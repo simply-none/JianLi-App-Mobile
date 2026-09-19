@@ -16,6 +16,9 @@
          本 App 含闹钟/提醒/倒计时/番茄钟，属核心功能，暂按此声明；若将来上 Play 需复核。 -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- 路线 2（2026-09-19）：「闹钟送达」写入系统时钟 App（ACTION_SET_ALARM + EXTRA_SKIP_UI 静默写入）。
+         厂商时钟是系统应用、任何 ROM 都不会扣它，是真机 ROM 扣第三方到点广播时唯一可靠的闹钟通路 -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <!-- 开机重排：awesome_notifications 的 BOOT receiver 靠它收到开机广播后恢复全部通知计划 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 通知振动（Android 13+ 为运行时权限）：提醒/闹钟到点的振动反馈 -->

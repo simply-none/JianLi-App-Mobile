@@ -1,6 +1,10 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-19（**修复「EPUB 选区工具栏（划线/下划线/笔记）不消失、无法翻页」**）：用户报「长按弹出工具栏后，不做划线/笔记就一直存在，点空白也不收、翻页被卡死」。
+  - **根因（插件「选区期间禁导航」机制无解除路径）**：`flutter_epub_viewer` 在选区产生后 ① 向页面注入 `touch-action: pan-y` CSS 屏蔽横向滑动（Dart 侧 `_blockGesturesWhenSelected(true)`，`epub_viewer.dart`）② 劫持 epub.js 的 `next()/prev()/display()`（JS 侧 `hasActiveSelection()` 为 true 直接 return），且**故意保留 `lastCfiRange`**（`epubView.js` ≈L532 注释「keep lastCfiRange so hasActiveSelection() still returns true」）。唯一解除路径 = DOM 选区塌陷 → `selectionchange` → `selectionCleared` → 停 CSS/轮询；但 WebView + 原生浮动菜单（inappwebview `floatingContextMenu` 是 WebView 子 View）组合下点空白常常不塌陷 → 状态永久卡死。
+  - **修法（App 层兜底，不动插件缓存）**：`epub_reader_page.dart` 三处 —— ① `_onViewerTouchUp` 在「判定为点击」（短按 <400ms + 位移 <0.03，现有过滤天然排除长按选词与拖选区手柄）且 `_lastSelection != null` 时主动调 `_epubController.clearSelection()`（插件公开 API：`removeAllRanges` + 清 `lastCfiRange`/`isSelecting` + 发 `selectionCleared` → 屏蔽解除、原生菜单同步收起），该分支 return **不切顶栏**；② `EpubViewer` 接 `onDeselection` 同步清 `_lastSelection`；③ 划线/下划线/笔记保存成功后也 `clearSelection()` 清残留（否则加完批注选区手柄仍挂着、滑动依旧被屏蔽）。点「划线/下划线/笔记」是原生浮层点击、不走 iframe touchend，不会误清。
+  - 校验（Agent 本轮已跑）：`dart analyze lib/features/ebook` 仅剩 1 条**与本次无关的既有假错**（行 296 `EpubSource.fromFile(File(...))` 的 `File` 类型冲突 —— dart.exe 分析器把插件条件导出 `file_loader_web.dart if (dart.library.io)` 解析到 web 变体；用户侧 `flutter analyze`/构建无此错）。**真机待验**：长按选词 → 点空白工具栏收起且能翻页；划线/笔记后滑动立即恢复。
 - 2026-09-19（**修复「浏览器首页搜索 / 顶部地址栏点不动」**）：用户报「首页的搜索和顶部的搜索栏无法点击」。
   - **根因（焦点回灌死锁）**：地址栏非输入态渲染的是 `Text`（没挂 `TextField`），`_addressFocus` 此时**未挂到任何 widget**；点药丸 `focusNode.requestFocus()` 与点首页搜索 `onTapSearch: () => _addressFocus.requestFocus()` 都是对「未挂载节点」请求焦点 → 无效 → `hasFocus` 恒 false → `_onFocusChanged` 永远不把 `_editing` 翻成 `true` → 两个入口都「点不动」。
   - **修法**：页面新增 `_enterEditing()` **直接 `setState(_editing=true)`** 并提前把地址/选区写进 `controller`；`_AddressInput` 的 `TextField` 加 `autofocus:true` 在挂载时抢焦点（页面侧再 `addPostFrameCallback(requestFocus)` 兜底）。`BrowserAddressBar` 新增 `onActivate` 回调（页面传 `_enterEditing`），非输入态点药丸走 `onActivate` 而非裸 `requestFocus`；首页 `onTapSearch` 改为 `_enterEditing`。退出输入态仍靠 `_addressFocus.unfocus()` → `_onFocusChanged` 翻回 false（TextField 已挂载，路径正常）。
@@ -363,9 +367,36 @@
   - **用户验证**：本地跑 `flutter pub get`（切换为 path 依赖）→ `flutter build`/`run` 实测大书打开时长 +
     day/护眼/夜间三档白屏/白边。升级插件时需把 E 的两处 web 资源改动 re-apply 或撤 fork 提 PR。
 
+- **2026-09-19（H）：到点提醒全模块收口「原生 setAlarmClock 优先 + awesome 兜底」（修复真机 Android 15 切后台/锁屏不响）**。
+  - 用户实证：9-18 修复后的包在真机 Android 15 上，切到其他 App / 锁屏后提醒仍不响、回 App 过段时间补响。
+  - **根因**：9-18 只迁移了 `features/reminder` 模块；习惯 / 待办截止 / 倒计时仍整条走 awesome 的
+    NotificationCalendar / ScheduleReceiver 恢复链，在后台 / Doze / 厂商冻结下被系统推迟，
+    App 回前台解除节流后才集中派发 —— 与现象逐字吻合（市场主流调研佐证：定点提醒唯一可靠通路 =
+    `AlarmManager.setAlarmClock`，WorkManager / 非精确闹钟 / 第三方插件调度链都会被推迟）。
+  - **落地**：新增共享封装 `lib/core/notifications/native_notify.dart`（触发时刻计算 nextDailyAt /
+    nextWeeklyAt + scheduleNativeNotifyOnce/Daily/Weekly + cancelNativeAlarms，统一 mode='notify'）；
+    `habit_repository._scheduleHabitNotification`（每天/每周）、`todo_repository.scheduleDeadlineReminder`
+    （一次性截止）、`countdown_repository._armNotification`（一次性到点）全部改「原生优先、失败回退 awesome」；
+    取消口径补齐：habit delete/update/rescheduleAll 增加原生取消（`_cancelHabitNative`），
+    todo cancelDeadlineReminder、countdown _cancelNotification 同步取消原生。
+  - **语义约定**：一次性已过期不排也不取消（留原生计划「回 App 补响」胜过静默丢）；排/取消共用同一份
+    请求码（habit 每周多天 = baseId+wd）；原生 notify 统一走 `reminder_notify` High 渠道
+    （habit/todo/countdown 原生通知不再分渠道，要分渠道需扩展 AlarmScheduler 传 channelId）。
+  - 静态校验通过（dart analyze 四个目录 0 issue）；真机验证 = 重装后分别测习惯每日 / 待办截止 /
+    倒计时到点在「切到其他 App + 锁屏」下到点即响；仍不响时按 SKILL.md 红线 #36 的排查顺序走
+    （诊断卡 → logcat → 厂商后台限制 + 开「后台保活」）。
+
+
 - **2026-09-19（G）：还原 F —— 不采用 fork 永久方案**。
   - 用户决定「还是不做永久方案」。已撤销：删掉 `third_party/flutter_epub_viewer` fork 目录，
     `pubspec.yaml` 的 `flutter_epub_viewer` 改回 `^2.0.0`（hosted 依赖）。
   - 白屏补丁（E 的两处 web 资源改动）**仍留在 pub 缓存** `flutter_epub_viewer-2.0.0/lib/assets/webpage/html/`，
     属临时生效：本地 rebuild 即用，但 `flutter pub get` 重装 / `flutter clean` 会复原。若要永久生效，
     仍需 fork / path 依赖 / 上游 PR（用户本次选择不做）。
+
+- **2026-09-19（I）：路线 2「闹钟送达委托系统时钟 App」落地（根治真机 ROM 扣到点广播）**。
+  - 用户问「闲鱼为何零设置能弹通知」→ 拆解：闲鱼=服务端推送+厂商推送通道（ROM 系统进程），本地定时提醒无服务端，纯本地无零设置解；用户拍板 B = 路线 1 完善 + 路线 2 委托系统时钟（路线 3 自建推送挂起）。
+  - 落地：`SystemActionsChannel.setSystemClockAlarm`（ACTION_SET_ALARM + EXTRA_SKIP_UI + 登记表同参去重 `jianli_clock_alarms`）+ manifest `SET_ALARM` 权限 + Dart `system_actions.setSystemClockAlarm` + `reminder_repository.scheduleNotification` 最前置分支（delivery=alarm 且 daily/weekly → 委托成功即 return，不走自建链防双响）。
+  - 适用边界：once 跨 24h / hourly / monthly / yearly / interval 时钟 App 表达不了，维持路线 1；weekly 空 weekDays 按每天。
+  - 已知代价：公开 API 不能删系统时钟闹钟 → 删改提醒后旧闹钟需手动清理（标签「渐离App·」前缀 + 守护抽屉说明块）。
+  - analyze 全绿；真机验证 = 建每日闹钟送达提醒 → 系统时钟出现「渐离App·xx」→ 锁屏/切后台等到点由系统时钟响。

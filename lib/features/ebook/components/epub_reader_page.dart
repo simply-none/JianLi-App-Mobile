@@ -351,6 +351,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                   }
                 },
                 onAnnotationClicked: (cfi, _) => _showAnnotationSheet(cfi),
+                // JS 侧选区塌陷（selectionCleared）时同步清掉待命选区
+                onDeselection: () => _lastSelection = null,
                 // 点正文切换顶栏显隐（滑动翻页 / 长按选词都不算「点击」）
                 onTouchDown: _onViewerTouchDown,
                 onTouchUp: _onViewerTouchUp,
@@ -444,6 +446,22 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     // 长按（选词）/ 横滑翻页都不是「点击」，不切换顶栏
     if (DateTime.now().difference(down).inMilliseconds > 400) return;
     if ((x - _tapDownX).abs() > 0.03 || (y - _tapDownY).abs() > 0.03) return;
+    // ⚠️ 选区工具栏待命时，点击空白 = 清选区收工具栏，不切顶栏。
+    // 插件在选区期间会注入 touch-action CSS 屏蔽滑动并劫持 next/prev/display，
+    // 唯一解除路径是 DOM 选区塌陷触发 selectionCleared —— 但 WebView + 原生浮动
+    // 菜单组合下点空白常常不塌陷，导致菜单卡死、无法翻页。这里主动调插件公开的
+    // clearSelection()（removeAllRanges + 清状态标记 + 发 selectionCleared）兜底。
+    // 长按选词松手（>400ms）/ 拖选区手柄（有位移）都被上面的过滤排除，不会误清；
+    // 点「划线/下划线/笔记」是原生浮层点击，不走 iframe touchend，同样不受影响。
+    if (_lastSelection != null) {
+      _lastSelection = null;
+      try {
+        _epubController.clearSelection();
+      } catch (_) {
+        // webview 未就绪 / 已卸载时忽略
+      }
+      return;
+    }
     // epub.js 在 iframe 内与父文档各发一次 touchend，做去重避免「点了又立刻收起」
     final last = _lastToggleAt;
     if (last != null &&
@@ -522,6 +540,11 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         type: type,
       );
       if (mounted) showFToast(context: context, title: const Text('已添加划线'));
+      // 清掉残留选区：插件选区期间屏蔽滑动，必须塌陷选区才恢复翻页
+      _lastSelection = null;
+      try {
+        await _epubController.clearSelection();
+      } catch (_) {}
     } catch (e) {
       if (mounted) showFToast(context: context, title: Text('添加失败：$e'));
     }
@@ -543,6 +566,11 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         type: 'underline',
       );
       if (mounted) showFToast(context: context, title: const Text('已添加下划线'));
+      // 清掉残留选区：插件选区期间屏蔽滑动，必须塌陷选区才恢复翻页
+      _lastSelection = null;
+      try {
+        await _epubController.clearSelection();
+      } catch (_) {}
     } catch (e) {
       if (mounted) showFToast(context: context, title: Text('添加失败：$e'));
     }
@@ -634,6 +662,12 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                                     title: const Text('已添加笔记'),
                                   );
                                 }
+                                // 清掉残留选区：插件选区期间屏蔽滑动，
+                                // 必须塌陷选区才恢复翻页
+                                _lastSelection = null;
+                                try {
+                                  await _epubController.clearSelection();
+                                } catch (_) {}
                               } catch (e) {
                                 if (mounted) {
                                   showFToast(

@@ -112,8 +112,42 @@ Future<bool> cancelAlarmClock(int code) async {
   }
 }
 
-/// 原生提醒排程诊断快照（「提醒为什么没响」的取证口）。
+/// 把重复闹钟写入**系统时钟 App**（路线 2，2026-09-19）。
 ///
+/// 背景：真机实证「自建 setAlarmClock 计划系统认账仍被 ROM 扣住广播」，而厂商时钟是
+/// 系统应用、任何 ROM 都不会扣它 —— 公开 API 里唯一绕开 ROM 管制的闹钟通路。
+/// 原生侧用 `ACTION_SET_ALARM + EXTRA_SKIP_UI` 静默写入（需 `SET_ALARM` 权限，已在 manifest 声明）。
+///
+/// - [key] 稳定键（提醒 id）：原生登记表同参数去重，`rescheduleAll` 反复调用不会重复建闹钟；
+/// - [daysPc] PC 周几（0=周日…6=周六）；**空列表 = 一次性**（下一个该 HH:mm 触发），
+///   每天 = 传全 7 天，每周 = 传所选周几；
+/// - 标签建议加「渐离App·」前缀，便于用户在时钟 App 里识别。
+///
+/// ⚠️ **已知代价：公开 API 无法枚举/删除系统时钟里的闹钟** —— 删除/修改提醒后，
+/// 旧闹钟会留在时钟 App 里需用户手动删除（守护抽屉有说明）。写入失败（无时钟应用等）返回 false。
+Future<bool> setSystemClockAlarm({
+  required String key,
+  required int hour,
+  required int minute,
+  required String message,
+  List<int> daysPc = const [],
+}) async {
+  if (!_isAndroid) return false;
+  try {
+    return await _kChannel.invokeMethod<bool>('setSystemClockAlarm', {
+          'key': key,
+          'hour': hour,
+          'minute': minute,
+          'message': message,
+          'daysPc': daysPc,
+        }) ??
+        false;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// 原生提醒排程诊断快照（「提醒为什么没响」的取证口）。///
 /// 真机上「到底排上没有」此前完全不可观测，只能靠现象猜。这里把原生的客观事实一次取回：
 /// - `scheduled`：原生认为已排上的闹钟条数（= `AlarmScheduler` 登记表大小）
 /// - `entries`：`code -> 触发时刻(ms)`，最近 8 条（可看出下一条是哪条、是否在预期时间）

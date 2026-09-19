@@ -22,6 +22,7 @@
 //    把单次判定压到常数级（见 services/adblock_engine.dart）。
 import 'dart:async';
 import 'dart:convert';
+import 'dart:collection' show UnmodifiableListView;
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show SystemChrome, SystemUiMode;
@@ -31,6 +32,7 @@ import 'package:forui/forui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/db/app_database.dart';
 import 'components/browser_address_bar.dart';
@@ -44,6 +46,7 @@ import 'models/browser_models.dart';
 import 'models/browser_settings.dart';
 import 'providers/browser_providers.dart';
 import 'services/browser_download_service.dart';
+import 'services/browser_sniffer.dart';
 
 /// 空白标签统一地址（WebView 必须有个地址；用它来表示「当前是新标签页」）
 const String kBrowserBlankUrl = 'about:blank';
@@ -74,6 +77,18 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
 
   /// DNT 注入去重集合（见 [_shouldOverrideUrlLoading]）
   final Set<String> _dntInjected = <String>{};
+
+  /// 历史步进信号：goBack/goForward 后由 `onUpdateVisitedHistory` 完成并带回落点 URL
+  /// （见 [_historyStep]——DNT 注入 / 跳转链会留下同 URL 重复历史条目，返回时要跳过）
+  Completer<String>? _historySignal;
+
+  /// openApp 重试循环防护（见 [_launchExternalScheme]）
+  DateTime? _lastExternalAt;
+  String? _lastExternalUrl;
+  int _externalRepeat = 0;
+
+  /// 媒体嗅探（网络层观察 + JS hook 双通道，见 [BrowserSniffer]）
+  final BrowserSniffer _sniffer = BrowserSniffer();
 
   /// 下载服务（WebView 触发 / 嗅探面板都汇入这里落盘）
   late final BrowserDownloadService _downloadService;
@@ -337,15 +352,79 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
     }
   }
 
+  /// 智能历史步进：返回/前进直到落到「与出发页不同」的条目。
+  ///
+  /// 为什么不能裸 goBack()：DNT 注入（CANCEL + loadUrl 同 URL 重放）与网页跳转链
+  /// 会在 WebView 历史里留下**同 URL 的重复条目**，裸返回会先落在同页旧条目上，
+  /// 表现为「按返回却像重定向回当前页，退不回上一页」。每步用
+  /// `onUpdateVisitedHistory` 的信号拿落点 URL，与出发页相同就继续步进。
+  /// [delta]：-1 返回 / +1 前进；最多步进 [maxSteps] 条防失控。
+  Future<void> _historyStep(int delta, {int maxSteps = 8}) async {
+    final c = _web;
+    if (c == null) return;
+    for (var i = 0; i < maxSteps; i++) {
+      final bool canStep;
+      try {
+        canStep = delta < 0 ? await c.canGoBack() : await c.canGoForward();
+      } catch (_) {
+        return;
+      }
+      if (!canStep) return;
+      final prev = _currentUrl;
+      final signal = Completer<String>();
+      _historySignal = signal;
+      try {
+        if (delta < 0) {
+          await c.goBack();
+        } else {
+          await c.goForward();
+        }
+        final landed = await signal.future.timeout(
+          const Duration(milliseconds: 1500),
+          onTimeout: () => '',
+        );
+        // 落点为空（信号超时）或已到不同页面 → 停；同 URL（重复条目）→ 继续步进
+        if (landed.isEmpty || landed != prev) return;
+      } catch (_) {
+        return;
+      } finally {
+        if (identical(_historySignal, signal)) _historySignal = null;
+      }
+    }
+  }
+
   /// 打开新窗口 / 新标签的请求统一在本 WebView 内处理（不做多窗口）
   Future<NavigationActionPolicy?> _shouldOverrideUrlLoading(
     InAppWebViewController controller,
     NavigationAction action,
   ) async {
+    final uri = action.request.url;
+    final url = uri?.toString() ?? '';
+    final scheme = uri?.scheme.toLowerCase() ?? '';
+
+    // 自定义 scheme（baiduboxapp:// / intent:// 等）：WebView 内核原生不认识，
+    // 放行必然报 net::ERR_UNKNOWN_URL_SCHEME。规则：
+    //   - 内部 scheme（about/data/blob/javascript/file）照常放行
+    //   - 子框架里的跳转一律静默取消（拉外部 App 没意义，还容易被滥用）
+    //   - 主文档转交系统：装了对应 App 就拉起，没装回退 fallback / 轻提示
+    if (scheme.isNotEmpty &&
+        scheme != 'http' &&
+        scheme != 'https' &&
+        scheme != 'about' &&
+        scheme != 'data' &&
+        scheme != 'blob' &&
+        scheme != 'javascript' &&
+        scheme != 'file') {
+      if (action.isForMainFrame != true) {
+        return NavigationActionPolicy.CANCEL;
+      }
+      await _launchExternalScheme(controller, url);
+      return NavigationActionPolicy.CANCEL;
+    }
+
     if (action.isForMainFrame != true) return NavigationActionPolicy.ALLOW;
     final s = _settings;
     if (!s.doNotTrack) return NavigationActionPolicy.ALLOW;
-    final url = action.request.url?.toString() ?? '';
     if (url.isEmpty) return NavigationActionPolicy.ALLOW;
     // 去重护栏：请求里已带 DNT，或本轮已注入过 → 直接放行（否则会死循环）
     if (action.request.headers?['DNT'] == '1') {
@@ -356,6 +435,76 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
     _dntInjected.add(url);
     await controller.loadUrl(urlRequest: _request(url));
     return NavigationActionPolicy.CANCEL;
+  }
+
+  /// 非网页 scheme 转交系统：装了对应 App 就拉起（如百度 App）；
+  /// 没装则回退 intent URI 自带的 `S.browser_fallback_url`（通常是个 http 链接），
+  /// 再不行就轻提示。全程不把自定义 scheme 喂给 WebView，杜绝错误页。
+  ///
+  /// 不用 canLaunchUrl 预检：Android 11+ 包可见性限制会让它误报 false，
+  /// 直接 launchUrl + 异常捕获更可靠。
+  Future<void> _launchExternalScheme(
+    InAppWebViewController controller,
+    String url,
+  ) async {
+    // 防重试循环：个别站点（百度 openApp）会隔几百毫秒反复发同一个 scheme，
+    // 拉不起来时每次都回退/提示，页面就像「一直重定向」。同 URL 5 秒内
+    // 第 3 次起静默取消，打破循环。
+    final now = DateTime.now();
+    if (url == _lastExternalUrl &&
+        _lastExternalAt != null &&
+        now.difference(_lastExternalAt!) < const Duration(seconds: 5)) {
+      _externalRepeat++;
+    } else {
+      _externalRepeat = 0;
+      _lastExternalUrl = url;
+      _lastExternalAt = now;
+    }
+    if (_externalRepeat >= 2) return;
+
+    final fallback =
+        url.startsWith('intent://') ? _intentFallbackUrl(url) : null;
+    try {
+      final ok = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+      if (ok) return;
+    } catch (_) {
+      // 未装对应 App / URI 无法解析 → 走回退
+    }
+    final fb = fallback;
+    if (fb != null &&
+        (fb.startsWith('http://') || fb.startsWith('https://')) &&
+        // fallback 与当前页相同就不重载：重载会把同页再压一条历史 + 触发页面的
+        // openApp 重试，形成「返回键一直重定向」的死循环
+        fb != _currentUrl) {
+      await controller.loadUrl(urlRequest: URLRequest(url: WebUri(fb)));
+      return;
+    }
+    if (mounted) {
+      showFToast(context: context, title: const Text('未安装处理该链接的应用'));
+    }
+  }
+
+  /// 从 intent:// URI 里提取 `S.browser_fallback_url`（目标 App 未装时的网页回退地址）。
+  ///
+  /// intent URI 形如 `intent://...#Intent;scheme=xx;package=yy;S.browser_fallback_url=zz;end`，
+  /// `#Intent;` 后是分号分隔的键值对，`S.` 前缀是字符串附加项，值经过 URL 编码。
+  String? _intentFallbackUrl(String url) {
+    final i = url.indexOf('#Intent;');
+    if (i < 0) return null;
+    const key = 'S.browser_fallback_url=';
+    for (final part in url.substring(i + 8).split(';')) {
+      if (part.startsWith(key)) {
+        try {
+          return Uri.decodeComponent(part.substring(key.length));
+        } catch (_) {
+          return part.substring(key.length);
+        }
+      }
+    }
+    return null;
   }
 
   // ————————————————— 菜单 / 分享 / 查找 / 源码 / 全屏 —————————————————
@@ -450,6 +599,54 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
 
   // ————————————————— 资源嗅探 / 离线页面 —————————————————
 
+  /// JS hook 注入（document-start）：hook fetch / XHR / 周期扫 video·audio·source，
+  /// 命中媒体扩展名就经 `callHandler('browserSniff')` 回传。
+  /// 分类判定在 Dart 侧（[BrowserSniffer.observe]），这里只报 URL + 来源标签；
+  /// 用 `__jlSniffInstalled` 防重复安装（DNT 重放会重新注入）。
+  static const String _sniffHookJs = '''
+(function(){
+  if (window.__jlSniffInstalled) return;
+  window.__jlSniffInstalled = true;
+  function send(list){
+    if (!list.length) return;
+    try { window.flutter_inappwebview.callHandler('browserSniff', JSON.stringify(list)); } catch(e){}
+  }
+  function hit(u, tag){
+    if (!u || u.length > 2048) return;
+    if (u.indexOf('data:') === 0 || u.indexOf('blob:') === 0) return;
+    send([{url: String(u), tag: tag}]);
+  }
+  var origOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url){
+    try { hit(url, 'xhr'); } catch(e){}
+    return origOpen.apply(this, arguments);
+  };
+  var origFetch = window.fetch;
+  if (origFetch) {
+    window.fetch = function(input){
+      try {
+        var u = typeof input === 'string' ? input : (input && input.url) || '';
+        hit(u, 'fetch');
+      } catch(e){}
+      return origFetch.apply(this, arguments);
+    };
+  }
+  function scan(){
+    var out = [];
+    var els = document.querySelectorAll('video, audio, source');
+    for (var i = 0; i < els.length; i++){
+      var el = els[i];
+      var u = el.src || el.getAttribute('src') || '';
+      if (u) out.push({url: String(u), tag: el.tagName.toLowerCase()});
+    }
+    send(out);
+  }
+  setInterval(scan, 3000);
+  if (document.readyState !== 'loading') scan();
+  else document.addEventListener('DOMContentLoaded', scan);
+})();
+''';
+
   /// 注入 JS 枚举当前页可下载资源（img / video / audio / a[download]）
   static const String _sniffJs = '''
 (function(){
@@ -470,11 +667,14 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
 })()
 ''';
 
-  /// 资源嗅探：枚举当前页资源并打开嗅探面板（每行可下载）
+  /// 资源嗅探：合并「实时累计（网络层 + JS hook）」与「DOM 静态扫描」，
+  /// 按 URL 去重后打开嗅探面板（流媒体条目在面板里走复制链接）
   Future<void> _openSniff() async {
     if (_web == null) return;
+    final byUrl = <String, BrowserSniffedResource>{
+      for (final r in _sniffer.hits) r.url: r,
+    };
     final json = await _web!.evaluateJavascript(source: _sniffJs);
-    final resources = <BrowserSniffedResource>[];
     if (json is String && json.isNotEmpty) {
       try {
         final list = jsonDecode(json) as List;
@@ -487,20 +687,19 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
             _ => BrowserSniffKind.image,
           };
           final url = (map['url'] ?? '').toString();
-          if (url.isNotEmpty) {
-            resources.add(
-              BrowserSniffedResource(
-                url: url,
-                kind: kind,
-                tagName: (map['tag'] ?? '').toString(),
-              ),
+          if (url.isNotEmpty && !byUrl.containsKey(url)) {
+            byUrl[url] = BrowserSniffedResource(
+              url: url,
+              kind: kind,
+              tagName: (map['tag'] ?? '').toString(),
             );
           }
         }
       } catch (_) {
-        // 解析失败：空列表兜底，面板提示「无资源」
+        // 解析失败：保留已累计的网络层结果兜底
       }
     }
+    final resources = byUrl.values.toList();
     if (!mounted) return;
     showBrowserSniffSheet(
       context,
@@ -581,6 +780,8 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
     // WebResourceRequest.url 在 6.x 是非空类型
     final url = request.url.toString();
     if (url.isEmpty) return null;
+    // 媒体嗅探：网络层观察（分类/去重在 [BrowserSniffer] 内）
+    if (_settings.sniffEnabled) _sniffer.observe(url);
     if (!ref.read(adBlockEngineProvider).shouldBlock(url)) return null;
     // 返回空响应体即「拦下不请求」（Android：不再走网络）
     return WebResourceResponse(contentType: 'text/plain', data: Uint8List(0));
@@ -629,8 +830,10 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
       thirdPartyCookiesEnabled: true,
       incognito: s.incognito,
       cacheEnabled: !s.incognito,
-      // 自定义 UA：电脑模式 / 浏览器标识 命中时覆盖（null = 用默认移动 UA）
-      userAgent: s.effectiveUserAgent,
+      // 自定义 UA：电脑模式 / 浏览器标识 命中时覆盖；默认也显式给一份
+      // 标准 Chrome 移动 UA（kMobileUserAgent）——WebView 默认串带 `; wv` 标记，
+      // 会被百度等站点识别出非正规浏览器并注入「唤起自家 App」的 scheme 跳转
+      userAgent: s.effectiveUserAgent ?? kMobileUserAgent,
       // 无图模式：直接让 WebView 不加载图片（省流量；比借广告引擎拦更干净）
       blockNetworkImage: s.noImage,
       // 深色模式：跟随系统 = AUTO，亮色 = OFF，深色 = ON（Android 10+ 强制深色）
@@ -642,8 +845,8 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
       },
       // 网页字号（textZoom 以 100 为基准）
       textZoom: (s.fontScale * 100).round(),
-      // 广告拦截：**仅总开关打开时**开启请求拦截（该开关会让所有请求过平台通道）
-      useShouldInterceptRequest: s.adBlockEnabled,
+      // 广告拦截 / 媒体嗅探：任一开启就让所有请求过平台通道
+      useShouldInterceptRequest: s.adBlockEnabled || s.sniffEnabled,
       // 多窗口：让 target=_blank 走 onCreateWindow，由我们自己开成标签
       supportMultipleWindows: true,
     );
@@ -678,8 +881,45 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
               ),
               // 与 [_webSettings] 同源：首次创建 / 后续热更走同一套值，避免两处漂移
               initialSettings: _webSettings(settings),
-              onWebViewCreated: (controller) => _web = controller,
-              onLoadStart: (controller, uri) => _setProgress(0.05),
+              // 媒体嗅探 hook：document-start 注入（每个页面装一次，脚本自带防重）
+              initialUserScripts: UnmodifiableListView<UserScript>([
+                UserScript(
+                  source: _sniffHookJs,
+                  injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                ),
+              ]),
+              onWebViewCreated: (controller) {
+                _web = controller;
+                // JS hook 回传通道：把命中喂给嗅探器（分类/去重在 Dart 侧）
+                controller.addJavaScriptHandler(
+                  handlerName: 'browserSniff',
+                  callback: (args) {
+                    final data = args.isNotEmpty ? args.first : null;
+                    if (data is String && data.isNotEmpty) {
+                      try {
+                        final list = jsonDecode(data) as List;
+                        for (final item in list) {
+                          if (item is Map) {
+                            _sniffer.observe(
+                              '${item['url'] ?? ''}',
+                              hint: '${item['tag'] ?? ''}',
+                            );
+                          }
+                        }
+                      } catch (_) {
+                        // 脏数据直接忽略
+                      }
+                    }
+                    return null;
+                  },
+                );
+              },
+              // 换页（主文档开始加载）= 新的嗅探上下文
+              onLoadStart: (controller, uri) {
+                _setProgress(0.05);
+                final u = uri?.toString() ?? '';
+                if (u.isNotEmpty && u != kBrowserBlankUrl) _sniffer.reset();
+              },
               onProgressChanged: (controller, value) =>
                   _setProgress(value / 100),
               onLoadStop: _onLoadStop,
@@ -687,6 +927,11 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
                   _setProgress(1),
               onUpdateVisitedHistory: (controller, uri, isReload) {
                 final url = uri?.toString() ?? '';
+                // 历史步进在等落点 URL（见 [_historyStep]），先递信号再更新状态
+                final signal = _historySignal;
+                if (signal != null && !signal.isCompleted) {
+                  signal.complete(url);
+                }
                 if (!mounted) return;
                 if (url.isEmpty || url == kBrowserBlankUrl) return;
                 setState(() => _currentUrl = url);
@@ -790,7 +1035,7 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
       canPop: !_canGoBack,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        unawaited(_web?.goBack() ?? Future<void>.value());
+        unawaited(_historyStep(-1));
       },
       child: FScaffold(
         childPad: false,
@@ -838,10 +1083,8 @@ class _BrowserPageState extends ConsumerState<BrowserPage> {
                   canGoBack: _canGoBack,
                   canGoForward: _canGoForward,
                   tabCount: tabs.length,
-                  onBack: () =>
-                      unawaited(_web?.goBack() ?? Future<void>.value()),
-                  onForward: () =>
-                      unawaited(_web?.goForward() ?? Future<void>.value()),
+                  onBack: () => unawaited(_historyStep(-1)),
+                  onForward: () => unawaited(_historyStep(1)),
                   // 中间位 = 回首页。当前已经是新标签页（无地址）时置灰，避免无意义点击。
                   onHome: _currentUrl.trim().isEmpty
                       ? null

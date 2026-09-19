@@ -1,7 +1,10 @@
-// 资源嗅探面板 —— 枚举当前页面里的可下载资源（img / video / audio / a[download]）
+// 资源嗅探面板 —— 展示实时累计的媒体资源（流媒体 / 视频 / 音频 / 图片 / 链接）
 //
-// 扫描逻辑在浏览器主壳用 JS 注入完成（见 browser_page._scanResources），本文件只负责
-// 把结果列出来，每行带「下载」按钮，点击调用 [onDownload] 汇入 BrowserDownloadService。
+// 采集逻辑：网络层观察 + JS hook 喂给 BrowserSniffer（见 services/browser_sniffer.dart），
+// 打开面板时页面侧再把静态 DOM 扫描结果合并进来。本文件只负责展示：
+//   - 流媒体（m3u8/mpd）条目尾按钮 = 复制链接（内置合成下载是独立工程）
+//   - 其余条目尾按钮 = 下载（汇入 BrowserDownloadService）
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -9,29 +12,23 @@ import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../models/browser_models.dart';
-
-/// 嗅探到的资源类型
-enum BrowserSniffKind { image, video, audio, link }
-
-/// 嗅探到的单个资源
-class BrowserSniffedResource {
-  const BrowserSniffedResource({
-    required this.url,
-    required this.kind,
-    this.tagName,
-  });
-
-  final String url;
-  final BrowserSniffKind kind;
-  final String? tagName;
-}
+import '../services/browser_sniffer.dart';
 
 IconData sniffIcon(BrowserSniffKind kind) {
   return switch (kind) {
-    BrowserSniffKind.image => FLucideIcons.image,
+    BrowserSniffKind.stream => FLucideIcons.play,
     BrowserSniffKind.video => FLucideIcons.video,
     BrowserSniffKind.audio => FLucideIcons.music,
+    BrowserSniffKind.image => FLucideIcons.image,
     BrowserSniffKind.link => FLucideIcons.file,
+  };
+}
+
+/// 类型展示名
+String sniffKindLabel(BrowserSniffedResource r) {
+  return switch (r.kind) {
+    BrowserSniffKind.stream => '流媒体',
+    _ => r.tagName ?? r.kind.name,
   };
 }
 
@@ -110,6 +107,17 @@ class _BrowserSniffSheetContent extends StatelessWidget {
                       },
                     ),
             ),
+            if (resources.any((r) => r.kind == BrowserSniffKind.stream)) ...[
+              const SizedBox(height: 6),
+              Text(
+                '流媒体（m3u8/mpd）为清单链接：点右侧按钮复制，'
+                '可用支持 HLS 的播放器/下载器处理',
+                style: t.typography.body.xs.copyWith(
+                  fontSize: 11,
+                  color: t.colors.mutedForeground,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -142,7 +150,7 @@ class _SniffRow extends StatelessWidget {
                 style: t.typography.body.sm.copyWith(fontSize: 13),
               ),
               Text(
-                resource.tagName ?? resource.kind.name,
+                sniffKindLabel(resource),
                 style: t.typography.body.xs.copyWith(
                   fontSize: 11,
                   color: t.colors.mutedForeground,
@@ -152,9 +160,20 @@ class _SniffRow extends StatelessWidget {
           ),
         ),
         TapScale(
-          onTap: onDownload,
+          onTap: resource.kind == BrowserSniffKind.stream
+              ? () async {
+                  await Clipboard.setData(ClipboardData(text: resource.url));
+                  if (!context.mounted) return;
+                  showFToast(
+                    context: context,
+                    title: const Text('流媒体链接已复制'),
+                  );
+                }
+              : onDownload,
           child: Icon(
-            FLucideIcons.download,
+            resource.kind == BrowserSniffKind.stream
+                ? FLucideIcons.copy
+                : FLucideIcons.download,
             size: 20,
             color: t.colors.primary,
           ),

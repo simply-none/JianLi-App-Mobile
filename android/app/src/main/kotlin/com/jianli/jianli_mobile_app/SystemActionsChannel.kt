@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.provider.AlarmClock
 import android.provider.Settings
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
@@ -96,9 +97,26 @@ object SystemActionsChannel {
                     }
 
                     // 诊断快照：「提醒为什么没响」的取证口（排程条数 / 系统下一个闹钟 /
-                    // standby bucket / 省电 / Doze）。详见 AlarmScheduler.diagnostics。
+                    // standby bucket / 省电 / Doze / 保活）。详见 AlarmScheduler.diagnostics。
                     "alarmDiagnostics" ->
                         result.success(AlarmScheduler.diagnostics(activity))
+
+                    // 路线 2（2026-09-19）：把重复闹钟写入**系统时钟 App**（ACTION_SET_ALARM）。
+                    // 厂商时钟是系统应用，任何 ROM 都不会扣它 —— 真机实证自建 setAlarmClock
+                    // 计划「系统认账仍被扣」，系统时钟闹钟是唯一绕开的通路。
+                    // 详见本文件 setSystemClockAlarm(...) 注释。
+                    "setSystemClockAlarm" -> {
+                        val key = call.argument<String>("key") ?: ""
+                        val hour = call.argument<Number>("hour")?.toInt() ?: 0
+                        val minute = call.argument<Number>("minute")?.toInt() ?: 0
+                        val message = call.argument<String>("message") ?: ""
+                        val daysPc = call.argument<List<*>>("daysPc")
+                            ?.mapNotNull { (it as? Number)?.toInt() }
+                            ?: emptyList()
+                        result.success(
+                            setSystemClockAlarm(activity, key, hour, minute, message, daysPc)
+                        )
+                    }
 
                     else -> result.notImplemented()
                 }
@@ -110,9 +128,64 @@ object SystemActionsChannel {
         }
     }
 
+    /** 写入系统时钟的闹钟登记表（key -> "h|m|days"，用于同参数去重，防 rescheduleAll 反复建） */
+    private const val CLOCK_ALARM_PREF = "jianli_clock_alarms"
+
+    /**
+     * 路线 2（2026-09-19）：把重复闹钟写入**系统时钟 App**（`AlarmManager.ACTION_SET_ALARM`）。
+     *
+     * 为什么：真机实证（排程 9 条 + 系统认账 + 分组豁免 + FGS 运行中）锁屏/切后台仍不响，
+     * 即 ROM 会扣住第三方 App 的到点广播；而厂商时钟是**系统应用**，任何 ROM 都不会扣它 ——
+     * 这是公开 API 里唯一「绕开 ROM 管制」的闹钟通路。需要 manifest 声明
+     * `com.android.alarm.permission.SET_ALARM`，`EXTRA_SKIP_UI` 才能静默写入不弹时钟界面。
+     *
+     * 参数：
+     * - [key] 稳定键（提醒 id），用于登记表同参数去重 —— rescheduleAll 每次开 App 都会跑，
+     *   **绝不能**每次都新建一条时钟闹钟；
+     * - [daysPc] PC 周几（0=周日…6=周六），换算为 Calendar 的 1..7；空列表 = 一次性
+     *   （下一个该 HH:mm 触发）。
+     *
+     * ⚠️ **公开 API 无法枚举/删除系统时钟里的闹钟**（ACTION_DISMISS_ALARM 的 EXTRA_ALARM_IDS
+     * 是时钟应用内部 id，第三方拿不到）：删除/修改提醒后，旧闹钟会留在时钟里，
+     * 需用户手动删除 —— 闹钟标签统一加「渐离App·」前缀便于识别。这是路线 2 的已知代价。
+     *
+     * 返回 true = 已受理（含「同参数已写入过」的直接返回）。
+     */
+    private fun setSystemClockAlarm(
+        context: Context,
+        key: String,
+        hour: Int,
+        minute: Int,
+        message: String,
+        daysPc: List<Int>
+    ): Boolean {
+        return try {
+            val prefs = context.getSharedPreferences(CLOCK_ALARM_PREF, Context.MODE_PRIVATE)
+            val sig = "$hour|$minute|${daysPc.sorted().joinToString(",")}"
+            if (prefs.getString(key, null) == sig) return true // 同参数已写入过，去重
+            val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+                putExtra(AlarmClock.EXTRA_HOUR, hour)
+                putExtra(AlarmClock.EXTRA_MINUTES, minute)
+                if (message.isNotEmpty()) putExtra(AlarmClock.EXTRA_MESSAGE, message)
+                if (daysPc.isNotEmpty()) {
+                    // PC 周几(0=周日…6=周六) → Calendar 星期(1=周日…7=周六)
+                    putExtra(AlarmClock.EXTRA_DAYS, ArrayList(daysPc.map { it % 7 + 1 }))
+                }
+                putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                putExtra(AlarmClock.EXTRA_VIBRATE, true)
+            }
+            context.startActivity(intent)
+            prefs.edit().putString(key, sig).apply()
+            Log.i("SystemActionsChannel", "system clock alarm set: key=$key sig=$sig")
+            true
+        } catch (e: Exception) {
+            Log.e("SystemActionsChannel", "setSystemClockAlarm failed", e)
+            false
+        }
+    }
+
     /** 是否已忽略电池优化（Android 6 以下无此概念，恒 true） */
-    private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+    private fun isIgnoringBatteryOptimizations(context: Context): Boolean {        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
             ?: return false
         return pm.isIgnoringBatteryOptimizations(context.packageName)

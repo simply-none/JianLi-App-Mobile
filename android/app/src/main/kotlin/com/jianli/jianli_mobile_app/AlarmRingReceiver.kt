@@ -3,6 +3,7 @@ package com.jianli.jianli_mobile_app
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 
 /**
  * 闹钟到点的广播接收器（`mode = alarm`）。
@@ -21,6 +22,10 @@ import android.content.Intent
 class AlarmRingReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val code = intent.getIntExtra(AlarmScheduler.EXTRA_CODE, 0)
+        // 取证日志（tag=JianliAlarm）：到点广播**是否被系统派发**。锁屏/切后台不响时，
+        // 先看这条有没有打出来——没有 = 系统把闹钟扣住没派（ROM 层）；有 = 派发了，
+        // 问题在通知展示层。两分支决定完全不同的排查方向。
+        Log.i("JianliAlarm", "ring broadcast delivered code=$code action=${intent.action}")
 
         // ③ 通知上的「停止」按钮
         if (intent.getBooleanExtra(AlarmScheduler.EXTRA_DISMISS, false)) {

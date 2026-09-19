@@ -3,6 +3,7 @@ package com.jianli.jianli_mobile_app
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 
 /**
  * 周期「通知」送达的广播接收器。
@@ -18,6 +19,9 @@ import android.content.Intent
 class ReminderAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val code = intent.getIntExtra(AlarmScheduler.EXTRA_CODE, 0)
+        // 取证日志（tag=JianliAlarm）：同 AlarmRingReceiver——「广播没派发 = ROM 扣住」
+        // 与「派发了但通知没弹 = 展示层」的分流依据。
+        Log.i("JianliAlarm", "notify broadcast delivered code=$code action=${intent.action}")
         val title = intent.getStringExtra(AlarmScheduler.EXTRA_TITLE) ?: ""
         val body = intent.getStringExtra(AlarmScheduler.EXTRA_BODY) ?: ""
         val repeatSpec = intent.getStringExtra(AlarmScheduler.EXTRA_REPEAT)

@@ -119,6 +119,26 @@ agent_created: true
 
 35. 【**跨页回传结果不要用 `pop(value)` —— 只要目标页可能被多层推入，`pop` 就只能退一层（2026-09-19 浏览器实踩）**】「书签页点条目 → 让浏览器主壳导航」这类需求，若子页是从「浏览器 → 设置 → 固定标签管理」三层推入的，`context.pop(url)` 的返回值只有**直接父级**能收到，主壳永远拿不到。**正解 = 单向状态通道**：子页 `ref.read(pendingProvider.notifier).request(url)`，主壳在 `build()` 里 `ref.listen(pendingProvider, ...)` 消费，**消费后立刻清空**（`consume()`）—— 与 push 层数无关，且顺带避免「同一地址被下次 push 重复消费」。⚠️ 清空动作必须在 listen 回调里同步做，不能等异步导航完成后再清。
 
+36. 【**到点提醒全模块「原生 setAlarmClock 优先 + awesome 兜底」收口（2026-09-19；habit/todo/countdown 补迁）**】红线 #27 只迁移了 `features/reminder`，真机 Android 15 实证「切到其他 App / 锁屏不响、回 App 过段时间补响」仍在——因为**习惯 / 待办截止 / 倒计时**仍整条走 awesome 的 NotificationCalendar/ScheduleReceiver 恢复链，后台/Doze/厂商冻结下被系统推迟、回前台解除节流才集中派发。市场主流调研结论一致：定点提醒唯一可靠通路 = `AlarmManager.setAlarmClock`（Doze 豁免 + 状态栏闹钟图标）；WorkManager / `setRepeating` / 第三方插件调度链都会被推迟。落地：
+    ① **共享封装 `lib/core/notifications/native_notify.dart`**：`nextDailyAt` / `nextWeeklyAt`（触发时刻计算，PC 周几 0=周日）+ `scheduleNativeNotifyOnce/Daily/Weekly`（统一 `mode='notify'`）+ `cancelNativeAlarms`。habit 的 `_scheduleHabitNotification`（每天/每周）、todo `scheduleDeadlineReminder`（一次性）、countdown `_armNotification`（一次性）全部改「原生优先、失败回退 awesome」；**新增提醒类模块一律照此模式，不要再裸用 awesome 当主链路**。
+    ② **排/取消共用同一份请求码**（habit 每周多天 = `baseId+wd` 一天一个码；取消走 `_cancelHabitNative`），habit 的 delete/update/rescheduleAll 已补齐原生取消——**「排了原生但取消只取消 awesome」会造成删了还响**。
+    ③ **一次性已过期：不排也不取消**（`scheduleNativeNotifyOnce` 对过期返回 true=已处理），已排的原生计划留着「回 App 补响一次」，胜过取消后静默丢提醒。
+    ④ **原生 notify 统一走 `reminder_notify` High 渠道** ⇒ habit/todo/countdown 的原生通知**不再分渠道**（habit_v2/todo_v2/countdown 只对 awesome 兜底路径生效）；要分渠道需扩展 `AlarmScheduler` 增加 channelId 参数（改原生 + 换键规则见红线 #22）。
+    ⑤ **真机仍不响的排查顺序（先取证再改码）**：a. 提醒守护抽屉「原生排程」诊断卡——**0 条** = 排程链断（查 logcat `SystemActionsChannel`，红线 #21）；**>0 条且 bucket 40/45** = 系统受限待机/省电（App 侧无解，引导用户关电池优化 + 允许后台 + 开「后台保活」`reminder_keep_alive`，红线 #16④）；b. `adb logcat | grep -iE "background activity launch|SystemActionsChannel"`；c. **厂商 ROM（小米/华为/OPPO/vivo）的自启动/后台运行/锁屏显示只能引导**，模拟器 AOSP 验证这类问题会全绿（红线 #26⑥）。
+    ⑥ **待机分组语义与「系统认账」分流（2026-09-19 补，实证真机）**：`standbyBucket` 原始值 **5 = EXEMPTED（豁免，最佳值，比 10 活跃还高）**——用户报「分组 5」曾被误判为受限，实际是**待机限制已排除**；诊断卡已把原始值映射为「豁免/活跃/工作/常用/罕见/受限」。真机实证案例：**排程 8 条 + 分组 5 + FGS 开 + 电池优化关**仍锁屏/切后台不响、回 App 补响 ⇒ 剩两分支：**(a) 计划被 ROM 清理**——`nextSystemAlarmAt`=-1（系统不认账，`AlarmManager.getNextAlarmClock()` 空），诊断卡现在同时显示「下一条（App 登记表）/系统认账」两行，**不一致即此分支**；**(b) 系统扣住广播不派发**（ROM 深睡/冻结，AOSP 无此行为 ⇒ 模拟器永远复现不了）。**取证分流靠接收器入口日志**：`AlarmRingReceiver`/`ReminderAlarmReceiver` onReceive 首行已加 `Log.i("JianliAlarm", "…broadcast delivered code=…")`——到点后 `adb logcat -d | findstr JianliAlarm`：**有日志 = 广播已派发**，问题在通知展示层；**无日志 = ROM 扣住**，只能走该 ROM 的深睡模式/自启动/后台运行引导（务必先问清品牌型号再给路径）。另 `AlarmScheduler.diagnostics()` 已新增 `keepAliveRunning`（`ReminderKeepAliveService.isRunning`，偏好开着 ≠ 服务活着）。
+
+37. 【**路线 2：「闹钟送达」委托系统时钟 App（2026-09-19 定案；根治 ROM 扣广播）**】用户问「为什么闲鱼零设置能弹通知」→ 拆解：闲鱼 = 服务端推送 + **厂商推送通道（ROM 自家系统进程）**，送达外包给系统白名单进程所以零设置；本地定时提醒没有服务端知道触发时刻，纯本地无解「零设置」。**用户拍板 B = 路线 1（本地链完善）+ 路线 2（委托系统时钟）**，路线 3（自建推送服务端 + 厂商通道）挂起。落地：
+    ① **适用范围**：`delivery='alarm'` + time 模式 + `repeat ∈ {daily, weekly}`（时钟 App 只能表达 HH:mm + 周几；once 跨 24h / hourly / monthly / yearly / interval 表达不了，维持路线 1）。在 `scheduleNotification` **最前置**分支：`sys.setSystemClockAlarm(key: item.id, hour, minute, message: '渐离App·标题', daysPc: …)` 成功即 `return`（**不走自建链，避免双响**）；失败继续原链。
+    ② **原生实现**（`SystemActionsChannel.setSystemClockAlarm` + Dart `system_actions.dart` 同名）：`AlarmManager.ACTION_SET_ALARM` + `EXTRA_HOUR/MINUTES/MESSAGE/DAYS/SKIP_UI/VIBRATE`，manifest 需 **`com.android.alarm.permission.SET_ALARM`**（SKIP_UI 静默写入的前提）。daysPc 换算 Calendar：`pc % 7 + 1`（0=周日→1…6=周六→7）。**登记表去重**：`SharedPreferences("jianli_clock_alarms")` 记 `key -> "h|m|days"`，同参数直接 true——**rescheduleAll 每次开 App 都跑，绝不能反复建时钟闹钟**。
+    ③ **已知代价（无法绕开）**：公开 API **不能枚举/删除系统时钟里的闹钟**（`ACTION_DISMISS_ALARM` 的 `EXTRA_ALARM_IDS` 是时钟应用内部 id，第三方拿不到）⇒ 删除/修改提醒后旧闹钟留在时钟里需手动删——标签统一「渐离App·」前缀 + 守护抽屉 `_noteBlock` 已说明。weekly 空 weekDays 按每天（全 7 天）处理。
+    ④ **验证**：AOSP 模拟器时钟 App 支持 SET_ALARM；真机建一条「闹钟送达·每天」提醒 → 系统时钟里应出现「渐离App·xx」闹钟 → 切后台/锁屏等到点，由系统时钟响（不看我们的广播）。`adb logcat -d | findstr "SystemActionsChannel"` 可看写入日志。
+
+38. 【**⛔ 禁止动用户的 git 仓库（2026-09-19 用户定案，最高优先级，全项目通用）**】用户报过 Agent 跑 `git stash`/验证流程导致其 git 状态被破坏（用户已手工还原）。铁律：
+    - **一切改变 git 状态的命令一律禁止**：`git stash`（含 pop/apply/drop）、`git checkout/switch`（切分支/还原文件）、`git restore`、`git reset`（含 --hard/--soft）、`git clean`、`git rebase`/`merge`/`cherry-pick`、`git commit`/`push`/`pull`、`git rm`、删改 `.git` 目录、`git tag`/`branch` 增删 —— **一个都不许跑**，即使用户当前指令看似暗示可以，也必须先明确征得用户同意并等用户确认。
+    - **只允许只读命令**：`git status` / `git diff`（读）/ `git log` / `git show` / `git blame`。
+    - **验证「改动前 vs 改动后」对比绝不许用 stash/checkout 大法**：改用「只读 diff（`git diff` 本身只读、允许）」或让用户自行暂存/提交后再验证；bash 缺 coreutils（`tail`/`grep`/`ls` 全无）导致管道中途死掉时，`&&` 链后半段的恢复命令（如 `git stash pop`）不会执行——这正是本轮事故的直接成因，**链式命令里绝不能放任何写状态的 git 操作**。
+    - 临时快照需求：让**用户**自己 commit 或 stash；Agent 只口头给命令。
+
 
 
 ## 📚 模块索引（按需读取，勿全量加载）

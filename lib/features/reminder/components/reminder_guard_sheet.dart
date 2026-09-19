@@ -262,6 +262,13 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
             'Android 14 及以上：系统默认关闭「全屏通知」，需在上面第 ④ 项单独开启，'
             '否则息屏时闹钟只弹横幅、不会亮屏全屏。',
           ),
+          const SizedBox(height: 10),
+          _noteBlock(
+            context,
+            '「闹钟送达」的每天/每周提醒已直接写入系统时钟 App（标签以「渐离App」开头），'
+            '由系统触发、最可靠。注意：删除或修改提醒后，系统时钟里的旧闹钟不会自动消失，'
+            '请在时钟 App 中手动删除对应条目。',
+          ),
           const SizedBox(height: 18),
           _label(context, '厂商后台限制'),
           Text(
@@ -324,22 +331,30 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
   /// 原生排程诊断卡：**真机上判断「提醒为什么没响」的第一现场**。
   ///
   /// - 计划 0 条 ⇒ 压根没排上（原生桥失败且 awesome 兜底也失败，或提醒未启用）；
-  /// - 计划 >0 但到点不响 ⇒ 系统侧推迟（待机分组受限 / Doze / 厂商冻结），看下面几行；
-  /// - `standbyBucket = 45`（RESTRICTED）⇒ **系统会推迟本 App 的全部 alarms**，
-  ///   这是国产 ROM 上「切后台就不响、回前台才补触发」最常见且可判定的成因。
+  /// - 计划 >0 但到点不响 ⇒ 先看「系统认账」行：**系统没有这条计划 = 计划被 ROM 清掉**；
+  ///   系统认账了却不响 = 投递被推迟/冻结，用 logcat `JianliAlarm` 分流（见红线 #36）；
+  /// - `standbyBucket`：**5 = 豁免（最佳）**、10=活跃、20=工作、30=常用、40=罕见、
+  ///   45=受限（系统会推迟全部 alarms，「切后台不响、回前台补触发」最常见成因）。
   Widget _diagCard(BuildContext context) {
     final t = context.theme;
     final n = (_diag['scheduled'] as int?) ?? 0;
     final bucket = (_diag['standbyBucket'] as int?) ?? -1;
     final powerSave = _diag['powerSave'] == true;
     final idle = _diag['deviceIdle'] == true;
+    final keepAlive = _diag['keepAliveRunning'] == true;
 
+    // App 自己的登记表（写于 setAlarmClock 成功时）
     int? nextAt;
     final entries = _diag['entries'];
     if (entries is Map && entries.isNotEmpty) {
       final vals = entries.values.whereType<int>().toList()..sort();
       if (vals.isNotEmpty) nextAt = vals.first;
     }
+    // 系统认账的下一条（AlarmManager.getNextAlarmClock；-1 = 系统里没有）
+    final sysRaw = (_diag['nextSystemAlarmAt'] as int?) ?? -1;
+    final nextSys = sysRaw > 0 ? sysRaw : null;
+    // 关键分流：App 登记了计划但系统不认账 ⇒ 计划被 ROM 清理/覆盖
+    final systemMissing = nextAt != null && nextSys == null;
 
     final restricted = bucket == 45 || bucket == 40;
     final color = n == 0
@@ -347,6 +362,31 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
         : restricted
             ? AppTokens.accent(3)
             : AppTokens.accent(2);
+
+    // 待机分组语义：5=豁免（EXEMPTED，最佳值，比 10 还高）
+    String bucketLabel;
+    switch (bucket) {
+      case 5:
+        bucketLabel = '豁免';
+        break;
+      case 10:
+        bucketLabel = '活跃';
+        break;
+      case 20:
+        bucketLabel = '工作';
+        break;
+      case 30:
+        bucketLabel = '常用';
+        break;
+      case 40:
+        bucketLabel = '罕见';
+        break;
+      case 45:
+        bucketLabel = '受限';
+        break;
+      default:
+        bucketLabel = bucket >= 0 ? '$bucket' : '—';
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
@@ -388,9 +428,19 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
           const SizedBox(height: 6),
           Text(
             '下一条：${nextAt == null ? '—' : _fmtClock(nextAt)}'
-            '${bucket >= 0 ? ' · 待机分组 $bucket' : ''}'
+            ' · 系统认账：${nextSys == null ? '无 ⚠' : _fmtClock(nextSys)}'
+            '${bucket >= 0 ? ' · 分组 $bucketLabel' : ''}'
             '${powerSave ? ' · 省电模式' : ''}'
             '${idle ? ' · Doze 中' : ''}',
+            style: t.typography.body.xs.copyWith(
+              fontSize: 12,
+              height: 1.5,
+              color: t.colors.mutedForeground,
+            ),
+          ),
+          Text(
+            '后台保活：${keepAlive ? '运行中' : '未运行 ⚠'}'
+            '（状态栏常驻通知「渐离App 正在守护提醒」应在）',
             style: t.typography.body.xs.copyWith(
               fontSize: 12,
               height: 1.5,
@@ -401,6 +451,17 @@ class _ReminderGuardSheetState extends ConsumerState<ReminderGuardSheet>
             const SizedBox(height: 6),
             Text(
               '系统里没有排上任何提醒计划。请确认上面四项都已开启，再回到提醒列表让 App 重排一次。',
+              style: t.typography.body.xs.copyWith(
+                fontSize: 12,
+                height: 1.5,
+                color: t.colors.destructive,
+              ),
+            ),
+          ] else if (systemMissing) ...[
+            const SizedBox(height: 6),
+            Text(
+              'App 已登记计划，但系统不认账（AlarmManager 里没有下一条）——'
+              '计划被系统/ROM 清理了。回到提醒列表让 App 重排；反复出现请检查厂商后台限制。',
               style: t.typography.body.xs.copyWith(
                 fontSize: 12,
                 height: 1.5,

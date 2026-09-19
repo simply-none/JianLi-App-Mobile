@@ -12,6 +12,15 @@ const String kDesktopUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+/// 默认移动端 UA（标准 Chrome on Android 的 Reduced UA 形态）。
+///
+/// 不用 WebView 的原生默认 UA：WebView 默认串里带 `; wv` 标记，部分站点
+/// （百度等）会据此识别出「非正规浏览器」并注入「唤起自家 App」的 scheme
+/// 跳转（baiduboxapp:// / intent://），标准 Chrome UA 能减少这类注入。
+const String kMobileUserAgent =
+    'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36';
+
 /// 浏览器配置键（`basic_info.key`）
 abstract final class BrowserKeys {
   static const String engine = 'browser_engine';
@@ -35,6 +44,8 @@ abstract final class BrowserKeys {
   static const String uaCustom = 'browser_ua_custom';
   /// 无图模式
   static const String noImage = 'browser_no_image';
+  /// 媒体嗅探（shouldInterceptRequest 常开观察 + JS hook，见 browser_sniffer.dart）
+  static const String sniff = 'browser_sniff';
 
   /// ⚠️ 订阅规则**原文缓存**（体积可达数 MB，见 adblock_subscriptions.dart）。
   ///
@@ -60,6 +71,7 @@ abstract final class BrowserKeys {
     uaPreset,
     uaCustom,
     noImage,
+    sniff,
   ];
 }
 
@@ -166,6 +178,7 @@ class BrowserSettings {
     this.uaPreset = BrowserUaPreset.mobile,
     this.customUa = '',
     this.noImage = false,
+    this.sniffEnabled = true,
   });
 
   /// 搜索引擎 id（见 [kBrowserEngines]）
@@ -215,6 +228,9 @@ class BrowserSettings {
   /// 无图模式（拦截图片请求，省流量）
   final bool noImage;
 
+  /// 媒体嗅探（网络层观察 + JS hook；开启会让 useShouldInterceptRequest 常开）
+  final bool sniffEnabled;
+
   /// 当前搜索引擎对象
   BrowserEngine get engine => engineById(engineId);
 
@@ -256,6 +272,7 @@ class BrowserSettings {
     BrowserUaPreset? uaPreset,
     String? customUa,
     bool? noImage,
+    bool? sniffEnabled,
   }) {
     return BrowserSettings(
       engineId: engineId ?? this.engineId,
@@ -274,6 +291,7 @@ class BrowserSettings {
       uaPreset: uaPreset ?? this.uaPreset,
       customUa: customUa ?? this.customUa,
       noImage: noImage ?? this.noImage,
+      sniffEnabled: sniffEnabled ?? this.sniffEnabled,
     );
   }
 
@@ -299,6 +317,7 @@ class BrowserSettings {
       uaPreset: BrowserUaPreset.fromId(map[BrowserKeys.uaPreset]),
       customUa: map[BrowserKeys.uaCustom] ?? '',
       noImage: _bool(map[BrowserKeys.noImage], fallback: false),
+      sniffEnabled: _bool(map[BrowserKeys.sniff], fallback: true),
     );
   }
 
@@ -325,6 +344,7 @@ class BrowserSettings {
       BrowserKeys.uaPreset: uaPreset.id,
       BrowserKeys.uaCustom: customUa,
       BrowserKeys.noImage: noImage ? '1' : '0',
+      BrowserKeys.sniff: sniffEnabled ? '1' : '0',
     };
   }
 }

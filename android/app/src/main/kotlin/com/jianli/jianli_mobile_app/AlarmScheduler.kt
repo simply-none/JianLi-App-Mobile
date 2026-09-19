@@ -256,6 +256,8 @@ object AlarmScheduler {
             "deviceIdle" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 pm?.isDeviceIdleMode ?: false
             } else false,
+            // 保活前台服务是否真在跑（进程内存级标志）：偏好开着 ≠ 服务活着（ROM 可能杀掉）。
+            "keepAliveRunning" to ReminderKeepAliveService.isRunning,
         )
     }
 

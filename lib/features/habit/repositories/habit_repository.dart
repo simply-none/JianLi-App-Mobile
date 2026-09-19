@@ -8,6 +8,7 @@ import 'dart:math';
 import 'package:drift/drift.dart';
 
 import '../../../core/db/app_database.dart';
+import '../../../core/notifications/native_notify.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../models/habit.dart';
 
@@ -156,7 +157,12 @@ class HabitRepository {
     return key;
   }
 
-  /// 调度习惯提醒的本地通知（每天/按星期）
+  /// 调度习惯提醒的本地通知（每天/按星期）。
+  ///
+  /// 2026-09-19 起与提醒模块同构：**优先原生 setAlarmClock（mode=notify）**——
+  /// 计划由系统持有，息屏/Doze/厂商冻结下不再被推迟（此前整条走 awesome 的
+  /// NotificationCalendar，真机 Android 15 切后台/锁屏不响、回 App 才集中补发）；
+  /// 原生失败才回退 awesome 兜底。⚠️ 排/取消共用同一份请求码（baseId / baseId+wd）。
   Future<void> _scheduleHabitNotification(
     String id,
     String title,
@@ -167,10 +173,32 @@ class HabitRepository {
     final hour = int.tryParse(parts[0]);
     final minute = parts.length > 1 ? int.tryParse(parts[1]) : null;
     if (hour == null || minute == null) return;
+    final baseId = NotificationService.stableId(id);
+
+    // —— 原生优先 ——
+    final nativeOk = weekDays.isEmpty
+        ? await scheduleNativeNotifyDaily(
+            code: baseId,
+            title: '习惯提醒',
+            body: title,
+            hour: hour,
+            minute: minute,
+          )
+        : await scheduleNativeNotifyWeekly(
+            code: baseId,
+            title: '习惯提醒',
+            body: title,
+            hour: hour,
+            minute: minute,
+            weekDaysPc: weekDays,
+          );
+    if (nativeOk) return;
+
+    // —— awesome 兜底（原生桥失败时保证至少排得上）——
     if (weekDays.isEmpty) {
       // 每天：scheduleCalendar 只给 hour/minute 即每日重复
       await NotificationService.scheduleCalendar(
-        id: NotificationService.stableId(id),
+        id: baseId,
         channelKey: NotificationChannels.habit,
         title: '习惯提醒',
         body: title,
@@ -182,7 +210,7 @@ class HabitRepository {
       for (final wd in weekDays) {
         // 按星期：awesome weekday 1=周日…7=周六，PC 约定 0=周日…6=周六 → +1
         await NotificationService.scheduleCalendar(
-          id: NotificationService.stableId(id) + wd,
+          id: baseId + wd,
           channelKey: NotificationChannels.habit,
           title: '习惯提醒',
           body: title,
@@ -193,6 +221,16 @@ class HabitRepository {
         );
       }
     }
+  }
+
+  /// 取消习惯提醒的原生闹钟（与排程同一份请求码口径：每天=baseId，每周=baseId+wd）
+  Future<void> _cancelHabitNative(String id, List<int> weekDays) async {
+    final baseId = NotificationService.stableId(id);
+    try {
+      await cancelNativeAlarms(
+        weekDays.isEmpty ? [baseId] : [for (final w in weekDays) baseId + w],
+      );
+    } catch (_) {}
   }
 
   /// 删除习惯（联动清理提醒行与本地通知）
@@ -206,6 +244,7 @@ class HabitRepository {
     for (final r in rows) {
       await (_db.delete(_db.reminders)..where((t) => t.id.equals(r.id))).go();
       await NotificationService.cancel(NotificationService.stableId(r.id));
+      await _cancelHabitNative(r.id, _parseWeekDays(r.weekDays));
     }
   }
 
@@ -240,6 +279,7 @@ class HabitRepository {
     for (final r in rows) {
       await (_db.delete(_db.reminders)..where((t) => t.id.equals(r.id))).go();
       await NotificationService.cancel(NotificationService.stableId(r.id));
+      await _cancelHabitNative(r.id, _parseWeekDays(r.weekDays));
     }
 
     // 重建提醒（与 createHabit 同源）
@@ -284,6 +324,9 @@ class HabitRepository {
         for (final wd in _parseWeekDays(r.weekDays)) {
           await NotificationService.cancel(r.id.hashCode + wd);
         }
+        // 取消旧原生计划（周几集合可能已缩小，缩小掉的码必须显式取消；
+        // 未缩小的码由 setAlarmClock 同码覆盖，不取消也安全）
+        await _cancelHabitNative(r.id, _parseWeekDays(r.weekDays));
       } catch (_) {}
       try {
         final wds = _parseWeekDays(r.weekDays);

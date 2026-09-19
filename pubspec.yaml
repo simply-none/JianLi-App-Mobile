@@ -71,6 +71,7 @@ dependencies:
   uuid: ^4.6.0
   open_filex: ^4.7.0 # 用系统关联程序打开已接收文件（历史「打开文件」）
   share_plus: 13.3.0 # 分享已接收文件（历史「分享」）
+  url_launcher: ^6.3.1 # 浏览器：非 http/https 跳转（baiduboxapp://、intent:// 等）转交系统拉起外部 App
   flutter_widget_from_html: ^0.17.3
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0

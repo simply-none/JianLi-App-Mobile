@@ -295,7 +295,7 @@ class _ReminderTile extends ConsumerWidget {
         : null;
     final subtitleParts = <String>[
       if (item.isStateful && item.statesSummary != null) item.statesSummary!,
-      if (intervalPart != null) intervalPart!,
+      ?intervalPart,
       if (!item.isStateful && item.mode != 'interval') item.repeatLabel,
       if (!item.isStateful &&
           item.mode != 'interval' &&

@@ -235,6 +235,13 @@ class BrowserSettingsPage extends ConsumerWidget {
                 value: s.doNotTrack,
                 onChange: (v) => _save(ref, s.copyWith(doNotTrack: v)),
               ),
+              SettingsSwitchRow(
+                icon: FLucideIcons.search,
+                label: '媒体嗅探',
+                hint: '嗅探页面加载的音视频与流媒体（m3u8/mp4 等）；关闭可省开销',
+                value: s.sniffEnabled,
+                onChange: (v) => _save(ref, s.copyWith(sniffEnabled: v)),
+              ),
               SettingsNavRow(
                 icon: FLucideIcons.trash2,
                 label: '清除浏览数据',
