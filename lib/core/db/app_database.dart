@@ -25,6 +25,7 @@ import 'tables/ebook_tables.dart';
 import 'tables/file_transfer.dart';
 import 'tables/file_vault_tables.dart';
 import 'tables/habit_tables.dart';
+import 'tables/note_slip.dart';
 import 'tables/note_tables.dart';
 import 'tables/pomodoro_tables.dart';
 import 'tables/reminder_tables.dart';
@@ -38,7 +39,8 @@ part 'app_database.g.dart';
 /// 首批 22 张表 + 工具表 3 张（countdown / qr_history / qr_template），共 25 张；
 /// v2 新增 file_transfer（文件互传历史）；
 /// v4 新增浏览器 4 张（browser_tabs / browser_pinned / browser_bookmarks / browser_history，移动端专有、不入同步白名单）；
-/// v5 新增浏览器 2 张（browser_downloads / browser_offline_pages，下载与离线页面，移动端专有、不入同步白名单）。
+/// v5 新增浏览器 2 张（browser_downloads / browser_offline_pages，下载与离线页面，移动端专有、不入同步白名单）；
+/// v6 新增 note_slip（P1-6 小纸条收发记录，双端同构、不入同步白名单）。
 @DriftDatabase(
   tables: [
     HabitDef,
@@ -74,6 +76,8 @@ part 'app_database.g.dart';
     BrowserHistory,
     BrowserDownloads,
     BrowserOfflinePages,
+    // —— 小纸条（P1-6，v6）——
+    NoteSlip,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -87,7 +91,7 @@ class AppDatabase extends _$AppDatabase {
         ));
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -117,6 +121,11 @@ class AppDatabase extends _$AppDatabase {
           // v4→v5：新增浏览器 2 张表（browser_downloads / browser_offline_pages）。
           // 同样 CREATE TABLE IF NOT EXISTS，不碰旧表、不丢数据。
           if (from < 5) {
+            await m.createAll();
+          }
+          // v5→v6：新增 note_slip（P1-6 小纸条）。同样 CREATE TABLE IF NOT EXISTS，
+          // 不碰旧表、不丢数据。
+          if (from < 6) {
             await m.createAll();
           }
         },

@@ -22,6 +22,7 @@
 //   （注：新版 alarm 送达走原生 AlarmRingActivity，awesome 的 fullScreen/snooze 主要服务
 //   普通通知被设为全屏的场景。）
 import 'package:awesome_notifications/awesome_notifications.dart';
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../android/system_actions.dart' as sys;
@@ -53,6 +54,9 @@ class NotificationChannels {
 
   /// 闹钟（强提醒）：高重要 + 可全屏
   static const String alarm = 'alarm';
+
+  /// 小纸条（P1-6：PC ⇄ 手机 文字/链接速传，收到即弹横幅）
+  static const String slip = 'slip';
 
   /// 已被版本升级废弃的旧渠道键（`init()` 时删除，防系统设置里出现死渠道）
   static const List<String> legacyKeys = ['habit', 'todo', 'pomodoro'];
@@ -123,6 +127,16 @@ class NotificationChannels {
           playSound: true,
           enableVibration: true,
           // 锁屏完整可见（VISIBILITY_PUBLIC）：配合 High 的悬浮横幅，做到「不拉通知栏也能看到」
+          defaultPrivacy: NotificationPrivacy.Public,
+        ),
+        NotificationChannel(
+          channelKey: slip,
+          channelName: '小纸条',
+          channelDescription: '来自电脑的小纸条（文字/链接），点击可直达查看',
+          channelShowBadge: true,
+          importance: NotificationImportance.High,
+          playSound: true,
+          enableVibration: true,
           defaultPrivacy: NotificationPrivacy.Public,
         ),
       ];
@@ -273,6 +287,7 @@ class NotificationService {
     required String channelKey,
     required String title,
     required String body,
+    Map<String, String>? payload,
   }) {
     return AwesomeNotifications().createNotification(
       content: NotificationContent(
@@ -281,6 +296,7 @@ class NotificationService {
         title: title,
         body: body,
         category: NotificationCategory.Reminder,
+        payload: payload,
       ),
     );
   }
@@ -505,9 +521,25 @@ class NotificationService {
   /// 杀进程后点击「稍后提醒」无反应。
 }
 
+/// 通知点击中转：顶层回调（可能跑在后台 isolate）**无法直接导航**，
+/// 故把 payload 写进这个全局 ValueNotifier，由 UI 层（app.dart）监听后路由。
+///
+/// 约定 payload 带 `type` 字段：
+/// - `type='slip'` + `key` → 打开小纸条详情（P1-6）
+/// 消费方读完应立刻置 null，避免下次进 App 重复触发。
+final ValueNotifier<Map<String, String>?> pendingNotificationPayload =
+    ValueNotifier(null);
+
 /// 顶层动作回调（供 awesome 在 App 被杀后通过回调句柄投递；详见上方说明）
 @pragma('vm:entry-point')
 Future<void> _onActionReceived(ReceivedAction action) async {
+  final p0 = action.payload ?? const {};
+  final type = p0['type'];
+  if (type != null && type.isNotEmpty) {
+    // 业务类通知（小纸条等）：交给 UI 层路由（snooze 之外的分支）
+    pendingNotificationPayload.value =
+        p0.map((k, v) => MapEntry(k, v ?? ''));
+  }
   if (action.buttonKeyPressed != NotificationService.actionSnooze) return;
   final p = action.payload ?? {};
   final baseId = int.tryParse(p['id'] ?? '') ?? action.id ?? 0;

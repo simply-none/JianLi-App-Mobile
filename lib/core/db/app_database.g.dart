@@ -17893,6 +17893,581 @@ class BrowserOfflinePagesCompanion extends UpdateCompanion<BrowserOfflinePage> {
   }
 }
 
+class $NoteSlipTable extends NoteSlip
+    with TableInfo<$NoteSlipTable, NoteSlipData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NoteSlipTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _directionMeta = const VerificationMeta(
+    'direction',
+  );
+  @override
+  late final GeneratedColumn<String> direction = GeneratedColumn<String>(
+    'direction',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _contentMeta = const VerificationMeta(
+    'content',
+  );
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+    'content',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _peerNameMeta = const VerificationMeta(
+    'peerName',
+  );
+  @override
+  late final GeneratedColumn<String> peerName = GeneratedColumn<String>(
+    'peer_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _peerIpMeta = const VerificationMeta('peerIp');
+  @override
+  late final GeneratedColumn<String> peerIp = GeneratedColumn<String>(
+    'peer_ip',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _readMeta = const VerificationMeta('read');
+  @override
+  late final GeneratedColumn<int> read = GeneratedColumn<int>(
+    'read',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    key,
+    direction,
+    kind,
+    title,
+    content,
+    peerName,
+    peerIp,
+    read,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'note_slip';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NoteSlipData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('direction')) {
+      context.handle(
+        _directionMeta,
+        direction.isAcceptableOrUnknown(data['direction']!, _directionMeta),
+      );
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('content')) {
+      context.handle(
+        _contentMeta,
+        content.isAcceptableOrUnknown(data['content']!, _contentMeta),
+      );
+    }
+    if (data.containsKey('peer_name')) {
+      context.handle(
+        _peerNameMeta,
+        peerName.isAcceptableOrUnknown(data['peer_name']!, _peerNameMeta),
+      );
+    }
+    if (data.containsKey('peer_ip')) {
+      context.handle(
+        _peerIpMeta,
+        peerIp.isAcceptableOrUnknown(data['peer_ip']!, _peerIpMeta),
+      );
+    }
+    if (data.containsKey('read')) {
+      context.handle(
+        _readMeta,
+        read.isAcceptableOrUnknown(data['read']!, _readMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  NoteSlipData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NoteSlipData(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      direction: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}direction'],
+      ),
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
+      content: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content'],
+      ),
+      peerName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}peer_name'],
+      ),
+      peerIp: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}peer_ip'],
+      ),
+      read: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}read'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      ),
+    );
+  }
+
+  @override
+  $NoteSlipTable createAlias(String alias) {
+    return $NoteSlipTable(attachedDatabase, alias);
+  }
+}
+
+class NoteSlipData extends DataClass implements Insertable<NoteSlipData> {
+  /// uuid（由发送端生成，收端按主键 upsert → 重复推送不重复入库/不重复弹通知）
+  final String key;
+
+  /// 方向：in（收到的）/ out（发出的）
+  final String? direction;
+
+  /// 内容类型：text / url
+  final String? kind;
+
+  /// 首行摘要（列表与通知标题用）
+  final String? title;
+
+  /// 正文
+  final String? content;
+
+  /// 对端昵称（广播名，带「的PC」/「的App」后缀）
+  final String? peerName;
+
+  /// 对端 IP
+  final String? peerIp;
+
+  /// 已读标记：0 未读 / 1 已读（仅 direction='in' 有意义）
+  final int read;
+
+  /// 毫秒时间戳（排序用，与 countdown 同款）
+  final int? createdAt;
+  const NoteSlipData({
+    required this.key,
+    this.direction,
+    this.kind,
+    this.title,
+    this.content,
+    this.peerName,
+    this.peerIp,
+    required this.read,
+    this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    if (!nullToAbsent || direction != null) {
+      map['direction'] = Variable<String>(direction);
+    }
+    if (!nullToAbsent || kind != null) {
+      map['kind'] = Variable<String>(kind);
+    }
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    if (!nullToAbsent || content != null) {
+      map['content'] = Variable<String>(content);
+    }
+    if (!nullToAbsent || peerName != null) {
+      map['peer_name'] = Variable<String>(peerName);
+    }
+    if (!nullToAbsent || peerIp != null) {
+      map['peer_ip'] = Variable<String>(peerIp);
+    }
+    map['read'] = Variable<int>(read);
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<int>(createdAt);
+    }
+    return map;
+  }
+
+  NoteSlipCompanion toCompanion(bool nullToAbsent) {
+    return NoteSlipCompanion(
+      key: Value(key),
+      direction: direction == null && nullToAbsent
+          ? const Value.absent()
+          : Value(direction),
+      kind: kind == null && nullToAbsent ? const Value.absent() : Value(kind),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
+      content: content == null && nullToAbsent
+          ? const Value.absent()
+          : Value(content),
+      peerName: peerName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(peerName),
+      peerIp: peerIp == null && nullToAbsent
+          ? const Value.absent()
+          : Value(peerIp),
+      read: Value(read),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
+    );
+  }
+
+  factory NoteSlipData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NoteSlipData(
+      key: serializer.fromJson<String>(json['key']),
+      direction: serializer.fromJson<String?>(json['direction']),
+      kind: serializer.fromJson<String?>(json['kind']),
+      title: serializer.fromJson<String?>(json['title']),
+      content: serializer.fromJson<String?>(json['content']),
+      peerName: serializer.fromJson<String?>(json['peerName']),
+      peerIp: serializer.fromJson<String?>(json['peerIp']),
+      read: serializer.fromJson<int>(json['read']),
+      createdAt: serializer.fromJson<int?>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'direction': serializer.toJson<String?>(direction),
+      'kind': serializer.toJson<String?>(kind),
+      'title': serializer.toJson<String?>(title),
+      'content': serializer.toJson<String?>(content),
+      'peerName': serializer.toJson<String?>(peerName),
+      'peerIp': serializer.toJson<String?>(peerIp),
+      'read': serializer.toJson<int>(read),
+      'createdAt': serializer.toJson<int?>(createdAt),
+    };
+  }
+
+  NoteSlipData copyWith({
+    String? key,
+    Value<String?> direction = const Value.absent(),
+    Value<String?> kind = const Value.absent(),
+    Value<String?> title = const Value.absent(),
+    Value<String?> content = const Value.absent(),
+    Value<String?> peerName = const Value.absent(),
+    Value<String?> peerIp = const Value.absent(),
+    int? read,
+    Value<int?> createdAt = const Value.absent(),
+  }) => NoteSlipData(
+    key: key ?? this.key,
+    direction: direction.present ? direction.value : this.direction,
+    kind: kind.present ? kind.value : this.kind,
+    title: title.present ? title.value : this.title,
+    content: content.present ? content.value : this.content,
+    peerName: peerName.present ? peerName.value : this.peerName,
+    peerIp: peerIp.present ? peerIp.value : this.peerIp,
+    read: read ?? this.read,
+    createdAt: createdAt.present ? createdAt.value : this.createdAt,
+  );
+  NoteSlipData copyWithCompanion(NoteSlipCompanion data) {
+    return NoteSlipData(
+      key: data.key.present ? data.key.value : this.key,
+      direction: data.direction.present ? data.direction.value : this.direction,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      title: data.title.present ? data.title.value : this.title,
+      content: data.content.present ? data.content.value : this.content,
+      peerName: data.peerName.present ? data.peerName.value : this.peerName,
+      peerIp: data.peerIp.present ? data.peerIp.value : this.peerIp,
+      read: data.read.present ? data.read.value : this.read,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteSlipData(')
+          ..write('key: $key, ')
+          ..write('direction: $direction, ')
+          ..write('kind: $kind, ')
+          ..write('title: $title, ')
+          ..write('content: $content, ')
+          ..write('peerName: $peerName, ')
+          ..write('peerIp: $peerIp, ')
+          ..write('read: $read, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    key,
+    direction,
+    kind,
+    title,
+    content,
+    peerName,
+    peerIp,
+    read,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NoteSlipData &&
+          other.key == this.key &&
+          other.direction == this.direction &&
+          other.kind == this.kind &&
+          other.title == this.title &&
+          other.content == this.content &&
+          other.peerName == this.peerName &&
+          other.peerIp == this.peerIp &&
+          other.read == this.read &&
+          other.createdAt == this.createdAt);
+}
+
+class NoteSlipCompanion extends UpdateCompanion<NoteSlipData> {
+  final Value<String> key;
+  final Value<String?> direction;
+  final Value<String?> kind;
+  final Value<String?> title;
+  final Value<String?> content;
+  final Value<String?> peerName;
+  final Value<String?> peerIp;
+  final Value<int> read;
+  final Value<int?> createdAt;
+  final Value<int> rowid;
+  const NoteSlipCompanion({
+    this.key = const Value.absent(),
+    this.direction = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.title = const Value.absent(),
+    this.content = const Value.absent(),
+    this.peerName = const Value.absent(),
+    this.peerIp = const Value.absent(),
+    this.read = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  NoteSlipCompanion.insert({
+    required String key,
+    this.direction = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.title = const Value.absent(),
+    this.content = const Value.absent(),
+    this.peerName = const Value.absent(),
+    this.peerIp = const Value.absent(),
+    this.read = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : key = Value(key);
+  static Insertable<NoteSlipData> custom({
+    Expression<String>? key,
+    Expression<String>? direction,
+    Expression<String>? kind,
+    Expression<String>? title,
+    Expression<String>? content,
+    Expression<String>? peerName,
+    Expression<String>? peerIp,
+    Expression<int>? read,
+    Expression<int>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (direction != null) 'direction': direction,
+      if (kind != null) 'kind': kind,
+      if (title != null) 'title': title,
+      if (content != null) 'content': content,
+      if (peerName != null) 'peer_name': peerName,
+      if (peerIp != null) 'peer_ip': peerIp,
+      if (read != null) 'read': read,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  NoteSlipCompanion copyWith({
+    Value<String>? key,
+    Value<String?>? direction,
+    Value<String?>? kind,
+    Value<String?>? title,
+    Value<String?>? content,
+    Value<String?>? peerName,
+    Value<String?>? peerIp,
+    Value<int>? read,
+    Value<int?>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return NoteSlipCompanion(
+      key: key ?? this.key,
+      direction: direction ?? this.direction,
+      kind: kind ?? this.kind,
+      title: title ?? this.title,
+      content: content ?? this.content,
+      peerName: peerName ?? this.peerName,
+      peerIp: peerIp ?? this.peerIp,
+      read: read ?? this.read,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (direction.present) {
+      map['direction'] = Variable<String>(direction.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
+    }
+    if (peerName.present) {
+      map['peer_name'] = Variable<String>(peerName.value);
+    }
+    if (peerIp.present) {
+      map['peer_ip'] = Variable<String>(peerIp.value);
+    }
+    if (read.present) {
+      map['read'] = Variable<int>(read.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NoteSlipCompanion(')
+          ..write('key: $key, ')
+          ..write('direction: $direction, ')
+          ..write('kind: $kind, ')
+          ..write('title: $title, ')
+          ..write('content: $content, ')
+          ..write('peerName: $peerName, ')
+          ..write('peerIp: $peerIp, ')
+          ..write('read: $read, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -17942,6 +18517,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $BrowserOfflinePagesTable browserOfflinePages =
       $BrowserOfflinePagesTable(this);
+  late final $NoteSlipTable noteSlip = $NoteSlipTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -17979,6 +18555,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     browserHistory,
     browserDownloads,
     browserOfflinePages,
+    noteSlip,
   ];
 }
 
@@ -27171,6 +27748,289 @@ typedef $$BrowserOfflinePagesTableProcessedTableManager =
       BrowserOfflinePage,
       PrefetchHooks Function()
     >;
+typedef $$NoteSlipTableCreateCompanionBuilder = NoteSlipCompanion Function({
+  required String key,
+  Value<String?> direction,
+  Value<String?> kind,
+  Value<String?> title,
+  Value<String?> content,
+  Value<String?> peerName,
+  Value<String?> peerIp,
+  Value<int> read,
+  Value<int?> createdAt,
+  Value<int> rowid,
+});
+typedef $$NoteSlipTableUpdateCompanionBuilder = NoteSlipCompanion Function({
+  Value<String> key,
+  Value<String?> direction,
+  Value<String?> kind,
+  Value<String?> title,
+  Value<String?> content,
+  Value<String?> peerName,
+  Value<String?> peerIp,
+  Value<int> read,
+  Value<int?> createdAt,
+  Value<int> rowid,
+});
+
+class $$NoteSlipTableFilterComposer
+    extends Composer<_$AppDatabase, $NoteSlipTable> {
+  $$NoteSlipTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get peerName => $composableBuilder(
+    column: $table.peerName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get peerIp => $composableBuilder(
+    column: $table.peerIp,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get read => $composableBuilder(
+    column: $table.read,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$NoteSlipTableOrderingComposer
+    extends Composer<_$AppDatabase, $NoteSlipTable> {
+  $$NoteSlipTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get peerName => $composableBuilder(
+    column: $table.peerName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get peerIp => $composableBuilder(
+    column: $table.peerIp,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get read => $composableBuilder(
+    column: $table.read,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$NoteSlipTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NoteSlipTable> {
+  $$NoteSlipTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get direction =>
+      $composableBuilder(column: $table.direction, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<String> get peerName =>
+      $composableBuilder(column: $table.peerName, builder: (column) => column);
+
+  GeneratedColumn<String> get peerIp =>
+      $composableBuilder(column: $table.peerIp, builder: (column) => column);
+
+  GeneratedColumn<int> get read =>
+      $composableBuilder(column: $table.read, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$NoteSlipTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NoteSlipTable,
+          NoteSlipData,
+          $$NoteSlipTableFilterComposer,
+          $$NoteSlipTableOrderingComposer,
+          $$NoteSlipTableAnnotationComposer,
+          $$NoteSlipTableCreateCompanionBuilder,
+          $$NoteSlipTableUpdateCompanionBuilder,
+          (
+            NoteSlipData,
+            BaseReferences<_$AppDatabase, $NoteSlipTable, NoteSlipData>,
+          ),
+          NoteSlipData,
+          PrefetchHooks Function()
+        > {
+  $$NoteSlipTableTableManager(_$AppDatabase db, $NoteSlipTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$NoteSlipTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$NoteSlipTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$NoteSlipTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String?> direction = const Value.absent(),
+                Value<String?> kind = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<String?> content = const Value.absent(),
+                Value<String?> peerName = const Value.absent(),
+                Value<String?> peerIp = const Value.absent(),
+                Value<int> read = const Value.absent(),
+                Value<int?> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => NoteSlipCompanion(
+                key: key,
+                direction: direction,
+                kind: kind,
+                title: title,
+                content: content,
+                peerName: peerName,
+                peerIp: peerIp,
+                read: read,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                Value<String?> direction = const Value.absent(),
+                Value<String?> kind = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<String?> content = const Value.absent(),
+                Value<String?> peerName = const Value.absent(),
+                Value<String?> peerIp = const Value.absent(),
+                Value<int> read = const Value.absent(),
+                Value<int?> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => NoteSlipCompanion.insert(
+                key: key,
+                direction: direction,
+                kind: kind,
+                title: title,
+                content: content,
+                peerName: peerName,
+                peerIp: peerIp,
+                read: read,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$NoteSlipTable, NoteSlipData>(table),
+                  BaseReferences<_$AppDatabase, $NoteSlipTable, NoteSlipData>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$NoteSlipTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NoteSlipTable,
+      NoteSlipData,
+      $$NoteSlipTableFilterComposer,
+      $$NoteSlipTableOrderingComposer,
+      $$NoteSlipTableAnnotationComposer,
+      $$NoteSlipTableCreateCompanionBuilder,
+      $$NoteSlipTableUpdateCompanionBuilder,
+      (
+        NoteSlipData,
+        BaseReferences<_$AppDatabase, $NoteSlipTable, NoteSlipData>,
+      ),
+      NoteSlipData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -27239,4 +28099,6 @@ class $AppDatabaseManager {
       $$BrowserDownloadsTableTableManager(_db, _db.browserDownloads);
   $$BrowserOfflinePagesTableTableManager get browserOfflinePages =>
       $$BrowserOfflinePagesTableTableManager(_db, _db.browserOfflinePages);
+  $$NoteSlipTableTableManager get noteSlip =>
+      $$NoteSlipTableTableManager(_db, _db.noteSlip);
 }

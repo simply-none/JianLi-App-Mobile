@@ -472,3 +472,13 @@
   - 适用边界：once 跨 24h / hourly / monthly / yearly / interval 时钟 App 表达不了，维持路线 1；weekly 空 weekDays 按每天。
   - 已知代价：公开 API 不能删系统时钟闹钟 → 删改提醒后旧闹钟需手动清理（标签「渐离App·」前缀 + 守护抽屉说明块）。
   - analyze 全绿；真机验证 = 建每日闹钟送达提醒 → 系统时钟出现「渐离App·xx」→ 锁屏/切后台等到点由系统时钟响。
+
+- **2026-09-19（J）：P1-6 小纸条（双端同名【小纸条】）落地 —— 移动端**。
+  - 协议复用 47124 数据面新增两个端点 `GET /slip/ping` + `POST /slip/push`（走 `registerRouteHandler`），发现复用 47123；platform 值 PC = `win32-electron`、手机 = android / ios，是筛选对端的唯一依据。body 为 `{id,from:{name,platform},kind,content,ts}`，`id` 即幂等键。
+  - 新表 `note_slip`（TEXT 主键 key；direction / kind / title / content / peer_name / peer_ip / read / created_at），**schemaVersion 5→6** + onUpgrade，已跑 build_runner；**不入同步白名单**。
+  - 代码在 `lib/features/note_slip/`：models + repositories + services（server 接收 / client 发送）+ providers + `note_slip_bootstrap.dart`（接收常驻开关）+ `note_slip_intake.dart`（通知点击落点）+ components（page / detail_sheet）；路由 `/slip`；入口在工具分组页。
+  - **接收时机双开关**（用户拍板）：basic_info `slip_always_on` = 1 冷启动常驻（首帧拉起 startServer + startResponder）/ 0（默认）仅开页面时可收。⚠️ 数据面是全局共享的，开过同步页/互传页同样在跑，属既有机制的自然结果，不是 bug。
+  - `registerRouteHandler` 必须幂等注册（静态守卫布尔），否则一次请求被处理两遍、弹两条通知。
+  - 新增通知渠道 `slip`（High + Public；**渠道重要性创建后锁定**），点击经全局 sink 跳 `/slip?key=` 开详情抽屉（复制 / 浏览器打开 / 存笔记 / 建待办）。
+  - PC 对称实现：`electron/main/module/noteSlip.ts` + `src/views/noteSlip/*` + 菜单 / 快捷键 / 托盘三入口。
+  - analyze 全绿（仅 db_export.dart 一条既有 info lint）。

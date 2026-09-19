@@ -15,6 +15,10 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/android/system_actions.dart';
 import '../core/db/db_location.dart';
+import '../core/notifications/notification_service.dart';
+import '../core/sync/sync_service.dart';
+import '../features/note_slip/note_slip_bootstrap.dart';
+import '../features/note_slip/providers/note_slip_providers.dart';
 import '../features/share_intake/share_intake_controller.dart';
 import 'providers/theme_providers.dart';
 import 'security/app_lock.dart';
@@ -56,11 +60,42 @@ class _JianliAppState extends ConsumerState<JianliApp>
       // P0-4 快捷磁贴/静态快捷方式：拉走冷启动前暂存的 quick_action extra
       //（快捷方式注册在原生层静态 shortcuts，Dart 无需初始化）
       unawaited(_takeQuickActionOnce());
+      // P1-6 小纸条：注册 /slip/* 接收路由（两种模式都要注册；数据面按开关决定是否常驻）
+      final db = ref.read(appDatabaseProvider);
+      NoteSlipBootstrap.registerRoutes(db);
+      unawaited(_startSlipReceiving());
+      // 通知点击中转（顶层回调无法直接导航 → 全局 ValueNotifier 交给 UI 层路由）
+      pendingNotificationPayload.addListener(_onNotificationPayload);
     });
+  }
+
+  /// P1-6：按「接收常驻」开关决定是否冷启动即拉起 47124 数据面
+  Future<void> _startSlipReceiving() async {
+    try {
+      final alwaysOn = await ref.read(slipAlwaysOnProvider.future);
+      if (!alwaysOn || !mounted) return;
+      await NoteSlipBootstrap.ensureDataPlane(ref.read(syncServiceProvider));
+    } catch (_) {
+      // 开关读取失败/端口被占：不阻断启动，进小纸条页会再拉一次
+    }
+  }
+
+  /// 通知点击 → 路由（目前只有小纸条一类业务通知）
+  void _onNotificationPayload() {
+    final p = pendingNotificationPayload.value;
+    if (p == null) return;
+    pendingNotificationPayload.value = null; // 消费即清空，防重复触发
+    if (p['type'] == 'slip') {
+      final key = p['key'] ?? '';
+      if (key.isNotEmpty) {
+        appRouter.push('/slip?key=${Uri.encodeComponent(key)}');
+      }
+    }
   }
 
   @override
   void dispose() {
+    pendingNotificationPayload.removeListener(_onNotificationPayload);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

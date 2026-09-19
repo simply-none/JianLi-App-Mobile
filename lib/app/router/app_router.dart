@@ -46,6 +46,7 @@ import '../../features/browser/pages/browser_offline_viewer_page.dart';
 import '../../features/browser/pages/browser_subscriptions_page.dart';
 import '../../features/data_management/data_management_page.dart';
 import '../../features/file_transfer/components/file_transfer_page.dart';
+import '../../features/note_slip/components/note_slip_page.dart';
 import '../../features/ferry/ferry_page.dart';
 import '../anim/jianli_transitions.dart';
 import '../security/app_lock_page.dart';
@@ -348,6 +349,14 @@ final GoRouter appRouter = GoRouter(
       path: '/share-intake',
       pageBuilder: (context, state) =>
           NoTransitionPage<void>(child: const ShareIntakePage()),
+    ),
+    // P1-6 小纸条（PC ⇄ 手机 文字/链接速传）：查询参数 key = 通知点击直达的那条
+    GoRoute(
+      path: '/slip',
+      pageBuilder: (context, state) => slidePage(
+        NoteSlipPage(initialKey: state.uri.queryParameters['key']),
+        state,
+      ),
     ),
     // P1-1 应用锁解锁页（全屏拦截层，锁定转变沿由根组件 push；无转场防闪）
     GoRoute(
