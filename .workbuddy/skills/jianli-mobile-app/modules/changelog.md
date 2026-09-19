@@ -1,6 +1,11 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-19（**P0-4 真机实锤：静态快捷方式全部「已失效」——`${applicationId}` 不进 res/xml**）：真机长按图标四个快捷方式点着全报「该桌面快捷方式已经失效，请移除」。
+  - **根因（aapt2 dump xmltree 解剖 app-debug.apk 实证）**：`res/xml/shortcuts.xml` 的 `android:targetPackage="${applicationId}"` 编译进 APK 后**仍是字面量 `"${applicationId}"`** —— AGP 的 manifest 占位符替换**只作用于 AndroidManifest.xml，不处理 res/xml 资源文件**。启动器拿假包名解析 intent 失败 → ROM 启动器报快捷方式失效。
+  - **修法**：targetPackage 硬编码 `com.jianli.jianli_mobile_app`（本项目 applicationId 无 suffix；若将来加 applicationIdSuffix 记得同步）。快捷方式资源文件里的包名一律硬编码，勿信 manifest 占位符。
+  - 验证手段复用：`<SDK>/build-tools/<ver>/aapt2.exe dump xmltree <apk> --file res/xml/shortcuts.xml`（aapt2 在 PATH 外，用全路径；可先 Glob `build/app/outputs/flutter-apk/*.apk`）。
+  - 需**完整重装**（gradle installDebug / 重跑 flutter run），静态快捷方式随包替换自动重发布；旧安装的失效提示会被新包顶掉。
 - 2026-09-19（**P1-1 二编：MainActivity 换父类后的类型不匹配**）：`MainActivity:114` 报「Argument type mismatch: actual type is 'MainActivity', but 'FlutterActivity' was expected」。
   - **根因实锤（勿再记错）**：**`FlutterFragmentActivity` 与 `FlutterActivity` 是兄弟类不是父子**——前者继承 `androidx.fragment.app.FragmentActivity`（local_auth 的 BiometricPrompt 需要它），后者直接继承 `Activity`。MainActivity 换父类后，任何收 `FlutterActivity` 参数的 Kotlin 代码都编译不过。
   - 修法：`SystemActionsChannel.register(activity: FlutterActivity, ...)` 放宽为 `android.app.Activity`（通道方法体只当 Context 用：startActivity/系统服务，无需 FlutterActivity 特有 API；ReminderKeepAliveService.start/stop 本就收 Context）。全工程 grep 确认无其他 FlutterActivity 类型参数残留。

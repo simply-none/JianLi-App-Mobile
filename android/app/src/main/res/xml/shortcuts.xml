@@ -5,6 +5,11 @@
   quick_action extra → MainActivity companion 暂存 → Dart takeQuickAction 拉走 →
   lib/app/shortcuts/app_shortcuts.dart::handleAppShortcut 分发（与快捷磁贴同一管道）。
   改文案：res/values/strings.xml；改图标：res/drawable/ic_short_*.xml。
+
+  ⚠️ targetPackage 必须硬编码真实包名，**不能用 ${applicationId}**（2026-09-19 真机实锤：
+  「该桌面快捷方式已经失效」）—— manifest 占位符替换只作用于 AndroidManifest.xml，
+  res/xml 资源里的 ${applicationId} 会原样保留（aapt2 dump xmltree 实证 APK 内就是字面量），
+  启动器解析不到目标包 → 全部快捷方式点着报失效。applicationId 若将来改后缀记得同步这里。
 -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
@@ -15,7 +20,7 @@
         android:shortcutLongLabel="@string/shortcut_note">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="${applicationId}"
+            android:targetPackage="com.jianli.jianli_mobile_app"
             android:targetClass="com.jianli.jianli_mobile_app.MainActivity">
             <extra
                 android:name="quick_action"
@@ -30,7 +35,7 @@
         android:shortcutLongLabel="@string/shortcut_scan">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="${applicationId}"
+            android:targetPackage="com.jianli.jianli_mobile_app"
             android:targetClass="com.jianli.jianli_mobile_app.MainActivity">
             <extra
                 android:name="quick_action"
@@ -45,7 +50,7 @@
         android:shortcutLongLabel="@string/shortcut_focus">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="${applicationId}"
+            android:targetPackage="com.jianli.jianli_mobile_app"
             android:targetClass="com.jianli.jianli_mobile_app.MainActivity">
             <extra
                 android:name="quick_action"
@@ -60,7 +65,7 @@
         android:shortcutLongLabel="@string/shortcut_habit">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="${applicationId}"
+            android:targetPackage="com.jianli.jianli_mobile_app"
             android:targetClass="com.jianli.jianli_mobile_app.MainActivity">
             <extra
                 android:name="quick_action"

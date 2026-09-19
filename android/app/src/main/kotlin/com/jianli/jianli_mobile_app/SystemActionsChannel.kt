@@ -9,7 +9,6 @@ import android.os.PowerManager
 import android.provider.AlarmClock
 import android.provider.Settings
 import android.util.Log
-import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 
@@ -35,7 +34,11 @@ object SystemActionsChannel {
 
     private const val CHANNEL = "jianli/system_actions"
 
-    fun register(activity: FlutterActivity, messenger: BinaryMessenger) {
+    // ⚠️ 参数用 android.app.Activity 而非 FlutterActivity：P1-1 起 MainActivity 是
+    // FlutterFragmentActivity（为 local_auth 的 BiometricPrompt），它与 FlutterActivity 是
+    // **兄弟类**（前者继承 FragmentActivity），钉 FlutterActivity 会编译不过。
+    // 本通道只用 Context 级 API（startActivity / 系统服务），Activity 够用。
+    fun register(activity: android.app.Activity, messenger: BinaryMessenger) {
         MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
