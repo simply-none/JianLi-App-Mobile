@@ -20,7 +20,7 @@ Future<void> showBrowserUaSheet(BuildContext context, WidgetRef ref) async {
   final picked = await showSheetActionMenu<BrowserUaPreset>(
     context,
     title: '浏览器标识',
-    size: SheetSize.sm,
+    size: SheetSize.md, // 2026-09-21 用户定案：sm(30vh) → md(50vh)，5 项更透气
     actions: [
       for (final p in BrowserUaPreset.values)
         SheetAction(

@@ -212,9 +212,13 @@ class _AddressInput extends StatelessWidget {
         autofocus: true,
         onSubmitted: onSubmit,
         textInputAction: TextInputAction.go,
-        keyboardType: TextInputType.url,
+        // 普通文本键盘（2026-09-21 修复）：原 TextInputType.url 会强制弹 URL 专用键盘
+        // （只能英文/符号，中文 IME 被压掉），而本栏是「搜索或输入网址」的 omnibox——
+        // 关键词搜索占大半场景，必须允许中文；网址 vs 搜索的分流由页面的
+        // resolveInput(looksLikeUrl) 负责，与键盘类型无关。
+        keyboardType: TextInputType.text,
         autocorrect: false,
-        enableSuggestions: false,
+        enableSuggestions: true,
         style: t.typography.body.sm.copyWith(
           fontSize: 14,
           color: t.colors.foreground,

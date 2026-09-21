@@ -6,7 +6,8 @@
 //   搜索行   ★吸顶锚点（PinnedSearchRow，随滚动常驻视口顶部）
 //   Tab 栏   ScopeTabBar：收到的 / 发出的（随滚动移出）
 //   列表     卡片（来源 + 时间 + 2 行摘要 + 未读点；单击详情 lg，长按操作菜单）
-//   底部条   目标设备 chip + 输入框 + 发送（与主题对话快速输入条同构）
+//   底部条   目标设备 chip + 输入框 + 内容模式 + 发送（与主题对话快速输入条同构；
+//            长文本走「内容模式」lg 多行编辑抽屉，入口 = maximize2 钮 / 长按输入框）
 //
 // 接收时机：`NoteSlipBootstrap` 两种模式 —— 冷启动常驻 / 仅开页面时可收（页面入页必拉起数据面）。
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -321,11 +322,13 @@ class _NoteSlipPageState extends ConsumerState<NoteSlipPage> {
 
   // ---------- 发送 ----------
 
-  Future<void> _send() async {
-    final text = _composeController.text.trim();
+  /// 发送核心（底部输入条与内容模式共用）：返回是否成功。
+  /// 成功后由调用方决定是否清空底部草稿（内容模式发送成功即清）。
+  Future<bool> _sendText(String raw) async {
+    final text = raw.trim();
     if (text.isEmpty) {
       showFToast(context: context, title: const Text('请输入内容'));
-      return;
+      return false;
     }
     final current = _current;
     if (current == null) {
@@ -334,23 +337,22 @@ class _NoteSlipPageState extends ConsumerState<NoteSlipPage> {
         title: const Text('请先选择设备'),
         description: const Text('扫描局域网或手动输入 IP'),
       );
-      return;
+      return false;
     }
-    if (_sending) return;
+    if (_sending) return false;
     setState(() => _sending = true);
     final r = await ref
         .read(noteSlipClientProvider)
         .send(ip: current.ip, content: text, peerName: current.name);
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _sending = false);
     if (r.ok) {
-      _composeController.clear();
       showFToast(
         context: context,
         title: const Text('已发送'),
         description: Text('发往 ${current.name}'),
       );
-      return;
+      return true;
     }
     showFToast(
       context: context,
@@ -358,6 +360,36 @@ class _NoteSlipPageState extends ConsumerState<NoteSlipPage> {
       title: const Text('发送失败'),
       description: Text(r.error ?? ''),
     );
+    return false;
+  }
+
+  Future<void> _send() async {
+    if (await _sendText(_composeController.text)) {
+      _composeController.clear();
+    }
+  }
+
+  // ---------- 内容模式（长文本多行编辑） ----------
+
+  /// 内容模式：lg 抽屉沉浸多行编辑（对齐新增笔记页正文区）。
+  /// 返回 (是否发送, 文本)：发送 = 直接走 [_sendText]；取消 = 编辑结果回填
+  /// 底部输入框（草稿不丢）。点 X / 遮罩（result == null）不动草稿。
+  Future<void> _openComposeSheet() async {
+    final result = await showFSheet<(bool, String)>(
+      context: context,
+      side: FLayout.btt,
+      mainAxisMaxRatio: AppTokens.sheetHeightLg,
+      // lg 红线：固定 80vh、键盘覆盖不重排（底部条自带键盘补偿，见 SheetScaffold）
+      resizeToAvoidBottomInset: false,
+      builder: (_) => _ComposeSheet(initial: _composeController.text),
+    );
+    if (result == null || !mounted) return;
+    final (send, text) = result;
+    if (send) {
+      if (await _sendText(text)) _composeController.clear();
+      return;
+    }
+    setState(() => _composeController.text = text);
   }
 
   // ---------- 头部菜单 ----------
@@ -700,10 +732,33 @@ class _NoteSlipPageState extends ConsumerState<NoteSlipPage> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: SheetInputBox(
-              controller: _composeController,
-              hintText: '写一条发给对端…',
-              onSubmitted: (_) => _send(),
+            // 长按输入框同样进入内容模式（大文本写不进单行时的隐性入口）
+            child: GestureDetector(
+              onLongPress: _openComposeSheet,
+              child: SheetInputBox(
+                controller: _composeController,
+                hintText: '写一条发给对端…',
+                onSubmitted: (_) => _send(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // 内容模式入口：单行框写不下长文本，展开成 lg 多行编辑抽屉
+          TapScale(
+            onTap: _openComposeSheet,
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: t.colors.muted,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                FLucideIcons.maximize2,
+                size: 17,
+                color: t.colors.foreground,
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -832,6 +887,73 @@ class _SlipCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 内容模式编辑抽屉（lg 档）：沉浸式多行正文（对齐新增笔记页正文区——无边框、
+/// 占满滚动区、随内容增长），底部固定「取消 / 发送」。
+///
+/// ⚠️ controller 由自身 State 持有并释放（红线：controller 生命周期跟 State，
+/// 不跟 await 之后的调用点）；打开**不自动聚焦**（红线 #14⑤）。
+/// 返回值 `(是否发送, 文本)`：发送与取消都会带回当前文本，点 X / 遮罩返回 null。
+class _ComposeSheet extends StatefulWidget {
+  const _ComposeSheet({required this.initial});
+
+  /// 打开时带入的草稿（= 底部输入框当前内容）
+  final String initial;
+
+  @override
+  State<_ComposeSheet> createState() => _ComposeSheetState();
+}
+
+class _ComposeSheetState extends State<_ComposeSheet> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    final style = t.typography.body.sm.copyWith(
+      fontSize: 15,
+      height: 1.7,
+      color: t.colors.foreground,
+    );
+    return SheetScaffold(
+      title: '发送内容',
+      size: SheetSize.lg,
+      body: Material(
+        type: MaterialType.transparency,
+        // 无边框沉浸正文：maxLines:null 随内容增长，超出由 SheetScaffold 的
+        // 中间滚动区承担（滚动开始自动收键盘，见 SheetSurface 统一兜底）
+        child: TextField(
+          controller: _controller,
+          maxLines: null,
+          textAlignVertical: TextAlignVertical.top,
+          style: style,
+          cursorColor: t.colors.primary,
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: EdgeInsets.zero,
+            border: InputBorder.none,
+            hintText: '输入要发送的内容…',
+            hintStyle: style.copyWith(color: t.colors.mutedForeground),
+          ),
+        ),
+      ),
+      bottomBar: sheetBottomActions(
+        context,
+        actionLabel: '发送',
+        actionIcon: FLucideIcons.send,
+        onAction: () => Navigator.pop(context, (true, _controller.text)),
+        onCancel: () => Navigator.pop(context, (false, _controller.text)),
       ),
     );
   }

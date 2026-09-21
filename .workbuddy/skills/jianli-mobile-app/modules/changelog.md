@@ -1,6 +1,16 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-21（**浏览器地址栏键盘修复：URL 键盘压掉中文 IME**）：用户报「输入框搜索弹出固定英文键盘，应弹普通键盘；输入网址则打开、其他则搜索」。
+  - **排查结论**：「网址直开 / 关键词搜索」分流**早已完备**——`_submitInput` → `resolveInput`（`browser_models.dart`，`looksLikeUrl`：协议前缀/localhost/IP → 网址；含 `.` 且无空格且 TLD 是 ≥2 ASCII 字母 → 网址；其余 → 按搜索引擎搜）。真正根因只有一个：`_AddressInput` 设了 `keyboardType: TextInputType.url` → 强制 URL 专用键盘，中文 IME 被压掉，关键词根本打不出来。
+  - **修法（`browser_address_bar.dart`）**：`TextInputType.text` + `enableSuggestions: true` + `autocorrect: false`（保留防域名被自动改写）。设置页三处**纯 URL 配置项**（自定义搜索模板 / 固定标签网址 / 订阅源 URL）保留 URL 键盘。已录红线 #22。
+  - 校验：`dart analyze lib/features/browser/components/browser_address_bar.dart` → No issues found!。真机待验：中文关键词出搜索结果、`zhihu.com` 直开。
+- 2026-09-21（**浏览器标识弹窗高度 sm → md**）：菜单「浏览器标识」弹窗（`browser_ua_sheet.dart` 的 `showBrowserUaSheet`）5 个选项在 30vh 里偏挤，用户定案改 `SheetSize.sm` → `SheetSize.md`（30vh → 50vh）。同文件既有 `use_build_context_synchronously` info（选自定义 UA 跨 async 用 context）为历史遗留，未处理。
+- 2026-09-21（**小纸条「内容模式」：长文本单行输入写不下 → lg 多行编辑抽屉**）：用户报发送大段文字时底部条单行框看不到实际内容，要求「可以选择内容模式，即新增笔记页面的效果」。
+  - 落地 `note_slip_page.dart`：① `_send()` 拆出共用核心 **`_sendText(raw)`**（空文本/未选设备校验 + 发送 + toast，返回 bool，底部条与内容模式共用）；② 新增 `_openComposeSheet()` + **`_ComposeSheet`**（lg 抽屉：无边框沉浸多行正文 `maxLines:null` 对齐笔记编辑页方案 B 正文区，超出由 SheetScaffold 中间滚动区承担；底部 `sheetBottomActions` 取消/发送；controller 自持 dispose、打开不 autofocus 红线 #14⑤）。入口双通道 = 发送条 **maximize2 按钮** + **长按输入框**。
+  - **数据流（草稿不丢）**：抽屉返回 `(bool send, String text)` 记录——发送 = `_sendText` 成功后 `_composeController.clear()`；取消 = 编辑结果 setState 回填底部输入框；X/遮罩（null）= 不动草稿。
+  - 键盘合规：lg 恒 `resizeToAvoidBottomInset:false`（红线）+ SheetScaffold bottomBar 自带 viewInsets 补偿，键盘不盖发送钮。
+  - 校验：`dart analyze lib/features/note_slip/components/note_slip_page.dart` → No issues found!。真机待验：长文本编辑/取消回填/发送清空/键盘不盖按钮。
 - 2026-09-19（**「已删除提醒仍弹通知」补刀：reminder 漏了 hashCode 时代迁移 → 全局在排通知对账**）：用户追问通知送达类型是否覆盖——**上一轮只修了闹钟委托链，通知类确有漏网**。
   - **根因**：① **stableId 改造（2026-09-16）前用 `String.hashCode` 排期的 awesome 周期通知**（repeats:true 永续）——hashCode 每次重启漂移且无法反推，habit/todo 仓库都有「rescheduleAll 显式取消旧 hashCode 残留」迁移、**唯独 reminder 漏了**；已删除提醒的旧计划永远没人取消，现存提醒也可能新旧双计划双响。② awesome「稍后提醒」贪睡通知 id = base+50000+毫秒随机（0..999），删除时未覆盖。
   - **修法（反向对账，一次清完不再逐版本补迁移）**：新建 `lib/core/notifications/scheduled_sweep.dart::ScheduledSweep.sweepOrphans(db)` —— `AwesomeNotifications().listScheduledNotifications()` 枚举全部在排计划，id 不落在「现存数据可推出的合法段」内的一律 cancel。合法段 = 每个 key 的 `stableId(key)` 的 **base..base+7**（周变体）∪ **base+50000..base+50999**（贪睡段）；key 全集 = reminders 表**全量行 id（不过滤 source——习惯/待办托管提醒排期用的就是 reminders 表行 id，见 habit_repository.rescheduleAll 的 `r.id`）** + todos 表 key + countdowns 表 `'countdown:$key'` + 固定串 `pomodoro:end`/`pomodoro:now`。挂接 `ReminderRepository.rescheduleAll` 末尾（冷启动 healAlarmSchedules + 回前台都经过）。**宁可少杀不可误杀**：合法段放宽，误杀 = 某模块提醒不响 = 回归；扫前先跑各模块重排，刚排的计划必带合法 id。

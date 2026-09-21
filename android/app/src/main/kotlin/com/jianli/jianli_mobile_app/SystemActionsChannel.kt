@@ -34,6 +34,11 @@ object SystemActionsChannel {
 
     private const val CHANNEL = "jianli/system_actions"
 
+    // SDK stub（API 34~37 的 android.jar 均如此）没有 AlarmClock.EXTRA_ALARM_SEARCH_MODE_TIME
+    // 这个编译期字段，但它是 AOSP「时钟合同」的公开常量，值固定不变，按值内联。
+    // extra 值可为 Long（epoch ms）或 String（HH:mm），AOSP DeskClock 两种都认。
+    private const val EXTRA_ALARM_SEARCH_MODE_TIME = "android.intent.extra.alarm.TIME"
+
     // ⚠️ 参数用 android.app.Activity 而非 FlutterActivity：P1-1 起 MainActivity 是
     // FlutterFragmentActivity（为 local_auth 的 BiometricPrompt），它与 FlutterActivity 是
     // **兄弟类**（前者继承 FragmentActivity），钉 FlutterActivity 会编译不过。
@@ -252,7 +257,7 @@ object SystemActionsChannel {
         return try {
             val intent = Intent(AlarmClock.ACTION_DISMISS_ALARM).apply {
                 putExtra(AlarmClock.EXTRA_ALARM_SEARCH_MODE, AlarmClock.ALARM_SEARCH_MODE_TIME)
-                putExtra(AlarmClock.EXTRA_ALARM_SEARCH_MODE_TIME, nextOccurrenceMillis(hour, minute))
+                putExtra(EXTRA_ALARM_SEARCH_MODE_TIME, nextOccurrenceMillis(hour, minute))
                 putExtra(AlarmClock.EXTRA_SKIP_UI, true)
             }
             val supported = intent.resolveActivity(context.packageManager) != null
