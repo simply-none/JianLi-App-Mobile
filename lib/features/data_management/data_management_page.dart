@@ -5,8 +5,6 @@
 //    并提供「迁移到公共存储」按钮（申请所有文件访问 → 拷贝到 Download/渐离App）。
 // 2. 「导入数据库」：file_picker 选 .sqlite/.db → 底部抽屉确认 → 按主键合并进默认库
 //    （非破坏式，见 core/db/db_import.dart）。
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
@@ -14,21 +12,29 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../app/theme/app_theme.dart';
-import '../../app/ui/sheet_form.dart' show SheetSize, showSheetConfirm;
+import '../../app/ui/sheet_form.dart' show showSheetConfirm;
 import '../../app/ui/tap_scale.dart';
 import '../../app/ui/ui_atoms.dart';
 import '../../app/di/app_providers.dart';
-import '../../core/db/app_database.dart';
 import '../../core/db/db_export.dart';
 import '../../core/db/db_import.dart';
 import '../../core/db/db_location.dart';
 
 /// 数据管理页
+///
+/// 两种用法（2026-09-22 与「数据同步」合并成「备份与恢复」页时新增 [embedded]）：
+/// - `embedded = false`（默认）：独立页，自带头部与滚动区，路由 `/data-management` 使用；
+/// - `embedded = true`：只返回正文整块（不自带头部 / SafeArea、不自己滚动），
+///   由 `features/backup/backup_restore_page.dart` 的滚动区承载。
 class DataManagementPage extends ConsumerStatefulWidget {
-  const DataManagementPage({super.key});
+  const DataManagementPage({super.key, this.embedded = false});
+
+  /// 被「备份与恢复」页嵌入时置 true（不自带头部、正文不自滚）
+  final bool embedded;
 
   @override
-  ConsumerState<DataManagementPage> createState() => _DataManagementPageState();
+  ConsumerState<DataManagementPage> createState() =>
+      _DataManagementPageState();
 }
 
 class _DataManagementPageState extends ConsumerState<DataManagementPage> {
@@ -121,6 +127,35 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
   @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    // 正文：独立页 = 自带内边距的可滚动列表；嵌入模式（[DataManagementPage.embedded]）
+    // = 收缩成不自滚的整块（shrinkWrap + NeverScrollableScrollPhysics），
+    // 交由父级「备份与恢复」页的滚动区承载。
+    final Widget body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : ListView(
+            shrinkWrap: widget.embedded,
+            physics:
+                widget.embedded ? const NeverScrollableScrollPhysics() : null,
+            padding: widget.embedded
+                ? EdgeInsets.zero
+                : EdgeInsets.fromLTRB(
+                    AppTokens.pagePadding,
+                    4,
+                    AppTokens.pagePadding,
+                    AppTokens.pageBottomGapOf(context),
+                  ),
+            children: [
+              _storageCard(context),
+              const SizedBox(height: 14),
+              _exportCard(context),
+              const SizedBox(height: 14),
+              _importCard(context),
+              const SizedBox(height: 14),
+              _noteCard(context),
+            ],
+          );
+    if (widget.embedded) return body;
+
     return FScaffold(
       childPad: false,
       child: ColoredBox(
@@ -154,27 +189,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
                   ],
                 ),
               ),
-              Expanded(
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView(
-                        padding: EdgeInsets.fromLTRB(
-                          AppTokens.pagePadding,
-                          4,
-                          AppTokens.pagePadding,
-                          AppTokens.pageBottomGapOf(context),
-                        ),
-                        children: [
-                          _storageCard(context),
-                          const SizedBox(height: 14),
-                          _exportCard(context),
-                          const SizedBox(height: 14),
-                          _importCard(context),
-                          const SizedBox(height: 14),
-                          _noteCard(context),
-                        ],
-                      ),
-              ),
+              Expanded(child: body),
             ],
           ),
         ),

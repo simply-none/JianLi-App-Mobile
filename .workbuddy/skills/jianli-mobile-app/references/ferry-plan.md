@@ -1,4 +1,6 @@
-# 隔空互传（ferry）移动端方案 · 决策记录
+# 流光扫传（原「隔空互传」，代码代号 ferry）移动端方案 · 决策记录
+
+> **命名（2026-09-22 双端统一更名）**：界面名一律「流光扫传」。本文为**历史决策记录**，正文里的「隔空互传」是当时的叫法，指同一功能；代码代号 `ferry` / 路由 `/ferry` / 端点 `/ferry-save` / 静态站 `qyferry`(QRFerry) 与落盘目录名均刻意保留旧名。
 
 > 状态：**已实施完成（2026-09-06）**。与 PC 端 `jianli-app/.workbuddy/skills/jianli-app/references/modules/ferry.md` 同机制、共享同一份 QRFerry 打包资源。
 

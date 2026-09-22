@@ -111,7 +111,7 @@ lib/features/browser/
 ## 五、关键实现备注
 
 - **地址栏两态规格**（对齐画布「1·地址栏输入态」）：常态 = 卡片底 + 发丝线 + r22/h44 + 锁图标 + 域名；输入态 = **淡紫底 + 浅紫描边（用底色表达激活，不用粗边框）** + 18px 淡紫放大镜 + 紫色光标 + 清空 ✕ + 行尾独立「取消」。加载进度是 2px 条，只在 `0 < progress < 1` 出现。
-- **依赖**：`flutter_inappwebview ^6.1.5` 提为**直接依赖**（原本由 `flutter_epub_viewer` 传递引入，零新增下载）；与 `webview_flutter`（隔空互传用）两套插件共存，互不影响。manifest 已有 `INTERNET` + `usesCleartextTraffic="true"`，联网无需改清单。
+- **依赖**：`flutter_inappwebview ^6.1.5` 提为**直接依赖**（原本由 `flutter_epub_viewer` 传递引入，零新增下载）；与 `webview_flutter`（流光扫传用，原「隔空互传」）两套插件共存，互不影响。manifest 已有 `INTERNET` + `usesCleartextTraffic="true"`，联网无需改清单。
 - **占位字**：设计稿的站点图标是字母占位（无 favicon 资源），落地换真 favicon 时**格子尺寸/间距不用动**；`parseHexColor` 非法值回落主题主色。
 - **广告拦截三级规则（Phase 2 已落地）**：
   1. **内置静态规则集**（`adblock_rules.dart` 的 `kStaticBlockedHosts` / `kStaticBlockedPatterns`）= 中英文常见广告/统计/追踪域的**种子集**，体积小、命中快，硬编码进 Dart。设置页「内置静态规则集」页可单独开关。

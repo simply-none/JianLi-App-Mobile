@@ -151,6 +151,7 @@
 | **列表滚动吸顶** | 锚点 = **搜索行**（搜索框常驻视口顶部），**不是** Tab 栏；条件 chip / Tab 栏都随滚动移出 | `todo_page.dart` 的 `_PinnedHeader`；本模块 §3.5 / §3.17 |
 | **反馈（toast）** | 统一 `showFToast`（`FToaster` 已在根组件挂全局） | `showRecordProgressSheet` |
 | **库内英文码值展示** | 文案里**禁止直出 DB 码值**（`daily`/`weekly`…）。中文名放**模型 getter** 作单一来源（未知值原样返回，别吞信息），卡片与详情共用同一处（2026-09-13 习惯 `freqType` 先踩：卡片直出 `daily`、详情自带一份 switch → 两处重复） | `HabitItem.freqLabel`（`models/habit.dart`） |
+| **多页合并 / 子页嵌入（`embedded` 模式）** | 要把两个既有页面的正文**连续排布**进一个新页时，**不要复制正文、也不要在父级 `ListView` 里嵌第二个可滚动 `ListView`**（无界高度必崩）。做法：给子页加 `embedded` 开关，`embedded: true` 时返回 `ListView(shrinkWrap: true, physics: NeverScrollableScrollPhysics(), padding: EdgeInsets.zero)` 的「塌成整块、不自滚」正文（**不返回 FScaffold / 头部 / SafeArea**），滚动由父页唯一 `ListView` 承担；`embedded: false`（默认）保持原独立页行为 → 旧路由 / 深链不失效。子页自带的 `PageBanner` 可保留在段内（统计值跟着段内状态走），父页用参数改写标题/副标题/图标；段间用 `SectionHeader` 分隔。⚠️ 把原正文块搬进更浅上下文时的缩进用脚本按行区间统一回退（不要手抄），改动后 `dart analyze` 必须 0 error | `lib/features/backup/backup_restore_page.dart` + `sync_page.dart` / `data_management_page.dart`（2026-09-22 合并「备份与恢复」先例） |
 
 ---
 

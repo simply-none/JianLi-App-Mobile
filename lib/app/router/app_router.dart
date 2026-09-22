@@ -41,6 +41,7 @@ import '../../features/browser/pages/browser_settings_page.dart';
 import '../../features/browser/pages/browser_static_rules_page.dart';
 import '../../features/browser/pages/browser_view_source_page.dart';
 import '../../features/browser/pages/browser_downloads_page.dart';
+import '../../features/backup/backup_restore_page.dart';
 import '../../features/browser/pages/browser_offline_page.dart';
 import '../../features/browser/pages/browser_offline_viewer_page.dart';
 import '../../features/browser/pages/browser_subscriptions_page.dart';
@@ -343,6 +344,12 @@ final GoRouter appRouter = GoRouter(
       path: '/data-management',
       pageBuilder: (context, state) =>
           slidePage(const DataManagementPage(), state),
+    ),
+    // 备份与恢复页（2026-09-22：数据同步 + 数据管理合并后的新入口，路由 /backup）
+    GoRoute(
+      path: '/backup',
+      pageBuilder: (context, state) =>
+          slidePage(const BackupRestorePage(), state),
     ),
     // P0-3 分享接收落地页（透明壳，只承载分享处理抽屉；无转场避免闪灰）
     GoRoute(

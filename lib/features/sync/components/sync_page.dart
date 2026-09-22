@@ -22,9 +22,35 @@ import '../../../core/sync/sync_log.dart';
 import '../../../core/sync/sync_service.dart';
 import 'sync_log_list.dart';
 
-/// 同步页
+/// 同步页（数据同步）
+///
+/// 两种用法（2026-09-22 与「数据管理」合并成「备份与恢复」页时新增 [embedded]）：
+/// - `embedded = false`（默认）：独立页，自带头部与滚动区，路由 `/sync` 使用；
+/// - `embedded = true`：只返回正文整块（不自带头部 / SafeArea、不自己滚动），
+///   由 `features/backup/backup_restore_page.dart` 的滚动区承载。
+///
+/// 顶部 [PageBanner] 保留在本页（横幅里的「发现设备 / 可同步表」统计值来自本页状态），
+/// 合并页通过 [bannerTitle] / [bannerSubtitle] / [bannerIcon] 把它改写成整页横幅。
 class SyncPage extends ConsumerStatefulWidget {
-  const SyncPage({super.key});
+  const SyncPage({
+    super.key,
+    this.embedded = false,
+    this.bannerTitle = '数据同步',
+    this.bannerSubtitle = '多端数据拉取/发送同步，数据不出内网',
+    this.bannerIcon = FLucideIcons.refreshCw,
+  });
+
+  /// 被「备份与恢复」页嵌入时置 true（不自带头部、正文不自滚）
+  final bool embedded;
+
+  /// 顶部横幅标题
+  final String bannerTitle;
+
+  /// 顶部横幅副标题
+  final String bannerSubtitle;
+
+  /// 顶部横幅图标
+  final IconData bannerIcon;
 
   @override
   ConsumerState<SyncPage> createState() => _SyncPageState();
@@ -105,6 +131,281 @@ class _SyncPageState extends ConsumerState<SyncPage> {
     final t = context.theme;
     // 同步日志（全局内存态：主动/被动事件都在内，与对端看到相同条目）
     final logs = ref.watch(syncLogProvider);
+    // 正文：独立页 = 自带内边距的可滚动列表；嵌入模式（[SyncPage.embedded]）
+    // = 收缩成不自滚的整块（shrinkWrap + NeverScrollableScrollPhysics），
+    // 交由父级「备份与恢复」页的滚动区承载。
+    final Widget body = ListView(
+      shrinkWrap: widget.embedded,
+      physics: widget.embedded ? const NeverScrollableScrollPhysics() : null,
+      padding: widget.embedded
+          ? EdgeInsets.zero
+          : EdgeInsets.fromLTRB(
+              AppTokens.pagePadding,
+              AppTokens.listTopGapOf(context),
+              AppTokens.pagePadding,
+              AppTokens.pageBottomGapOf(context),
+            ),
+      children: [
+        // 页面专属青渐变横幅（与工具分组页「同步」入口色对齐）
+        PageBanner(
+          icon: widget.bannerIcon,
+          title: widget.bannerTitle,
+          subtitle: widget.bannerSubtitle,
+          accentIndex: 5,
+          cornerRadius: 22,
+          ringDecor: true,
+          shadow: false,
+          margin: EdgeInsets.zero,
+          stats: [
+            ('${_peers.length}', '发现设备'),
+            ('${kSyncableTables.length}', '可同步表'),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // 设备区
+        // 我的设备（本机随机昵称，#昵称）
+        AppCard(
+          margin: EdgeInsets.zero,
+          child: Row(
+            children: [
+              const Icon(FLucideIcons.smartphone, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '我的设备',
+                      style: t.typography.body.xs.copyWith(
+                        color: t.colors.mutedForeground,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      localNickname,
+                      style: t.typography.body.sm.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SectionHeader(title: '发现设备'),
+        AppCard(
+          margin: EdgeInsets.zero,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '需 PC 端渐离App在线',
+                      style: t.typography.body.sm.copyWith(
+                        color: t.colors.mutedForeground,
+                      ),
+                    ),
+                  ),
+                  FButton(
+                    variant: FButtonVariant.outline,
+                    size: FButtonSizeVariant.sm,
+                    onPress: _scanning ? null : _scan,
+                    prefix: _scanning
+                        // 扫描中的小尺寸加载指示
+                        ? const FCircularProgress(
+                            size: FCircularProgressSizeVariant.xs,
+                          )
+                        : const Icon(FLucideIcons.radar, size: 16),
+                    child: const Text('扫描'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_peers.isEmpty)
+                Text(
+                  '暂无设备。真机：PC 与手机连同一 Wi-Fi 后扫描；\n模拟器：广播不通，直接手动填宿主 IP 10.0.2.2。',
+                  style: t.typography.body.xs.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
+                )
+              else
+                // 发现的设备行：两行布局——名称/平台 + IP 独占一行，
+                // 拉取/发送按钮第二行右对齐，窄屏下设备名不再被按钮挤压截断
+                for (final peer in _peers.values)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 4,
+                    ),
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            // 图标瓷片统一配方：Container +
+                            // accentGradient + 圆角≈size×0.33
+                            Container(
+                              width: 36,
+                              height: 36,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                gradient: AppTokens.accentGradient(
+                                  AppTokens.accent(5),
+                                ),
+                                borderRadius:
+                                    BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                FLucideIcons.monitorSmartphone,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${peer.name} (${peer.platform})',
+                                    style: t.typography.body.sm
+                                        .copyWith(
+                                          fontWeight:
+                                              FontWeight.w600,
+                                        ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    peer.ip,
+                                    style: t.typography.body.xs
+                                        .copyWith(
+                                          color: t
+                                              .colors
+                                              .mutedForeground,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        // 操作行：右对齐，不与设备名争宽度
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            FButton(
+                              variant: FButtonVariant.outline,
+                              size: FButtonSizeVariant.sm,
+                              onPress: () => _fetch(peer),
+                              child: const Text('拉取'),
+                            ),
+                            const SizedBox(width: 6),
+                            FButton(
+                              size: FButtonSizeVariant.sm,
+                              onPress: () => _send(peer),
+                              child: const Text('发送'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+              // 手动添加设备（模拟器 NAT 场景广播不可达，直接填宿主 IP）
+              const SizedBox(height: 8),
+              // 根因修复：forui FTextField 的可见边框按内容固有高度画，
+              // 不随紧约束拉伸（44 盒里仍只有 ~36）——这才是对不齐的真相。
+              // 改用共享 SheetInputBox（边框由自绘容器画，高度真实可控 40）
+              // + 自绘按钮同高 40，两侧天然等高。
+              Row(
+                children: [
+                  Expanded(
+                    child: SheetInputBox(
+                      controller: _manualIp,
+                      hintText: '手动填 IP（模拟器填 10.0.2.2）',
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 自绘按钮：与 SheetInputBox 同高 40 / 同圆角 10
+                  TapScale(
+                    onTap: () {
+                      final ip = _manualIp.text.trim();
+                      if (ip.isEmpty) return;
+                      setState(() {
+                        _peers = {
+                          ..._peers,
+                          ip: PeerDevice(
+                            ip: ip,
+                            name: '手动添加',
+                            id: ip,
+                            platform: '-',
+                          ),
+                        };
+                      });
+                      ref
+                          .read(syncLogProvider.notifier)
+                          .log('已添加手动设备 $ip');
+                    },
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                      ),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        gradient:
+                            AppTokens.primaryGradient(context),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '添加',
+                        style: context.theme.typography.body.sm
+                            .copyWith(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // 表选择
+        const SectionHeader(title: '选择要同步的表'),
+        AppCard(
+          margin: EdgeInsets.zero,
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              for (final table in kSyncableTables)
+                FCheckbox(
+                  value: _selectedTable[table] ?? false,
+                  label: Text(table, style: t.typography.body.sm),
+                  onChange: (v) =>
+                      setState(() => _selectedTable[table] = v),
+                ),
+            ],
+          ),
+        ),
+        // 日志
+        const SectionHeader(title: '同步日志'),
+        AppCard(
+          margin: EdgeInsets.zero,
+          child: SyncLogList(logs: logs),
+        ),
+      ],
+    );
+    if (widget.embedded) return body;
     return FScaffold(
       childPad: false,
       child: ColoredBox(
@@ -115,275 +416,7 @@ class _SyncPageState extends ConsumerState<SyncPage> {
           child: Column(
             children: [
               _header(context),
-              Expanded(
-                child: ListView(
-                  padding: EdgeInsets.fromLTRB(
-                    AppTokens.pagePadding,
-                    AppTokens.listTopGapOf(context),
-                    AppTokens.pagePadding,
-                    AppTokens.pageBottomGapOf(context),
-                  ),
-                  children: [
-                    // 页面专属青渐变横幅（与工具分组页「同步」入口色对齐）
-                    PageBanner(
-                      icon: FLucideIcons.refreshCw,
-                      title: '数据同步',
-                      subtitle: '多端数据拉取/发送同步，数据不出内网',
-                      accentIndex: 5,
-                      cornerRadius: 22,
-                      ringDecor: true,
-                      shadow: false,
-                      margin: EdgeInsets.zero,
-                      stats: [
-                        ('${_peers.length}', '发现设备'),
-                        ('${kSyncableTables.length}', '可同步表'),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    // 设备区
-                    // 我的设备（本机随机昵称，#昵称）
-                    AppCard(
-                      margin: EdgeInsets.zero,
-                      child: Row(
-                        children: [
-                          const Icon(FLucideIcons.smartphone, size: 22),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '我的设备',
-                                  style: t.typography.body.xs.copyWith(
-                                    color: t.colors.mutedForeground,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  localNickname,
-                                  style: t.typography.body.sm.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SectionHeader(title: '发现设备'),
-                    AppCard(
-                      margin: EdgeInsets.zero,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  '需 PC 端渐离App在线',
-                                  style: t.typography.body.sm.copyWith(
-                                    color: t.colors.mutedForeground,
-                                  ),
-                                ),
-                              ),
-                              FButton(
-                                variant: FButtonVariant.outline,
-                                size: FButtonSizeVariant.sm,
-                                onPress: _scanning ? null : _scan,
-                                prefix: _scanning
-                                    // 扫描中的小尺寸加载指示
-                                    ? const FCircularProgress(
-                                        size: FCircularProgressSizeVariant.xs,
-                                      )
-                                    : const Icon(FLucideIcons.radar, size: 16),
-                                child: const Text('扫描'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          if (_peers.isEmpty)
-                            Text(
-                              '暂无设备。真机：PC 与手机连同一 Wi-Fi 后扫描；\n模拟器：广播不通，直接手动填宿主 IP 10.0.2.2。',
-                              style: t.typography.body.xs.copyWith(
-                                color: t.colors.mutedForeground,
-                              ),
-                            )
-                          else
-                            // 发现的设备行：两行布局——名称/平台 + IP 独占一行，
-                            // 拉取/发送按钮第二行右对齐，窄屏下设备名不再被按钮挤压截断
-                            for (final peer in _peers.values)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        // 图标瓷片统一配方：Container +
-                                        // accentGradient + 圆角≈size×0.33
-                                        Container(
-                                          width: 36,
-                                          height: 36,
-                                          alignment: Alignment.center,
-                                          decoration: BoxDecoration(
-                                            gradient: AppTokens.accentGradient(
-                                              AppTokens.accent(5),
-                                            ),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                          child: Icon(
-                                            FLucideIcons.monitorSmartphone,
-                                            color: Colors.white,
-                                            size: 16,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                '${peer.name} (${peer.platform})',
-                                                style: t.typography.body.sm
-                                                    .copyWith(
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              Text(
-                                                peer.ip,
-                                                style: t.typography.body.xs
-                                                    .copyWith(
-                                                      color: t
-                                                          .colors
-                                                          .mutedForeground,
-                                                    ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    // 操作行：右对齐，不与设备名争宽度
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        FButton(
-                                          variant: FButtonVariant.outline,
-                                          size: FButtonSizeVariant.sm,
-                                          onPress: () => _fetch(peer),
-                                          child: const Text('拉取'),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        FButton(
-                                          size: FButtonSizeVariant.sm,
-                                          onPress: () => _send(peer),
-                                          child: const Text('发送'),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          // 手动添加设备（模拟器 NAT 场景广播不可达，直接填宿主 IP）
-                          const SizedBox(height: 8),
-                          // 根因修复：forui FTextField 的可见边框按内容固有高度画，
-                          // 不随紧约束拉伸（44 盒里仍只有 ~36）——这才是对不齐的真相。
-                          // 改用共享 SheetInputBox（边框由自绘容器画，高度真实可控 40）
-                          // + 自绘按钮同高 40，两侧天然等高。
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SheetInputBox(
-                                  controller: _manualIp,
-                                  hintText: '手动填 IP（模拟器填 10.0.2.2）',
-                                  keyboardType: TextInputType.number,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // 自绘按钮：与 SheetInputBox 同高 40 / 同圆角 10
-                              TapScale(
-                                onTap: () {
-                                  final ip = _manualIp.text.trim();
-                                  if (ip.isEmpty) return;
-                                  setState(() {
-                                    _peers = {
-                                      ..._peers,
-                                      ip: PeerDevice(
-                                        ip: ip,
-                                        name: '手动添加',
-                                        id: ip,
-                                        platform: '-',
-                                      ),
-                                    };
-                                  });
-                                  ref
-                                      .read(syncLogProvider.notifier)
-                                      .log('已添加手动设备 $ip');
-                                },
-                                child: Container(
-                                  height: 40,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                  ),
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    gradient:
-                                        AppTokens.primaryGradient(context),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    '添加',
-                                    style: context.theme.typography.body.sm
-                                        .copyWith(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    // 表选择
-                    const SectionHeader(title: '选择要同步的表'),
-                    AppCard(
-                      margin: EdgeInsets.zero,
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 4,
-                        children: [
-                          for (final table in kSyncableTables)
-                            FCheckbox(
-                              value: _selectedTable[table] ?? false,
-                              label: Text(table, style: t.typography.body.sm),
-                              onChange: (v) =>
-                                  setState(() => _selectedTable[table] = v),
-                            ),
-                        ],
-                      ),
-                    ),
-                    // 日志
-                    const SectionHeader(title: '同步日志'),
-                    AppCard(
-                      margin: EdgeInsets.zero,
-                      child: SyncLogList(logs: logs),
-                    ),
-                  ],
-                ),
-              ),
+              Expanded(child: body),
             ],
           ),
         ),

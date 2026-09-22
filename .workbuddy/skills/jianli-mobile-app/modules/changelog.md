@@ -1,6 +1,14 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-22（**「数据同步」+「数据管理」合并为「备份与恢复」页 `/backup`**）：用户定案合并，**数据同步段在前、数据管理段在后**（中间 `SectionHeader('数据管理')` 分隔），共用单头部 + 单滚动区。
+  - **实现取「零业务搬迁」路线**：`SyncPage` 加 `embedded` / `bannerTitle` / `bannerSubtitle` / `bannerIcon`；`DataManagementPage` 加 `embedded`。`embedded: true` 时两页各自只返回「塌成整块、不自滚」的正文（`ListView(shrinkWrap: true, physics: NeverScrollableScrollPhysics(), padding: EdgeInsets.zero)`，**不返回 FScaffold / 头部 / SafeArea**），滚动由新页 `lib/features/backup/backup_restore_page.dart` 的唯一 `ListView` 承担。`embedded: false`（默认）行为与合并前逐字一致 → `/sync`、`/data-management` 仍可直接打开（旧深链不失效）。
+  - **为什么这么做**：父级 `ListView` 内不能再嵌一个可滚动 `ListView`（无界高度直接崩），把 250 行正文手抄进新页又极易漏行 → 让原页用 `shrinkWrap + NeverScrollable` 自己塌成整块，**children 一行没动**（仅用脚本统一回退缩进，未重打代码）。⚠️ 后续再合并页面照此模式，不要嵌套滚动、不要复制正文。
+  - **横幅**：同步页自带的 `PageBanner`（青 5）留在同步段内（「发现设备 / 可同步表」统计值来自同步段状态），由父页传参改写成整页横幅「备份与恢复 / 局域网同步 · 数据库导入导出」+ `databaseBackup` 图标。
+  - **入口三处收口**：工具分组页两行合一（`databaseBackup` 青 5）／首页快捷磁贴「备份 / 同步 · 恢复」→ `/backup`／设置面板「数据与同步」两张 tile 合一。
+  - 顺带清掉 `data_management_page.dart` 三条既有 lint（`dart:io`、`app_database.dart` 未用 import 与 `show SheetSize`）。
+  - 校验：`dart analyze lib/features/backup lib/features/sync lib/features/data_management lib/features/hubs lib/features/home lib/app/router lib/app/ui` → **0 error**（余下 warning/info 全为改动前既有：data_management 3 条 `sort_child_properties_last`、sync_log_list 1 条 `unnecessary_underscores`）；真机未验。
+- 2026-09-22（**「隔空互传」双端更名「流光扫传」**）：征名定案——功能名必须内嵌传输动作义（传/递/渡/取），纯意境名会丢掉「传」，故取「流光**扫传**」。**PC 6 处**（`src/router/index.ts` 的 `meta.title` 是唯一真源，侧边栏 / 布局标题 / 命令面板 `routeSource.ts` 都从它取名）、**移动端 17 处**（hub 条目、AppBar、关于页、`ios/Runner/Info.plist` 摄像头权限说明、pubspec / AndroidManifest / proguard 注释、兜底文件名 `流光扫传_<ts>`、`public_downloads.dart` 注释）。**刻意不改**：落盘目录名（PC `文档/隔空互传`、移动端 `Download|Documents/渐离App隔空互传`——改目录会让老用户已收件「消失」）、代码代号 `ferry`、路由 `/ferry`、端点 `/ferry-save`、第三方静态站 `qyferry`(QRFerry)，双端注释已写明缘由。打包产物（dist / dist-electron / release / build）未改。
 - 2026-09-21（**浏览器地址栏键盘修复：URL 键盘压掉中文 IME**）：用户报「输入框搜索弹出固定英文键盘，应弹普通键盘；输入网址则打开、其他则搜索」。
   - **排查结论**：「网址直开 / 关键词搜索」分流**早已完备**——`_submitInput` → `resolveInput`（`browser_models.dart`，`looksLikeUrl`：协议前缀/localhost/IP → 网址；含 `.` 且无空格且 TLD 是 ≥2 ASCII 字母 → 网址；其余 → 按搜索引擎搜）。真正根因只有一个：`_AddressInput` 设了 `keyboardType: TextInputType.url` → 强制 URL 专用键盘，中文 IME 被压掉，关键词根本打不出来。
   - **修法（`browser_address_bar.dart`）**：`TextInputType.text` + `enableSuggestions: true` + `autocorrect: false`（保留防域名被自动改写）。设置页三处**纯 URL 配置项**（自定义搜索模板 / 固定标签网址 / 订阅源 URL）保留 URL 键盘。已录红线 #22。

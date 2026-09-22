@@ -72,8 +72,9 @@ class ToolsHubPage extends StatelessWidget {
     (FLucideIcons.lock, '账号密码管理', '加密口令库', '/password-vault', 1),
     (FLucideIcons.shieldCheck, '私密文件保险箱', 'AES-256 加密存储', '/file-vault', 2),
     (FLucideIcons.qrCode, '二维码', '生成 / 识别 / 历史', '/qr', 3),
-    (FLucideIcons.refreshCw, '数据同步', '多端数据拉取/发送同步', '/sync', 5),
-    (FLucideIcons.database, '数据管理', '存储位置 · 导入/导出数据库', '/data-management', 0),
+    // 原「数据同步」+「数据管理」两行 → 合并为「备份与恢复」（2026-09-22）
+    // 路由 /backup；旧的 /sync、/data-management 仍可独立打开（旧深链不失效）
+    (FLucideIcons.databaseBackup, '备份与恢复', '局域网同步 · 数据库导入导出', '/backup', 5),
     (FLucideIcons.arrowLeftRight, '文件互传', '双端批量收发文件', '/file-transfer', 4),
     (FLucideIcons.scanQrCode, '流光扫传', '屏幕二维码 → 摄像头直传', '/ferry', 6),
     (FLucideIcons.monitorSmartphone, '遥控 PC', '翻页 · 媒体 · 黑屏 · 锁屏', '/remote', 3),

@@ -30,7 +30,8 @@ const _quickEntries = <(IconData, int, String, String, String)>[
   (FLucideIcons.keyRound, 1, '2FA', '动态口令', '/twofactor'),
   (FLucideIcons.qrCode, 3, '扫码', '识别记录', '/qr'),
   (FLucideIcons.listTodo, 2, '记待办', '快速记录', '/todo'),
-  (FLucideIcons.refreshCw, 5, '同步', '数据同步', '/sync'),
+  // 原「同步」磁贴（2026-09-22 起指向合并后的「备份与恢复」页）
+  (FLucideIcons.databaseBackup, 5, '备份', '同步 · 恢复', '/backup'),
 ];
 
 /// 更多功能条目（图标 / 标题 / 副标 / 路由）—— 单卡列表化，

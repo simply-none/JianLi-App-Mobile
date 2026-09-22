@@ -6,7 +6,7 @@
   - ⚠️ **浏览器 4 表是「移动端专有」**（桌面端没有浏览器模块）→ **不入同步白名单**（`lib/core/sync/sync_service.dart` 的 `kSyncableTables` 不动，桌面端 `syncModule.ts` 也不动）；标签会话 / 历史 / 固定标签都是「本机行为」，跨端同步无意义。表定义在 `lib/core/db/tables/browser_tables.dart`，域内细节见 `modules/browser.md`。
 
   ⚠️ 库文件位置在 **2026-09-07 从 `app_flutter/db.sqlite`（getApplicationDocumentsDirectory() 返回的 `flutter` 目录）迁移到 `filesDir/databases/db.sqlite`（getApplicationSupportDirectory() 返回的 filesDir）**，原因见「持久化与迁移铁律」。老用户首次启动会单向拷贝旧文件，无需手动迁移。
-  ⚠️ **库文件默认位置 2026-09-17 再从 `filesDir/databases` 迁到公共 `Download/渐离App`（需求：重装/卸载不丢数据）**：详见下方「持久化与迁移铁律」第 5 点。落位与首启迁移在 `lib/core/db/db_location.dart`；外部数据库导入（按主键合并）在 `lib/core/db/db_import.dart`，入口在「数据管理」页（`features/data_management`）。
+  ⚠️ **库文件默认位置 2026-09-17 再从 `filesDir/databases` 迁到公共 `Download/渐离App`（需求：重装/卸载不丢数据）**：详见下方「持久化与迁移铁律」第 5 点。落位与首启迁移在 `lib/core/db/db_location.dart`；外部数据库导入（按主键合并）在 `lib/core/db/db_import.dart`，入口在「备份与恢复」页的数据管理段（`features/data_management`，页面 `/backup`）。
 - **三大铁律**：
   1. drift 默认把驼峰 getter 转下划线列名，而桌面端业务列多为驼峰 → 列名**必须用 `.named('桌面原名')` 显式锁定**（`@Named` 注解在 drift 2.34 不存在）。
   2. getter **不能叫 `text` / `dateTime`**（与 drift `Table.text()` / `Table.dateTime()` 构造方法冲突，导致整库解析失败、生成空壳 .g.dart）→ 改名 + `.named()` 锁定（现有先例：`annotatedText`、`recordedAt`）。
@@ -29,12 +29,12 @@
 5. **库默认落位公共 Download/渐离App（2026-09-17 新增，根治「重装丢数据」）**：`_openConnection` 改调 `lib/core/db/db_location.dart` 的 `resolveDefaultDatabaseFile()`，优先返回 `Download/渐离App/db.sqlite`（需 `MANAGE_EXTERNAL_STORAGE`，复用 `public_downloads.dart` 的 `hasPublicDownloadsAccess` 判定）；未授权则回退沙盒 `filesDir/databases/db.sqlite`。**首启若目标文件不存在，从候选源里挑「修改时间最新」的一个单向拷贝**（候选 = 沙盒当前位置 / 更旧 `documents/app_flutter` / 可读时的公共 Download），避免权限来回开关时沙盒旧副本覆盖 Download 新数据导致静默丢数据。**首启（仅 API30+ 未授权且未询问过）经 `requestDbStoragePermissionOnce` 申请一次「所有文件访问」，让库默认落在 Download**；标记 `basic_info.dbFirstRunPermAsked` 去重，不在回前台路径反复弹（红线 #16）。用户也可在「数据管理」页点「迁移到公共存储」手动迁（迁后须重启 App 才切到 Download 上的库）。⚠️ 与 `public_downloads` 的区别：db.sqlite 是活动数据库，**不要对其做 MediaStore 扫描**（非媒体），也不要当导出物处理。
 
 ### ⚠️ 外部数据库导入（2026-09-17 新增，需求#2）
-- 入口：「数据管理」页（`features/data_management/data_management_page.dart`）→「导入数据库」→ `file_picker` 选 `.sqlite/.db/.sqlite3` → 底部抽屉确认 → `importDatabaseFile(db, path)`（`lib/core/db/db_import.dart`）。
+- 入口：「备份与恢复」页 → 数据管理段（`features/data_management/data_management_page.dart`，以 `embedded: true` 嵌入）→「导入数据库」→ `file_picker` 选 `.sqlite/.db/.sqlite3` → 底部抽屉确认 → `importDatabaseFile(db, path)`（`lib/core/db/db_import.dart`）。
 - 语义：**非破坏式按主键合并（upsert）**。只读打开源库（`AppDatabase.forFile(readOnly:true)`），逐「数据表」`SELECT *` → `INSERT OR REPLACE`（与局域网同步 upsert 语义一致）：源有本地也有 → 被源覆盖；源无本地有 → 保留。**排除 `basic_info` 配置表**（不动本地 2FA 保险库路径等设置）。
 - 容错：源库必须含 `basic_info` 表才认作本 App 数据库，否则拒绝；逐表按本表实际列（`PRAGMA table_info`）过滤源行字段，兼容双端 schema 差异；整段包事务，失败整体回滚；写完后手动 `notifyUpdates` 触发 watch 流刷新（drift 的 `customStatement` 不自动通知，见 sync_service 同款坑）。
 
 ### ⚠️ 数据库导出（2026-09-17 新增，需求#1/#2 配套备份）
-- 入口：「数据管理」页（`features/data_management/data_management_page.dart`）→「导出数据库」→ `exportDatabaseFile(db, context:)`（`lib/core/db/db_export.dart`）。
+- 入口：「备份与恢复」页 → 数据管理段（`features/data_management/data_management_page.dart`，以 `embedded: true` 嵌入）→「导出数据库」→ `exportDatabaseFile(db, context:)`（`lib/core/db/db_export.dart`）。
 - 语义：**一致性独立快照**。活动库是 drift 热连接（常开 WAL），直接 `File.copy` 活文件会拷到半截 WAL 数据、在别的端打开报损坏 → 故用同连接内 `VACUUM INTO '目标路径'` 生成「仅含已提交数据」的独立 `.sqlite`（不依赖 -wal/-shm，可被本 App 或桌面端直接打开/导入）；保留 `PRAGMA wal_checkpoint(TRUNCATE)` + 直接拷贝的兜底分支。
 - 落盘/权限/反馈**复用 `app/ui/file_export.dart` 约定**：`ensurePublicDownloadsPermission` 申请「所有文件访问」→ `moduleDownloadDir('渐离App导出')` 落到系统 `Download/渐离App导出/`（未授权回退沙盒 `Documents/渐离App导出/`），写后 `scanFileInMediaStore` 触发文件管理器可见，成功/失败均顶部 toast 提示真实路径（与主题对话/笔记/习惯/电子书导出完全一致）。文件名 `db_导出_<YYYYMMDD_HHmmss>.sqlite`。
 
