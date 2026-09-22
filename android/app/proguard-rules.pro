@@ -11,7 +11,7 @@
 -keep class com.pichillilorenzo.flutter_inappwebview.** { *; }
 -dontwarn com.pichillilorenzo.flutter_inappwebview.**
 
-# ---------- webview_flutter（隔空互传 QRFerry 扫码 WebView） ----------
+# ---------- webview_flutter（流光扫传 QRFerry 扫码 WebView） ----------
 -keep class io.flutter.plugins.webviewflutter.** { *; }
 
 # ---------- mobile_scanner（二维码识别 + MLKit barhopper） ----------

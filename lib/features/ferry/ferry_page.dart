@@ -16,7 +16,7 @@ import '../../app/theme/app_theme.dart';
 import '../../app/ui/page_banner.dart';
 import 'ferry_server.dart';
 
-/// 隔空互传页（webview_flutter 测试版）：本地 WebView 加载 QRFerry。
+/// 流光扫传页（webview_flutter 测试版）：本地 WebView 加载 QRFerry。
 ///
 /// 前一版用 flutter_inappwebview，在 Android 模拟器出现「WebView 空白、连 loadStart/
 /// loadStop 都不触发」的异常。本版改用官方 webview_flutter（4.x）：
@@ -196,7 +196,7 @@ class _FerryPageState extends ConsumerState<FerryPage> {
   }
 
   /// 资产结构透视：枚举 bundle 内所有 qyferry 资源路径打印到 logcat，
-  /// 一眼可见 webassets/ 子目录是否真的打进了 bundle（这正是隔空互传能否工作的关键）。
+  /// 一眼可见 webassets/ 子目录是否真的打进了 bundle（这正是流光扫传能否工作的关键）。
   Future<void> _dumpAssets() async {
     try {
       final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
@@ -235,7 +235,7 @@ class _FerryPageState extends ConsumerState<FerryPage> {
       var name = suggestedName;
       if (!name) {
         var ext = (b.type || '').split('/').pop().replace(/[^a-zA-Z0-9]/g, '');
-        name = '隔空互传_' + Date.now() + (ext && ext.length <= 5 ? '.' + ext : '');
+        name = '流光扫传_' + Date.now() + (ext && ext.length <= 5 ? '.' + ext : '');
       }
       return Promise.all([name, b.arrayBuffer()]);
     }).then(function (pair) {
@@ -297,7 +297,7 @@ class _FerryPageState extends ConsumerState<FerryPage> {
     return FScaffold(
       childPad: false,
       header: FHeader.nested(
-        title: const Text('隔空互传'),
+        title: const Text('流光扫传'),
         prefixes: [FHeaderAction.back(onPress: () => context.pop())],
       ),
       child: _buildBody(),

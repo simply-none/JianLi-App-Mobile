@@ -8,10 +8,12 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-/// 隔空互传 WebView 内「下载」文件的落盘目录名（对齐文件互传的命名风格）
+/// 流光扫传 WebView 内「下载」文件的落盘目录名（对齐文件互传的命名风格）
+/// ⚠️ 目录名沿用旧名「渐离App隔空互传」，与界面新名「流光扫传」不一致是**刻意**的：
+///    改目录会让老用户已接收的文件从新目录里"消失"（旧文件不会自动迁移）。
 const String kFerrySaveDirName = '渐离App隔空互传';
 
-/// 隔空互传本地静态服务（QRFerry）
+/// 流光扫传本地静态服务（QRFerry）
 ///
 /// 机制：把打包内的 assets/qyferry 用本地 http 服务从 [rootBundle] 即时托管到
 /// 127.0.0.1 随机端口。127.0.0.1 是安全上下文，WebView 内 getUserMedia 摄像头可被授权；
@@ -186,7 +188,7 @@ class FerryServer {
   static String _sanitizeFileName(String name) {
     var n = name.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), '_').trim();
     if (n.isEmpty || n == '.' || n == '..') {
-      n = '隔空互传_${DateTime.now().millisecondsSinceEpoch}';
+      n = '流光扫传_${DateTime.now().millisecondsSinceEpoch}';
     }
     return n;
   }

@@ -108,7 +108,7 @@ class AboutPage extends StatelessWidget {
                             '二维码',
                             '数据同步',
                             '文件互传',
-                            '隔空互传',
+                            '流光扫传',
                           ]),
                         ],
                       ),
@@ -121,7 +121,7 @@ class AboutPage extends StatelessWidget {
                       child: Text(
                         '与桌面版共用一套数据结构与同步协议：习惯 / 待办 / 笔记 / '
                         '主题对话 / 电子书书架等表可在受信局域网内一键互推互拉；'
-                        '电子书支持 PC ↔ 手机一键传书，文件互传与隔空互传让'
+                        '电子书支持 PC ↔ 手机一键传书，文件互传与流光扫传让'
                         '文件与文本跨设备即扫即得。',
                         style: t.typography.body.sm.copyWith(
                           fontSize: 14,
@@ -177,7 +177,7 @@ class AboutPage extends StatelessWidget {
                             ('awesome_notifications', '通知与提醒'),
                             ('file_picker', '文件选择'),
                             ('share_plus', '系统分享'),
-                            ('webview_flutter', '内嵌网页（隔空互传）'),
+                            ('webview_flutter', '内嵌网页（流光扫传）'),
                           ]),
                           _depsGroup(context, '网络与同步', [
                             ('同步协议', 'UDP 发现 + HTTP 数据面'),

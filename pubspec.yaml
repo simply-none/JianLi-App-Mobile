@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 26.9.19+8
+version: 26.9.22+1
 
 environment:
   sdk: ^3.13.2
@@ -75,7 +75,7 @@ dependencies:
   flutter_widget_from_html: ^0.17.3
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0
-  webview_flutter: ^4.10.0 # 隔空互传：WebView 加载本地 QRFerry 站，摄像头扫码接收（替代 flutter_inappwebview，规避模拟器渲染/loadStop 异常）
+  webview_flutter: ^4.10.0 # 流光扫传：WebView 加载本地 QRFerry 站，摄像头扫码接收（替代 flutter_inappwebview，规避模拟器渲染/loadStop 异常）
   # 浏览器功能域：完整 WebView 能力（多标签 / 拦截请求 / 自定义 UA 等）。
   # 6.1.5 早已在依赖树里（flutter_epub_viewer 传递引入），此处只是**提升为直接依赖**，
   # 零新增下载；与上面的 webview_flutter 是两套独立插件，可共存。
@@ -131,7 +131,7 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # 隔空互传（QRFerry）内置静态站：打包进 assets，运行时由本地 HttpServer 托管
+  # 流光扫传（QRFerry）内置静态站：打包进 assets，运行时由本地 HttpServer 托管
   # 注意：目录声明 `assets/qyferry/` 在本项目实测不会递归打包其子目录 webassets/，
   # 因此必须显式再声明一次，否则 /webassets/*.js|*.css 进不了 bundle → 页面白屏。
   assets:
