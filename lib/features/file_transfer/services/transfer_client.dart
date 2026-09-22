@@ -8,7 +8,7 @@
 //   #13 断点续传：offer 响应带回各文件 resumeFrom；data 带 from= 并从偏移读流
 //   #14 会话加密（默认关）：offer 协商 AES-256-CTR 会话密钥，data 流加密后发送
 //   #17 并发守卫：同一时刻仅一个发送批次（_activeSendTid）
-//   #19 后台保活：发送全程 Wakelock，避免手机息屏中断
+//   #19 后台保活：发送全程屏幕常亮（走 core/device/screen_awake.dart 共享守卫），避免手机息屏中断
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -19,11 +19,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mime/mime.dart' as mime_pkg;
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/sync/device_nickname.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
+import '../../../core/device/screen_awake.dart';
 import '../../../core/sync/sync_discovery.dart';
 import '../models/transfer_models.dart';
 import '../models/transfer_utils.dart';
@@ -61,16 +61,12 @@ class TransferClient {
     }
     _activeSendTid = tid;
 
-    // #19 后台保活：发送全程持锁，息屏不中断（部分平台不支持则忽略）
-    var wakelockOn = false;
+    // #19 后台保活：发送全程持锁，息屏不中断（部分平台不支持则忽略）。
+    // 走共享守卫（core/device/screen_awake.dart）：按引用计数，与阅读器的屏幕常亮
+    // 可共存、不会互相误关；acquire 放在 try 内，保证 finally 里一定成对释放。
     try {
-      await WakelockPlus.enable();
-      wakelockOn = true;
-    } catch (_) {
-      wakelockOn = false;
-    }
+      await acquireScreenAwake();
 
-    try {
       // 1) offer（携带可选的加密会话协商）
       final encEnabled = _settings.enc;
       List<int>? encKey;
@@ -256,13 +252,7 @@ class TransferClient {
       return (ok: false, message: '发送失败：$e');
     } finally {
       _activeSendTid = null;
-      if (wakelockOn) {
-        try {
-          await WakelockPlus.disable();
-        } catch (_) {
-          // 忽略释放失败
-        }
-      }
+      await releaseScreenAwake();
     }
   }
 

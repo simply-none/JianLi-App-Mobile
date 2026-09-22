@@ -3,6 +3,8 @@
 // EPUB：flutter_epub_viewer（epub.js 引擎）—— 原生滑动翻页、文本选区高亮 / 下划线、
 //       任意位置书签、笔记、全文搜索、主题 / 字号 / 行距；锚点走 epub CFI
 //       （与 PC 端 epubjs 同构，跨端批注零成本互通）。
+//       沉浸阅读：隐藏系统状态栏、阅读全程保持屏幕常亮、顶栏做浮层（点正文中间浮出）；
+//       翻页模式下点左右边界（各 25%）翻页，左右热区以外才切换顶栏。
 // TXT ：沿用 epubx + flutter_widget_from_html 的章节滚动渲染（旧路径保持不变）。
 //
 // 进度 / 书签 / 批注落库锚点统一为 epub CFI（ebook_progress.cfi、ebook_bookmark.cfi、
@@ -12,6 +14,8 @@ import 'dart:io';
 
 import 'package:flutter_epub_viewer/flutter_epub_viewer.dart';
 import 'package:forui/forui.dart';
+import 'package:flutter/services.dart'
+    show SystemChrome, SystemUiMode, SystemUiOverlay;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:go_router/go_router.dart';
@@ -21,6 +25,7 @@ import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/segmented.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../core/db/app_database.dart';
+import '../../../core/device/screen_awake.dart';
 import '../providers/ebook_providers.dart';
 import '../providers/reader_settings.dart';
 import '../repositories/ebook_repository.dart';
@@ -48,6 +53,13 @@ const String _kColorSelector = 'p, div, span, li, td, th, a, em, strong, b, i, '
 const String _kSizeSelector = 'p, div, span, li, td, th, a, em, strong, b, i, '
     'u, small, sub, sup, blockquote, dd, dt, figcaption, section, article, '
     'address';
+
+/// 点击翻页的左右热区宽度（占阅读区宽度的比例）
+///
+/// 翻页模式下：`x < 0.25` → 上一页、`x > 0.75` → 下一页，
+/// **中间 50% 才是「点击浮出顶栏」的区域**（阅读器惯例，也是用户定案）。
+/// 滚动模式**不启用**热区（连续滚动本身就是导航方式），任何位置点击都切换顶栏。
+const double _kTapTurnZone = 0.25;
 
 /// 阅读器页（路由参数：书籍沙盒路径；可选 initialChapter = 笔记页「跳到该章」用；
 /// 可选 initialCfi = 笔记页「跳到位置」用，epubcfi 串）
@@ -104,11 +116,25 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   DateTime? _tapDownAt;
   double _tapDownX = 0;
   double _tapDownY = 0;
-  DateTime? _lastToggleAt;
+
+  /// 上一次「点击」被处置的时刻（翻页 / 切换顶栏共用同一个去重窗口）
+  DateTime? _lastTapHandledAt;
 
   @override
   void initState() {
     super.initState();
+    // 阅读界面不展示系统状态栏（沉浸阅读）：只藏状态栏、保留底部手势条，
+    // 顶栏浮层与正文才能一直顶到屏幕上缘。
+    // ⚠️ SystemChrome 是全局的，退出必须在 dispose 还原（同浏览器页规矩）。
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: const [SystemUiOverlay.bottom],
+      ),
+    );
+    // 阅读时屏幕常亮（用户会长时间不触屏）：离页在 dispose 释放。
+    // 走 core/device/screen_awake.dart 的共享守卫（引用计数），避免与文件互传 #19 保活互相误关。
+    unawaited(acquireScreenAwake());
     _init();
   }
 
@@ -173,6 +199,10 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   void dispose() {
     _saveTimer?.cancel();
     _chromeTimer?.cancel();
+    // 还原系统栏：SystemChrome 是全局的，不还原会波及别的页面
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    // 释放屏幕常亮（引用计数；只在没人再持有且进页前本就是关的时候才真关）
+    unawaited(releaseScreenAwake());
     super.dispose();
   }
 
@@ -306,7 +336,18 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                   defaultDirection: settings.direction == ReaderDirection.rtl
                       ? EpubDefaultDirection.rtl
                       : EpubDefaultDirection.ltr,
-                  snap: true,
+                  // ⚠️ snap 一个值管两件事，必须跟「翻页方式」联动：
+                  //   ① JS 侧横滑吸附翻页（仅 iOS / 桌面生效——Android 走
+                  //      useCustomSwipe 后 JS 里恒为 false）；
+                  //   ② **WebView 的 `disableVerticalScroll`**：插件
+                  //      `epub_viewer.dart` 把 `displaySettings.snap` 直传给
+                  //      `EpubPlatformViewConfig.disableVerticalScroll`，而
+                  //      flutter_inappwebview 的 onTouchListener 在该项为 true 时
+                  //      会把**触摸的 Y 坐标钉死在按下位置**
+                  //      （`event.setLocation(event.getX(), m_downY)`）⇒ 纵向滚动
+                  //      整条失效。这正是「选了『滚动』翻页方式却滚不动、只能横滑」
+                  //      的根因。故滚动模式必须传 false。
+                  snap: settings.flow == ReaderFlow.paginated,
                   useSnapAnimationAndroid: false,
                   theme: _epubTheme(settings),
                   allowScriptedContent: false,
@@ -353,7 +394,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                 onAnnotationClicked: (cfi, _) => _showAnnotationSheet(cfi),
                 // JS 侧选区塌陷（selectionCleared）时同步清掉待命选区
                 onDeselection: () => _lastSelection = null,
-                // 点正文切换顶栏显隐（滑动翻页 / 长按选词都不算「点击」）
+                // 点击分派：左右边界翻页、其余位置切换顶栏；滑动翻页 / 长按选词
+                // 都不算「点击」（见 _onViewerTouchUp）
                 onTouchDown: _onViewerTouchDown,
                 onTouchUp: _onViewerTouchUp,
               ),
@@ -443,10 +485,10 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     final down = _tapDownAt;
     if (down == null) return;
     _tapDownAt = null;
-    // 长按（选词）/ 横滑翻页都不是「点击」，不切换顶栏
+    // 长按（选词）/ 横滑翻页都不是「点击」，既不翻页也不切换顶栏
     if (DateTime.now().difference(down).inMilliseconds > 400) return;
     if ((x - _tapDownX).abs() > 0.03 || (y - _tapDownY).abs() > 0.03) return;
-    // ⚠️ 选区工具栏待命时，点击空白 = 清选区收工具栏，不切顶栏。
+    // ⚠️ 选区工具栏待命时，点击空白 = 清选区收工具栏，不翻页也不切顶栏。
     // 插件在选区期间会注入 touch-action CSS 屏蔽滑动并劫持 next/prev/display，
     // 唯一解除路径是 DOM 选区塌陷触发 selectionCleared —— 但 WebView + 原生浮动
     // 菜单组合下点空白常常不塌陷，导致菜单卡死、无法翻页。这里主动调插件公开的
@@ -462,14 +504,44 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       }
       return;
     }
-    // epub.js 在 iframe 内与父文档各发一次 touchend，做去重避免「点了又立刻收起」
-    final last = _lastToggleAt;
+    // epub.js 在 iframe 内与父文档各发一次 touchend，做去重避免「一次点击翻两页 /
+    // 点了又立刻收起」
+    final last = _lastTapHandledAt;
     if (last != null &&
         DateTime.now().difference(last).inMilliseconds < 400) {
       return;
     }
-    _lastToggleAt = DateTime.now();
+    _lastTapHandledAt = DateTime.now();
+    // 翻页模式：左右边界点击翻页（热区各 25%），中间区域点击切换顶栏。
+    // 滚动模式不做左右热区：连续滚动本身就是导航方式，处处点击都切换顶栏。
+    if (ref.read(readerSettingsProvider).flow == ReaderFlow.paginated) {
+      if (x < _kTapTurnZone) {
+        _turnPage(-1);
+        return;
+      }
+      if (x > 1 - _kTapTurnZone) {
+        _turnPage(1);
+        return;
+      }
+    }
     _toggleChrome();
+  }
+
+  /// 点击左右热区翻页（仅翻页模式）
+  ///
+  /// 走插件公开的 `next() / prev()`（= JS 侧 `rendition.next/prev`），与横滑翻页
+  /// 同一条通路，位置变化照常经 `onRelocated` 回传并落库（CFI 续接不受影响）。
+  void _turnPage(int direction) {
+    if (!_epubReady) return;
+    try {
+      if (direction > 0) {
+        _epubController.next();
+      } else {
+        _epubController.prev();
+      }
+    } catch (_) {
+      // webview 未就绪 / 已卸载时忽略（checkEpubLoaded 会抛）
+    }
   }
 
   void _toggleChrome() {

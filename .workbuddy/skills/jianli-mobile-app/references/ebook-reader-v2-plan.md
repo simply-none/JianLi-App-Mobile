@@ -74,8 +74,8 @@
 | 自定义 CSS | `EpubTheme.custom(customCss: {...})` → `controller.updateTheme()` → JS `updateTheme(bg, fg, customCss)` | 三主题（日/夜/护眼）+ 自定义划线样式都能做 |
 | 选中回调 | `onTextSelected(EpubTextSelection)`、`onSelection(rect)`、`onSelectionChanging()`、`onDeselection()`、`suppressNativeContextMenu: true` | 拿到 CFI + WebView 内坐标 → **我们弹自己的 forui 操作条**（红线 #10） |
 | 点击已有划线 | `onAnnotationClicked(String cfiRange, Map? rect)` | JS 层已绑 `rendition.on('markClicked')` |
-| 归一化触控 | `onTouchDown(double x, double y)` / `onTouchUp(...)`，0.0~1.0 | **R2 点击左右翻页就靠它**；JS 里还自带 `shouldBlockNavigation` / `blockGesturesWhenSelected` 帮我们屏蔽 WebView 自身点击行为 |
-| 翻页/滚动 | `EpubDisplaySettings(flow: paginated/scrolled, spread, manager: continuous, snap, **useSnapAnimationAndroid: false**, fontSize: int, theme)` | `useSnapAnimationAndroid` 必须 false（官方已知：true 会打断 `onRelocated`） |
+| 归一化触控 | `onTouchDown(double x, double y)` / `onTouchUp(...)`，0.0~1.0 | **R2 点击左右翻页就靠它**（**已于 2026-09-22 落地**：`x<0.25` 上一页 / `x>0.75` 下一页 / 中间才切换顶栏）；JS 里还自带 `shouldBlockNavigation` / `blockGesturesWhenSelected` 帮我们屏蔽 WebView 自身点击行为 |
+| 翻页/滚动 | `EpubDisplaySettings(flow: paginated/scrolled, spread, manager: continuous, snap, **useSnapAnimationAndroid: false**, fontSize: int, theme)` | `useSnapAnimationAndroid` 必须 false（官方已知：true 会打断 `onRelocated`）。⚠️ **`snap` 必传 `flow == paginated`**（2026-09-22 修）：插件把它直传给 `disableVerticalScroll`，为 true 时 flutter_inappwebview 会钉死触摸 Y 坐标 ⇒ **滚动模式滚不动** |
 | 进度 | `initialCfi` / `initialXPath` / `getCurrentLocation()` → `EpubLocation(cfi/xpath/progress)` / `toProgressPercentage()` | 真实 CFI 进度，与 PC 同源 |
 | 来源 | `EpubSource.fromFile(File)` / `fromData(Uint8List)` / `fromAsset` / `fromUrl` | 本地文件直读 ✓ |
 | 搜索/文本 | `search(query)`、`extractText(startCfi,endCfi)`、`extractCurrentPageText()`、`getRectFromCfi()` | `extractText` 正好用来生成批注 `text` 摘录 |
@@ -168,7 +168,7 @@ EpubDisplaySettings(
   flow: mode == ReaderMode.paging ? EpubFlow.paginated : EpubFlow.scrolled,
   spread: EpubSpread.none,
   manager: EpubManager.continuous,
-  snap: true,
+  snap: true,   // ⚠️ 实际落地是 `snap: flow == ReaderFlow.paginated`（见上表 2026-09-22 注）
   useSnapAnimationAndroid: false,   // ⚠️ 必须为 false，否则 onRelocated 被破坏
   fontSize: settings.fontSize.round(),
   theme: EpubTheme.custom(foregroundColor: readerText(theme), customCss: css),
@@ -183,6 +183,8 @@ EpubDisplaySettings(
 | `x > 0.70` | `controller.next()` |
 | `0.30 ~ 0.70` | 切换顶栏 / 底部工具条显隐（同主流阅读器） |
 | 当前存在有效选区 | **不翻页**（选中态优先，避免手一抖线没了） |
+
+> **已落地（2026-09-22）**：热区实际取 **0.25 / 0.75**（`_kTapTurnZone`），中间 50% 切换顶栏；**滚动模式不启用热区**（处处点击都切换顶栏）；实现挂在 `epub_reader_page.dart::_onViewerTouchUp`，翻页走 `_epubController.next()/prev()`，并与「切换顶栏」共用同一个 400ms 去重窗口（iframe 与父文档各发一次 touchend）。
 
 模式持久化沿用 `reader_settings.dart` 的 shared_preferences 风格，新增 key `ebook_reader_mode`；设置抽屉里加一组 `JianliSegmented(items: [(FLucideIcons.rows3,'滚动'),(FLucideIcons.bookOpen,'翻页')])`，切换时 `controller.setFlow(...)`。
 

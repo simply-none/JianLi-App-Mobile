@@ -166,13 +166,20 @@ class RemoteService {
     return RemoteResult(ok: false, error: r['error'] as String? ?? '配对失败');
   }
 
-  /// 执行白名单命令。403 → unpaired=true（调用方清 token 引导重新配对）
-  Future<RemoteResult> sendCmd(String ip, String cmd) async {
+  /// 执行白名单命令。403 → unpaired=true（调用方清 token 引导重新配对）。
+  /// [arg] 仅供带参命令使用：`clipboard-text` = 要写入 PC 剪贴板的文本、
+  /// `open-url` = 要让 PC 打开的链接；其余命令忽略。
+  Future<RemoteResult> sendCmd(String ip, String cmd, {String? arg}) async {
     final token = await loadToken(ip);
     if (token == null) {
       return const RemoteResult(ok: false, unpaired: true, error: '尚未配对');
     }
-    final r = await _post(ip, '/remote/cmd', body: {'cmd': cmd}, token: token);
+    final r = await _post(
+      ip,
+      '/remote/cmd',
+      body: {'cmd': cmd, 'arg': ?arg},
+      token: token,
+    );
     if (r['_status'] == 403) {
       await clearToken(ip);
       return RemoteResult(
