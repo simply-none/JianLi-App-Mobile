@@ -139,6 +139,11 @@ agent_created: true
     - **验证「改动前 vs 改动后」对比绝不许用 stash/checkout 大法**：改用「只读 diff（`git diff` 本身只读、允许）」或让用户自行暂存/提交后再验证；bash 缺 coreutils（`tail`/`grep`/`ls` 全无）导致管道中途死掉时，`&&` 链后半段的恢复命令（如 `git stash pop`）不会执行——这正是本轮事故的直接成因，**链式命令里绝不能放任何写状态的 git 操作**。
     - 临时快照需求：让**用户**自己 commit 或 stash；Agent 只口头给命令。
 
+39. 【**校验只跑 `dart analyze`，禁跑 `dart format`（2026-09-22 实踩）**】本仓库现有 dart 代码是**旧版 formatter 风格**（续行缩进 / 长参数换行与 dart 3.7+ 的 tall style 不同），`dart format <file>` 会把**整个文件**按新风格重排 —— 哪怕语义只改了 3 行，`git diff` 也会散出十几处无关 hunk（本次 `note_slip_page.dart` 实测凭空多出 10 处：行 410/451/665/850/912 等，行尾也从 CRLF 被刷成 LF）。铁律：
+    - **改完只跑** `dart analyze <文件或目录>`（必要时 `flutter test`），**不要跑 `dart format`**；新写的代码按仓库既有风格手写（调用参数块 `+2` 缩进与现有一致）即可，不追求 formatter 零 diff。
+    - **万一跑了，不许用 `git checkout/restore` 还原**（红线 #38 禁写 git 状态）。替代手法：只读 `git show HEAD:<path> > 临时文件` 取回原文 → 脚本「还原原文 + 只重放语义改动」→ 写回，再用 `git diff -U0 | 过滤 @@` 确认 hunk 收敛到目标区域。
+    - 写入文件时注意行尾：仓库工作区是 **CRLF**（`core.autocrlf=true` 且无 .gitattributes），`git show` 吐出的是 LF，写回前要转 CRLF，否则会把整文件行尾刷掉。
+
 
 
 ## 📚 模块索引（按需读取，勿全量加载）

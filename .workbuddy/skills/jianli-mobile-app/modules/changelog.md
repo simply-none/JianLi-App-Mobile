@@ -1,6 +1,14 @@
 # 模块：维护说明（变更史）
 
 ## 维护说明
+- 2026-09-22（**小纸条设备抽屉改版：「扫描局域网」就地列设备 + 抽屉升 80vh + 历史设备可删**）：用户报「点底部设备弹窗里的【扫描局域网】，弹窗不该关掉，应该就地列出局域网设备；弹窗高度改 80vh；历史设备支持删除」。
+  - **改法（拆组件）**：新增 `components/note_slip_target_sheet.dart::NoteSlipTargetSheet`（`ConsumerStatefulWidget` 自带 ref，红线 #28 —— 抽屉在 Navigator overlay 子树，用页面 State 的 ref 会永远停在首帧），**整个「发送到」抽屉搬进它**：`SheetScaffold(title: '发送到', size: SheetSize.lg)`（lg = 80vh，原为 md 50%）+ 三区块「扫描行 / 历史设备 / 其他（手动输入 IP）」。页面侧 `_pickTarget()` 只剩「`showFSheet<Object?>` + 按返回值派发」，旧的 `_scan()` / `_pickFromScan()`（**关抽屉 → 再开一个 sm「选择设备」抽屉**，正是用户报的现象）与 `_menuTile()` 全删；`note_slip_page.dart` 不再需要 `core/sync/sync_discovery.dart`。
+  - **就地扫描**：`_scan()` 变抽屉内 State 方法 —— `_scanning=true` → 扫描行右侧 16px `FCircularProgress` + 文案「扫描中…」+ 下方提示行；扫完 `_found` 就地渲染设备行（`platform.contains('electron')` 分 monitor/smartphone；按 name 排序；排除 `localDeviceId`）。**空结果从 toast 改成行内空态文案**（toast 会在「不关抽屉」的新交互下反复弹），只有真正抛异常才 toast；`_scanned` 标记避免一进抽屉就写「未发现设备」。行文案随状态变「扫描局域网 → 重新扫描局域网」。
+  - **历史设备删除**：`NoteSlipClient` 新增 `removeTarget(ip)` —— 过滤后 `_saveTargets`；**若删的正是 `slip_last_peer` 则把该行一起删掉**，否则页面 `_loadTargets()` 回读 `lastPeerIp()` 会把底部 chip 指回一台已不存在的设备（发送必然超时）。抽屉内删除后 `loadTargets()` 原地刷新 + toast「已删除 xx」；抽屉**仅关闭**（返回 null）时页面也回读一次 `_loadTargets()`，保证 chip 与库一致。
+  - **返回值协议**：抽屉返回 `Object?` = `SlipTarget`（选中，扫描结果与历史设备同一条路）／`kSlipTargetManual='manual'`（转开 md 手动输入抽屉）／`null`（仅关闭）。`_addManualIp()` 改为 `Future<SlipTarget?>`（内部 `Navigator.pop(c, target)`，不再自己 `_setCurrent`），选中落库统一由页面 `_setCurrent` 做。
+  - **手势坑**：历史行的「选中」与「删除」做成**并排两个 `FTappable`**（左块 `Expanded` 选中、右块垃圾桶删除），**不做「外层 FTappable 里再套一层 tap」的嵌套手势** —— 命中区互不重叠，点删除不会顺手把设备选中（也不会双触发）。
+  - ⚠️ **本条顺带暴露的仓库约定：禁跑 `dart format`**（已升级为 **红线 #39**）。本仓库 dart 代码是旧版 formatter 风格，`dart format` 会把整个文件按新的 tall style 重排。本次第一版跑过一次，`note_slip_page.dart` 凭空多出 10 处无关 hunk（410/451/665/850/912 等）；**没有用 git checkout/restore 还原**（红线 #38 禁写 git 状态），改用只读 `git show HEAD:<path> > 临时文件` + Node 脚本「还原原文、只重放语义改动」写回，diff 收敛回 3 处（import ×2 + 字段）与设备选择区块。
+  - 校验：`dart analyze lib/features/note_slip` → **No issues found!**（中途 1 条 `use_null_aware_elements` @ 尾部槽位 `if (trailing != null) trailing` 已按建议改为 `?trailing`）。真机未验：点【扫描局域网】不关抽屉且就地出设备 / 抽屉 80vh / 删除历史设备后底部 chip 不指幽灵。
 - 2026-09-22（**「数据同步」+「数据管理」合并为「备份与恢复」页 `/backup`**）：用户定案合并，**数据同步段在前、数据管理段在后**（中间 `SectionHeader('数据管理')` 分隔），共用单头部 + 单滚动区。
   - **实现取「零业务搬迁」路线**：`SyncPage` 加 `embedded` / `bannerTitle` / `bannerSubtitle` / `bannerIcon`；`DataManagementPage` 加 `embedded`。`embedded: true` 时两页各自只返回「塌成整块、不自滚」的正文（`ListView(shrinkWrap: true, physics: NeverScrollableScrollPhysics(), padding: EdgeInsets.zero)`，**不返回 FScaffold / 头部 / SafeArea**），滚动由新页 `lib/features/backup/backup_restore_page.dart` 的唯一 `ListView` 承担。`embedded: false`（默认）行为与合并前逐字一致 → `/sync`、`/data-management` 仍可直接打开（旧深链不失效）。
   - **为什么这么做**：父级 `ListView` 内不能再嵌一个可滚动 `ListView`（无界高度直接崩），把 250 行正文手抄进新页又极易漏行 → 让原页用 `shrinkWrap + NeverScrollable` 自己塌成整块，**children 一行没动**（仅用脚本统一回退缩进，未重打代码）。⚠️ 后续再合并页面照此模式，不要嵌套滚动、不要复制正文。

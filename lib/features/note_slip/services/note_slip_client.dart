@@ -80,6 +80,19 @@ class NoteSlipClient {
         );
   }
 
+  /// 忘记一个目标（目标选择抽屉里删历史设备用）。
+  ///
+  /// 若删掉的正是「最近目标」，连 `slip_last_peer` 一起清掉 —— 否则页面回读
+  /// [lastPeerIp] 会把底部 chip 指回一台已不存在的设备，发送必然超时。
+  Future<void> removeTarget(String ip) async {
+    final rest = (await loadTargets()).where((t) => t.ip != ip).toList();
+    await _saveTargets(rest);
+    if (await lastPeerIp() != ip) return;
+    final q = _db.delete(_db.basicInfo)
+      ..where((t) => t.key.equals(_lastPeerKey));
+    await q.go();
+  }
+
   /// 最近一次发送目标的 IP（无则 null）
   Future<String?> lastPeerIp() async {
     final row = await (_db.select(_db.basicInfo)

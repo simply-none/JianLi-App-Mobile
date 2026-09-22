@@ -28,7 +28,6 @@ import '../../../app/ui/sheet_surface.dart' show SheetSize;
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart' show EmptyState;
 import '../../../core/db/app_database.dart';
-import '../../../core/sync/sync_discovery.dart';
 import '../../../core/sync/sync_service.dart';
 import '../../notes/providers/note_providers.dart';
 import '../../todo/providers/todo_providers.dart';
@@ -38,6 +37,7 @@ import '../note_slip_intake.dart';
 import '../providers/note_slip_providers.dart';
 import '../services/note_slip_client.dart';
 import 'note_slip_detail_sheet.dart';
+import 'note_slip_target_sheet.dart';
 
 /// Tab 范围
 const List<(String, String)> kSlipTabs = [
@@ -62,7 +62,6 @@ class _NoteSlipPageState extends ConsumerState<NoteSlipPage> {
   String _search = '';
   String _tab = kSlipDirectionIn;
   bool _sending = false;
-  bool _scanning = false;
   List<SlipTarget> _targets = [];
   SlipTarget? _current;
 
@@ -119,90 +118,9 @@ class _NoteSlipPageState extends ConsumerState<NoteSlipPage> {
 
   // ---------- 设备选择 ----------
 
-  Future<void> _scan() async {
-    if (_scanning) return;
-    setState(() => _scanning = true);
-    try {
-      final peers = await SyncDiscovery().scan();
-      if (!mounted) return;
-      // 排除自己（id = 本机稳定 hash），其余都列（PC 的 platform = 'win32-electron'）
-      final list = peers.values.where((p) => p.id != localDeviceId).toList();
-      if (list.isEmpty) {
-        showFToast(
-          context: context,
-          title: const Text('未发现设备'),
-          description: const Text('请确认对端渐离App 已打开并在同一局域网'),
-        );
-        return;
-      }
-      await _pickFromScan(list);
-    } finally {
-      if (mounted) setState(() => _scanning = false);
-    }
-  }
-
-  Future<void> _pickFromScan(List<PeerDevice> peers) {
-    final t = context.theme;
-    return showFSheet<void>(
-      context: context,
-      side: FLayout.btt,
-      mainAxisMaxRatio: AppTokens.sheetHeightLg,
-      resizeToAvoidBottomInset: false,
-      builder: (c) => SheetScaffold(
-        title: '选择设备',
-        size: SheetSize.sm,
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final p in peers)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: FTappable(
-                  onPress: () {
-                    Navigator.pop(c);
-                    _setCurrent(SlipTarget(ip: p.ip, name: p.name));
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: t.colors.muted,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          p.platform.contains('electron')
-                              ? FLucideIcons.monitor
-                              : FLucideIcons.smartphone,
-                          size: 18,
-                          color: t.colors.foreground,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '${p.name}（${p.ip}）',
-                            overflow: TextOverflow.ellipsis,
-                            style: t.typography.body.sm.copyWith(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _addManualIp() {
+  Future<SlipTarget?> _addManualIp() {
     final controller = TextEditingController();
-    return showFSheet<void>(
+    return showFSheet<SlipTarget>(
       context: context,
       side: FLayout.btt,
       mainAxisMaxRatio: AppTokens.sheetHeightLg,
@@ -221,8 +139,7 @@ class _NoteSlipPageState extends ConsumerState<NoteSlipPage> {
               onTap: () {
                 final ip = controller.text.trim();
                 if (ip.isEmpty) return;
-                Navigator.pop(c);
-                _setCurrent(SlipTarget(ip: ip, name: ip));
+                Navigator.pop(c, SlipTarget(ip: ip, name: ip));
               },
             ),
           ),
@@ -238,86 +155,31 @@ class _NoteSlipPageState extends ConsumerState<NoteSlipPage> {
     setState(() => _current = target);
   }
 
+  /// 目标选择抽屉（lg 80vh，见 [NoteSlipTargetSheet]）。
+  ///
+  /// 2026-09-22 改版：「扫描局域网」在**抽屉内就地**扫描并列设备（不再关抽屉、
+  /// 另开一个「选择设备」抽屉），历史设备行右侧可直接删除；返回
+  /// [kSlipTargetManual] 时才转开手动输入抽屉。
   Future<void> _pickTarget() async {
-    final t = context.theme;
-    final picked = await showFSheet<String>(
+    final picked = await showFSheet<Object?>(
       context: context,
       side: FLayout.btt,
       mainAxisMaxRatio: AppTokens.sheetHeightLg,
       resizeToAvoidBottomInset: false,
-      builder: (c) => SheetScaffold(
-        title: '发送到',
-        size: SheetSize.md,
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _menuTile(c, t, FLucideIcons.scanLine,
-                _scanning ? '扫描中…' : '扫描局域网', 'scan'),
-            if (_targets.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              for (final target in _targets)
-                _menuTile(
-                  c,
-                  t,
-                  FLucideIcons.history,
-                  '${target.name}（${target.ip}）',
-                  target.ip,
-                ),
-            ],
-            _menuTile(c, t, FLucideIcons.plus, '手动输入 IP', 'manual'),
-          ],
-        ),
-      ),
+      builder: (_) => NoteSlipTargetSheet(targets: _targets),
     );
-    if (picked == 'scan') await _scan();
-    if (picked == 'manual') await _addManualIp();
-    if (picked != null &&
-        picked != 'scan' &&
-        picked != 'manual' &&
-        picked.isNotEmpty) {
-      final target = _targets
-          .cast<SlipTarget?>()
-          .firstWhere((e) => e?.ip == picked, orElse: () => null);
-      if (target != null) await _setCurrent(target);
+    if (!mounted) return;
+    if (picked is SlipTarget) {
+      await _setCurrent(picked);
+      return;
     }
-  }
-
-  Widget _menuTile(
-    BuildContext sheetContext,
-    FThemeData t,
-    IconData icon,
-    String label,
-    String value,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: FTappable(
-        onPress: () => Navigator.pop(sheetContext, value),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: t.colors.muted,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 18, color: t.colors.foreground),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.typography.body.sm.copyWith(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    if (picked == kSlipTargetManual) {
+      final target = await _addManualIp();
+      if (target != null) await _setCurrent(target);
+      return;
+    }
+    // 仅关闭：其间可能在抽屉里删过历史设备 → 回读一次，底部 chip 与库保持一致
+    await _loadTargets();
   }
 
   // ---------- 发送 ----------
