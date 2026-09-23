@@ -23,6 +23,8 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/segmented.dart';
+// `SheetScaffold` 在 sheet_form.dart（本页只用 SheetSurface/SheetSize 时曾漏引，2026-09-23 补）
+import '../../../app/ui/sheet_form.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../core/db/app_database.dart';
 import '../../../core/device/screen_awake.dart';
@@ -30,6 +32,8 @@ import '../providers/ebook_providers.dart';
 import '../providers/reader_settings.dart';
 import '../repositories/ebook_repository.dart';
 import '../services/epub_service.dart';
+import '../utils/annotation_style.dart';
+import 'annotation_edit_sheet.dart';
 import 'annotation_sheet.dart';
 import 'reader_settings_sheet.dart';
 
@@ -161,6 +165,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   }
 
   /// 样式热更新：只推 CSS / 字号给已加载的 epub.js，不重载整本书
+  ///
+  /// ⚠️ 字号变了必须顺带把标注样式推一次：下划线的线是按「字号 + 行盒高」算基线偏移的
+  ///    （见 `_pushAnnotationStyle`），不重推线会停在旧字号的锚点上。
   Future<void> _applyStyle(ReaderSettings s) async {
     if (!_epubReady) return;
     try {
@@ -171,6 +178,24 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     try {
       await _epubController.setFontSize(fontSize: s.fontSize);
     } catch (_) {}
+    _pushAnnotationStyle();
+  }
+
+  /// 把下划线线色 + 当前字号推给 JS（`setAnnotationStyle`，见 tool/patch_epub_viewer.py）
+  ///
+  /// 线色走标注自己的 `color`（默认黄，与 PC 一致）；字号用于把 `<line>` 从「整行盒底部」
+  /// 重锚到「文字基线 + 间隙」。找不到 webViewController（未就绪 / 已卸载）时静默跳过。
+  void _pushAnnotationStyle({String? color}) {
+    final s = ref.read(readerSettingsProvider);
+    final hex = annotationHexOf(color ?? kDefaultAnnotationColor);
+    try {
+      _epubController.webViewController?.callMethod('setAnnotationStyle', [
+        hex,
+        s.fontSize.round(),
+      ]);
+    } catch (_) {
+      // webview 未就绪 / 已卸载时忽略
+    }
   }
 
   Future<void> _init() async {
@@ -284,25 +309,6 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       },
       'img': {'max-width': '100% !important', 'height': 'auto !important'},
     };
-  }
-
-  Color _toColor(String? name) {
-    switch ((name ?? 'yellow').toLowerCase()) {
-      case 'green':
-        return Colors.green;
-      case 'blue':
-        return Colors.blue;
-      case 'pink':
-        return Colors.pink;
-      case 'orange':
-        return Colors.orange;
-      case 'purple':
-        return Colors.purple;
-      case 'red':
-        return Colors.red;
-      default:
-        return Colors.yellow;
-    }
   }
 
   Widget _buildEpub() {
@@ -572,21 +578,27 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   }
 
   /// 启动 / 主题切换重建后，从库里把已存的高亮 / 下划线重绘到阅读器
+  ///
+  /// ⚠️ 重绘前先把下划线线色 + 字号推给 JS：`addUnderLine` 用 JS 侧记住的颜色给新标注
+  ///    写 `--hl-stroke`，不先推就会用默认色。
   Future<void> _reapplyHighlights() async {
     final hash = _contentHash;
     if (hash == null) return;
+    _pushAnnotationStyle();
     try {
       final list = await ref.read(ebookRepositoryProvider).getAnnotations(hash);
       for (final a in list) {
         final cfi = a.anchor;
         if (cfi == null || !cfi.startsWith('epubcfi')) continue;
         try {
-          if ((a.type ?? '').trim() == 'underline') {
+          if (isUnderlineType(a.type)) {
+            // 逐条推一次：不同下划线可能存了不同颜色
+            _pushAnnotationStyle(color: a.color);
             await _epubController.addUnderline(cfi: cfi);
           } else {
             await _epubController.addHighlight(
               cfi: cfi,
-              color: _toColor(a.color),
+              color: annotationColorOf(a.color),
             );
           }
         } catch (_) {
@@ -596,11 +608,57 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     } catch (_) {}
   }
 
+  /// 撤掉阅读器里某条标注的 SVG 覆盖层
+  ///
+  /// ⚠️ **必须按 type 分派**：epub.js 把下划线存在**独立的 `underlines` 字典**里，
+  ///    `removeHighlight`（= `remove(cfi, 'highlight')`）对它完全无效 —— 这正是
+  ///    「下划线删了但画面上还留着」的根因（2026-09-23 修复）。
+  Future<void> _removeAnnotationMark(EbookAnnotationData a) async {
+    final cfi = a.anchor;
+    if (cfi == null || !cfi.startsWith('epubcfi')) return;
+    try {
+      if (isUnderlineType(a.type)) {
+        await _epubController.removeUnderline(cfi: cfi);
+      } else {
+        await _epubController.removeHighlight(cfi: cfi);
+      }
+    } catch (_) {
+      // webview 未就绪 / 已卸载时忽略
+    }
+  }
+
+  /// 编辑保存后重绘：按**旧** type 撤、按**新** type 画（锚点不变）
+  Future<void> _redrawAnnotation(
+    EbookAnnotationData before,
+    String nextType,
+    String nextColor,
+  ) async {
+    await _removeAnnotationMark(before);
+    final cfi = before.anchor;
+    if (!_epubReady || cfi == null || !cfi.startsWith('epubcfi')) return;
+    try {
+      if (nextType == 'underline') {
+        _pushAnnotationStyle(color: nextColor);
+        await _epubController.addUnderline(cfi: cfi);
+      } else {
+        await _epubController.addHighlight(
+          cfi: cfi,
+          color: annotationColorOf(nextColor),
+        );
+      }
+    } catch (_) {
+      // webview 未就绪 / 已卸载时忽略
+    }
+  }
+
   Future<void> _addHighlightFromSelection(String colorName, String type) async {
     final sel = _lastSelection;
     if (sel == null || _contentHash == null) return;
     try {
-      await _epubController.addHighlight(cfi: sel.$1, color: _toColor(colorName));
+      await _epubController.addHighlight(
+        cfi: sel.$1,
+        color: annotationColorOf(colorName),
+      );
       await ref.read(ebookRepositoryProvider).addAnnotation(
         filePath: widget.filePath,
         contentHash: _contentHash!,
@@ -626,6 +684,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     final sel = _lastSelection;
     if (sel == null || _contentHash == null) return;
     try {
+      // 线色跟随标注色（默认黄，与 PC 一致）；先推给 JS 再画，否则会先用默认色落一笔
+      _pushAnnotationStyle(color: kDefaultAnnotationColor);
       await _epubController.addUnderline(cfi: sel.$1);
       await ref.read(ebookRepositoryProvider).addAnnotation(
         filePath: widget.filePath,
@@ -634,7 +694,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         anchor: sel.$1,
         annotatedText: sel.$2,
         note: null,
-        color: '',
+        // 显式落默认色（旧实现写空串，导致「线色跟随 color」取不到值）；
+        // PC 端渲染下划线时忽略本列、按类型预设取色，故不影响跨端。
+        color: kDefaultAnnotationColor,
         type: 'underline',
       );
       if (mounted) showFToast(context: context, title: const Text('已添加下划线'));
@@ -1024,82 +1086,57 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         }
       },
       onDelete: (a) async {
-        final cfi = a.anchor;
-        if (cfi != null && cfi.startsWith('epubcfi')) {
-          try {
-            await _epubController.removeHighlight(cfi: cfi);
-          } catch (_) {}
-        }
+        // 按 type 分派撤 SVG（下划线必须走 removeUnderline，否则画面残留）
+        await _removeAnnotationMark(a);
         await ref.read(ebookRepositoryProvider).removeAnnotation(a.id);
       },
+      onSaved: _redrawAnnotation,
     );
   }
 
+  /// 点击已有划线 → 「标注编辑」抽屉（样式 / 颜色 / 笔记 / 删除）
+  ///
+  /// ⚠️ 抽屉内读流必须自带 `Consumer`（overlay 子树不属于页面 element，直接用页面的
+  ///    `ref.watch` 会永远停在首帧空列表，见 annotation_sheet.dart 顶部注释）。
+  /// ⚠️ 高度挂 lg + `resizeToAvoidBottomInset: false`：抽屉内含笔记输入框（全局定案），
+  ///    `AnnotationEditSheet` 内部自带 `SheetScaffold`（定高 + 把手 + 底部按钮避让键盘）。
   void _showAnnotationSheet(String cfi) {
     final hash = _contentHash;
     if (hash == null) return;
     showFSheet<void>(
       context: context,
       side: FLayout.btt,
-      mainAxisMaxRatio: AppTokens.sheetHeightMd,
+      mainAxisMaxRatio: AppTokens.sheetHeightLg,
       resizeToAvoidBottomInset: false,
-      builder: (c) => SheetSurface(
-        child: SafeArea(
-          child: Padding(
-            padding: EdgeInsets.all(AppTokens.pagePadding),
-            // ⚠️ 抽屉内读流必须自带 Consumer（否则永远停在首帧空列表）
-            child: Consumer(
-              builder: (c, ref, _) {
-                final list =
-                    ref.watch(annotationsStreamProvider(hash)).value ??
-                        const <EbookAnnotationData>[];
-                final a = list.where((x) => x.anchor == cfi).firstOrNull;
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('标注', style: sheetTitleStyle(c)),
-                    const SizedBox(height: 8),
-                    if (a != null) ...[
-                    if ((a.annotatedText ?? '').isNotEmpty)
-                      Text(a.annotatedText!, style: c.theme.typography.body.md),
-                    if ((a.note ?? '').isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(a.note!, style: c.theme.typography.body.sm),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      spacing: 8,
-                      children: [
-                        Expanded(
-                          child: FButton(
-                            variant: FButtonVariant.outline,
-                            onPress: () async {
-                              if (a.anchor != null) {
-                                try {
-                                  await _epubController.removeHighlight(
-                                    cfi: a.anchor!,
-                                  );
-                                } catch (_) {}
-                              }
-                              await ref
-                                  .read(ebookRepositoryProvider)
-                                  .removeAnnotation(a.id);
-                              if (c.mounted) Navigator.pop(c);
-                            },
-                            child: const Text('删除'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ] else
-                    const Text('该标注已不存在'),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
+      builder: (c) => Consumer(
+        builder: (c, ref, _) {
+          final list = ref.watch(annotationsStreamProvider(hash)).value ??
+              const <EbookAnnotationData>[];
+          // 不用 `firstOrNull`：它只在 `dart:collection` 里，本文件未导入（同 conversation_compose 的既有约定）
+          EbookAnnotationData? hit;
+          for (final x in list) {
+            if (x.anchor == cfi) {
+              hit = x;
+              break;
+            }
+          }
+          final a = hit;
+          if (a == null) {
+            return SheetScaffold(
+              title: '标注',
+              size: SheetSize.lg,
+              body: Text('该标注已不存在', style: c.theme.typography.body.md),
+            );
+          }
+          return AnnotationEditSheet(
+            annotation: a,
+            onDelete: (item) async {
+              await _removeAnnotationMark(item);
+              await ref.read(ebookRepositoryProvider).removeAnnotation(item.id);
+            },
+            onSaved: _redrawAnnotation,
+          );
+        },
       ),
     );
   }

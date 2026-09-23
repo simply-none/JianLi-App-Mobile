@@ -455,6 +455,29 @@ class EbookRepository {
     );
   }
 
+  /// 更新标注的「笔记 / 颜色 / 类型」（阅读器「标注编辑」抽屉用）
+  ///
+  /// ⚠️ 参数是**必填可空**（不是可选）：三列一律按传入值整列覆盖，`null` 表示清空。
+  ///    用可空可选会分不清「不改」与「改成 null」（drift 的 `Value(null)` 就是置空）。
+  /// ⚠️ **锚点（CFI）不参与编辑**，所以这里不动 anchor —— 位置不会丢。
+  ///    需要重绘的场景（颜色 / 类型变了）由调用方按「旧 type → 新 type」自行 remove + add。
+  Future<void> updateAnnotation(
+    int id, {
+    required String? note,
+    required String color,
+    required String type,
+  }) async {
+    await (_db.update(_db.ebookAnnotation)..where((t) => t.id.equals(id)))
+        .write(
+      EbookAnnotationCompanion(
+        note: Value(note),
+        color: Value(color),
+        type: Value(type),
+        updatedAt: Value(DateTime.now().toIso8601String()),
+      ),
+    );
+  }
+
   // ---- 进度 / 书签 / 批注：CFI 化（epub.js 引擎，跨端互通）----
 
   /// 保存进度（CFI 定位串，替换旧的 `chapter:<i>` 占位）。

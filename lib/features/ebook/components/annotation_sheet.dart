@@ -10,6 +10,10 @@
 //
 // 高度走三档制 lg（80%）+ `resizeToAvoidBottomInset: false`：抽屉内含「编辑笔记」
 // 输入框，按全局定案「只要有输入框一律 lg」。
+//
+// 铅笔按钮（2026-09-23 起）不再自己拼一层「编辑笔记」抽屉，统一改开
+// `showAnnotationEditSheet`（样式 / 颜色 / 笔记 / 删除），与「点击划线」入口共用同一组件，
+// 避免两份编辑逻辑漂移 —— 见 annotation_edit_sheet.dart 顶部注释。
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
@@ -19,18 +23,22 @@ import '../../../app/ui/segmented.dart';
 import '../../../app/ui/sheet_surface.dart';
 import '../../../core/db/app_database.dart';
 import '../providers/ebook_providers.dart';
-import '../repositories/ebook_repository.dart';
+import 'annotation_edit_sheet.dart';
 
 /// 打开「笔记与划线」抽屉
 ///
 /// - [contentHash]：书的跨端稳定键（批注按它归属）
 /// - [onLocate]：点「定位」时由阅读器跳到该 CFI（EPUB / TXT 各自实现）
-/// - [onDelete]：点「删除」时由阅读器先撤掉高亮再删库
+/// - [onDelete]：点「删除」时由阅读器先撤掉对应覆盖层（下划线 / 高亮分派）再删库
+/// - [onSaved]：编辑保存后由阅读器按「旧 type 撤 → 新 type 画」重绘（可空，
+///   TXT 等无阅读器覆盖层的场景可不传）
 void showAnnotationSheet({
   required BuildContext context,
   required String contentHash,
   required void Function(String cfi) onLocate,
   required Future<void> Function(EbookAnnotationData a) onDelete,
+  Future<void> Function(EbookAnnotationData before, String type, String color)?
+      onSaved,
 }) {
   showFSheet<void>(
     context: context,
@@ -46,6 +54,7 @@ void showAnnotationSheet({
             contentHash: contentHash,
             onLocate: onLocate,
             onDelete: onDelete,
+            onSaved: onSaved,
           ),
         ),
       ),
@@ -58,11 +67,14 @@ class _AnnotationPanel extends ConsumerStatefulWidget {
     required this.contentHash,
     required this.onLocate,
     required this.onDelete,
+    this.onSaved,
   });
 
   final String contentHash;
   final void Function(String cfi) onLocate;
   final Future<void> Function(EbookAnnotationData a) onDelete;
+  final Future<void> Function(EbookAnnotationData before, String type, String color)?
+      onSaved;
 
   @override
   ConsumerState<_AnnotationPanel> createState() => _AnnotationPanelState();
@@ -195,7 +207,8 @@ class _AnnotationPanelState extends ConsumerState<_AnnotationPanel> {
             ),
           FButton(
             variant: FButtonVariant.ghost,
-            onPress: () => _editNote(context, a),
+            // 铅笔 → 与「点击划线」同一张「编辑标注」面板（样式/颜色/笔记/删除）
+            onPress: () => _editAnnotation(context, a),
             child: const Icon(FLucideIcons.pencil),
           ),
           FButton(
@@ -210,112 +223,20 @@ class _AnnotationPanelState extends ConsumerState<_AnnotationPanel> {
     );
   }
 
-  /// 编辑笔记（lg 抽屉 + 输入框；保存只改 note，不重绘高亮）
-  void _editNote(BuildContext context, EbookAnnotationData a) {
-    var text = a.note ?? '';
-    showFSheet<void>(
+  /// 铅笔 → 统一「编辑标注」面板：样式（高亮/下划线）/ 颜色 / 笔记 / 删除
+  ///
+  /// ⚠️ 与「点击已有划线」入口共用 `AnnotationEditSheet`（单一来源，避免两份编辑逻辑
+  ///    漂移）。本入口在外层抽屉之上再叠一层抽屉（flutter_sheet 支持嵌套，父级不 pop）。
+  ///    保存后靠注释流（`annotationsStreamProvider`）自动刷新本列表；阅读器侧的覆盖层
+  ///    重绘交给 `onSaved`。删除同样走 `onDelete`（先撤覆盖层再删库）。
+  /// ⚠️ `onSaved` 可能为空（TXT 等无 JS 覆盖层的场景），`AnnotationEditSheet` 内部
+  ///    已用 `onSaved?.call(...)` 容错，不传即可。
+  void _editAnnotation(BuildContext context, EbookAnnotationData a) {
+    showAnnotationEditSheet(
       context: context,
-      side: FLayout.btt,
-      mainAxisMaxRatio: AppTokens.sheetHeightLg,
-      resizeToAvoidBottomInset: false,
-      builder: (c) => SheetSurface(
-        child: SafeArea(
-          child: SizedBox(
-            height: sheetMaxHeightFull(c, SheetSize.lg),
-            child: StatefulBuilder(
-              builder: (c, setSt) => Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      AppTokens.pagePadding,
-                      12,
-                      AppTokens.pagePadding,
-                      8,
-                    ),
-                    child: Text('编辑笔记', style: sheetTitleStyle(c)),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.all(AppTokens.pagePadding),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.only(left: 10),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              left: BorderSide(
-                                color: c.theme.colors.primary,
-                                width: 3,
-                              ),
-                            ),
-                          ),
-                          child: Text(
-                            (a.annotatedText ?? '').trim().isEmpty
-                                ? '（无引用文本）'
-                                : a.annotatedText!,
-                            style: c.theme.typography.body.md,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        FTextField(
-                          label: const Text('笔记内容'),
-                          control: FTextFieldControl.managed(
-                            onChange: (v) => setSt(() => text = v.text),
-                          ),
-                          maxLines: null,
-                          minLines: 3,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Spacer(),
-                  // 底部按钮固定贴底，不随内容滚动
-                  // ⚠️ 键盘弹起时必须把按钮顶到键盘上方（lg 固定 80vh 不扣键盘，
-                  // 键盘覆盖抽屉；先例 habit_page `_habitSheetPanel` / SheetScaffold）
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      AppTokens.pagePadding,
-                      AppTokens.pagePadding,
-                      AppTokens.pagePadding,
-                      AppTokens.pagePadding +
-                          MediaQuery.of(c).viewInsets.bottom,
-                    ),
-                    child: Row(
-                      spacing: 8,
-                      children: [
-                        Expanded(
-                          child: FButton(
-                            variant: FButtonVariant.outline,
-                            onPress: () => Navigator.pop(c),
-                            child: const Text('取消'),
-                          ),
-                        ),
-                        Expanded(
-                          child: FButton(
-                            onPress: () async {
-                              final trimmed = text.trim();
-                              await ref
-                                  .read(ebookRepositoryProvider)
-                                  .updateAnnotationNote(
-                                    a.id,
-                                    trimmed.isEmpty ? null : trimmed,
-                                  );
-                              if (c.mounted) Navigator.pop(c);
-                            },
-                            child: const Text('保存'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      annotation: a,
+      onDelete: widget.onDelete,
+      onSaved: widget.onSaved,
     );
   }
 }
