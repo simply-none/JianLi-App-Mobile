@@ -40,7 +40,8 @@ part 'app_database.g.dart';
 /// v2 新增 file_transfer（文件互传历史）；
 /// v4 新增浏览器 4 张（browser_tabs / browser_pinned / browser_bookmarks / browser_history，移动端专有、不入同步白名单）；
 /// v5 新增浏览器 2 张（browser_downloads / browser_offline_pages，下载与离线页面，移动端专有、不入同步白名单）；
-/// v6 新增 note_slip（P1-6 小纸条收发记录，双端同构、不入同步白名单）。
+/// v6 新增 note_slip（P1-6 小纸条收发记录，双端同构、不入同步白名单）；
+/// v7 给 todo_list 加 3 列（deleted / focusedMinutes / recurrenceMode，与 PC 端 2026-10-01 批次同批上线）。
 @DriftDatabase(
   tables: [
     HabitDef,
@@ -91,7 +92,7 @@ class AppDatabase extends _$AppDatabase {
         ));
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -127,6 +128,14 @@ class AppDatabase extends _$AppDatabase {
           // 不碰旧表、不丢数据。
           if (from < 6) {
             await m.createAll();
+          }
+          // v6→v7：todo_list 加 3 列（E5 软删除 deleted / E3 番茄钟 focusedMinutes /
+          // F2 生成方式 recurrenceMode，全部 TEXT 可空，与 PC 端 2026-10-01 批次同列名）。
+          // addColumn 为增量迁移，存量数据原样保留；严禁 destructiveFallback。
+          if (from < 7) {
+            await m.addColumn(todoList, todoList.deleted);
+            await m.addColumn(todoList, todoList.focusedMinutes);
+            await m.addColumn(todoList, todoList.recurrenceMode);
           }
         },
       );

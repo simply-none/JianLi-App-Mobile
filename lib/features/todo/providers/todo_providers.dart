@@ -17,6 +17,12 @@ final StreamProvider<List<TodoItem>> todoListProvider =
       (ref) => ref.watch(todoRepositoryProvider).watchTodos(),
     );
 
+/// 回收站流（E5 软删除行，供回收站抽屉）
+final StreamProvider<List<TodoItem>> todoDeletedProvider =
+    StreamProvider<List<TodoItem>>(
+      (ref) => ref.watch(todoRepositoryProvider).watchDeletedTodos(),
+    );
+
 /// 标签流
 final StreamProvider<List<TodoTagView>> todoTagsProvider =
     StreamProvider<List<TodoTagView>>(

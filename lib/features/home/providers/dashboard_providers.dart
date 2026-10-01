@@ -60,10 +60,10 @@ dashboardStatsProvider = FutureProvider<DashboardStats>((ref) async {
   )..where((t) => t.date.equals(todayPrefix))).get();
   final doneKeys = checkins.map((c) => c.habitKey ?? '').toSet();
 
-  // 待办
+  // 待办（E5：排除回收站行 deleted='1'，口径 = 有效待办）
   final todos = await db.select(db.todoList).get();
-  final activeTodos = todos
-      .map(TodoItem.fromRow)
+  final todoItems = todos.map(TodoItem.fromRow).where((t) => !t.isDeleted);
+  final activeTodos = todoItems
       .where((t) => !t.completed)
       .length;
 
@@ -124,7 +124,7 @@ dashboardStatsProvider = FutureProvider<DashboardStats>((ref) async {
   return DashboardStats(
     habitsTotal: habitItems.length,
     habitsDoneToday: habitItems.where((h) => doneKeys.contains(h.key)).length,
-    todosTotal: todos.length,
+    todosTotal: todoItems.length,
     todosActive: activeTodos,
     pomodoroToday: pomodoroToday,
     pomodoroWorkMinutes: pomodoroWorkMinutes,

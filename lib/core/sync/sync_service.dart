@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/di/app_providers.dart';
 import '../../../core/db/app_database.dart';
+import '../../features/todo/repositories/todo_repository.dart';
 import 'device_nickname.dart';
 import 'sync_discovery.dart';
 import 'sync_log.dart';
@@ -131,6 +132,8 @@ class SyncService {
           // 原始 SQL 写入不会自动通知 drift 的 watch 流，整表写完后手动触发刷新，
           // 否则列表页停留在写入前的旧快照（「拉取/推送成功但界面空白」的根因）。
           _db.notifyUpdates({TableUpdate(table)});
+          // 待办表同步写库结束后做一次周期实例去重（防双端各自生成导致同步后双份）
+          await _dedupeTodoInstances(table);
           // 被动端：对端来推，动作是「推送」，与对端 sendTable 里那条字面相同
           _log.log('推送 $table：$written 行', level: SyncLogLevel.ok);
           _json(request, {'ok': true, 'written': written});
@@ -275,12 +278,25 @@ class SyncService {
       }
       // 同 POST /sync 分支：原始 SQL 写后手动通知 watch 流刷新
       _db.notifyUpdates({TableUpdate(table)});
+      // 待办表同步写库结束后做一次周期实例去重（防双端各自生成导致同步后双份）
+      await _dedupeTodoInstances(table);
       // 主动端拉取：与对端 GET /export 分支那条字面相同
       _log.log('拉取 $table：$written 行', level: SyncLogLevel.ok);
       return (ok: true, message: '已拉取 $table：$written 行');
     } catch (e) {
       _log.log('拉取 $table 失败：$e', level: SyncLogLevel.error);
       return (ok: false, message: '拉取失败：$e');
+    }
+  }
+
+  /// 待办表同步写库（import 应用）完成后的周期实例去重兜底。
+  /// 仅在 todo_list 写入后触发；去重失败不影响同步结果，故单独捕获不外抛。
+  Future<void> _dedupeTodoInstances(String table) async {
+    if (table != 'todo_list') return;
+    try {
+      await TodoRepository(_db).dedupeRecurrenceInstances();
+    } catch (_) {
+      // 去重失败不阻塞同步流程（下次同步/保存模板时还会再跑）
     }
   }
 }

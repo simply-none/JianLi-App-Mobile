@@ -10,8 +10,8 @@ import '../models/todo_filter.dart';
 import 'todo_chips.dart';
 import 'todo_sheets.dart';
 
-/// 月历视图
-class TodoCalendarView extends StatelessWidget {
+/// 月历视图（支持 ‹ 上月 / 下月 › 切换与「今天」回当月）
+class TodoCalendarView extends StatefulWidget {
   const TodoCalendarView({
     super.key,
     required this.items,
@@ -22,8 +22,30 @@ class TodoCalendarView extends StatelessWidget {
   final void Function(DateTime day, List<TodoItem> dayItems) onPickDay;
 
   @override
+  State<TodoCalendarView> createState() => _TodoCalendarViewState();
+}
+
+class _TodoCalendarViewState extends State<TodoCalendarView> {
+  /// 当前展示月份（初始当月；旧版锁死当月无法回看前后月，改为可导航）
+  DateTime _displayMonth = DateTime.now();
+
+  void _shiftMonth(int delta) {
+    setState(() {
+      // 按 1 号重建目标月，避免大月末（如 31 日）直接加减导致跳月
+      _displayMonth = DateTime(_displayMonth.year, _displayMonth.month + delta, 1);
+    });
+  }
+
+  void _backToToday() {
+    final now = DateTime.now();
+    setState(() => _displayMonth = DateTime(now.year, now.month, 1));
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = context.theme;
+    final items = widget.items;
+    final onPickDay = widget.onPickDay;
     final weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
     // 聚合：yyyy-MM-dd -> 待办
     final byDay = <String, List<TodoItem>>{};
@@ -35,18 +57,21 @@ class TodoCalendarView extends StatelessWidget {
     }
 
     final now = DateTime.now();
-    final firstWeekday = DateTime(now.year, now.month, 1).weekday % 7;
-    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final view = _displayMonth;
+    final firstWeekday = DateTime(view.year, view.month, 1).weekday % 7;
+    final daysInMonth = DateTime(view.year, view.month + 1, 0).day;
 
     final cells = <Widget>[];
     for (var i = 0; i < firstWeekday; i++) {
       cells.add(const SizedBox.shrink());
     }
     for (var d = 1; d <= daysInMonth; d++) {
-      final day = DateTime(now.year, now.month, d);
-      final key = '${now.year}-${now.month.toString().padLeft(2, '0')}-${d.toString().padLeft(2, '0')}';
+      final day = DateTime(view.year, view.month, d);
+      final key = '${view.year}-${view.month.toString().padLeft(2, '0')}-${d.toString().padLeft(2, '0')}';
       final dayItems = byDay[key] ?? [];
-      final isToday = d == now.day;
+      // 可切月后「今天」必须按完整日期比对（旧版只比 day 号，切到其它月份会误标）
+      final isToday =
+          day.year == now.year && day.month == now.month && day.day == now.day;
       cells.add(
         FTappable(
           onPress: () => onPickDay(day, dayItems),
@@ -114,9 +139,48 @@ class TodoCalendarView extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Text(
-                  '${now.year} 年 ${now.month} 月',
-                  style: t.typography.body.lg.copyWith(fontWeight: FontWeight.w700),
+                // 月份导航行：‹ 上月 · 标题 · 下月 › · 今天（配色一律取主题色，禁硬编码）
+                Row(
+                  children: [
+                    FTappable(
+                      onPress: () => _shiftMonth(-1),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Icon(FLucideIcons.chevronLeft,
+                            size: 18, color: t.colors.foreground),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        '${view.year} 年 ${view.month} 月',
+                        textAlign: TextAlign.center,
+                        style: t.typography.body.lg
+                            .copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    FTappable(
+                      onPress: () => _shiftMonth(1),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Icon(FLucideIcons.chevronRight,
+                            size: 18, color: t.colors.foreground),
+                      ),
+                    ),
+                    // 回跳当月小按钮
+                    FTappable(
+                      onPress: _backToToday,
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Text(
+                          '今天',
+                          style: t.typography.body.sm.copyWith(
+                            color: t.colors.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 Row(

@@ -32,6 +32,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart' show DeviceOrientation, SystemChrome;
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/anim/jianli_haptics.dart';
 import '../../../app/di/app_providers.dart';
@@ -45,6 +46,8 @@ import '../../../app/ui/soft_chip.dart';
 import '../../../app/ui/tap_scale.dart';
 import '../../../app/ui/ui_atoms.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../todo/providers/todo_providers.dart';
+import '../../todo/repositories/todo_repository.dart' show kTodoPomodoroLinkKey;
 import '../models/pomodoro_state_machine.dart';
 import '../repositories/pomodoro_repository.dart';
 import 'pomodoro_records_sheet.dart';
@@ -348,6 +351,30 @@ class _PomodoroPageState extends ConsumerState<PomodoroPage>
         mode: 'mobile',
       );
     } catch (_) {}
+    // E3 待办联动：只在「专注阶段完整走完」的落点挂一次 —— 读 SharedPreferences
+    // 键 todo.pomodoroLink（值为待办 key），非空则为其累计本轮专注配置分钟数并提示。
+    // 尊重 2026-09-13「页面内本地计时」拍板：不复活状态机、不加原生阶段通知；
+    // 分钟数取专注段配置值（走到这里即完整一轮；切后台停表不会进入本分支）。
+    if (finished.key == 'work') {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final linkedKey = prefs.getString(kTodoPomodoroLinkKey) ?? '';
+        if (linkedKey.isNotEmpty) {
+          final minutes = (finished.durationSeconds / 60).ceil();
+          final updated = await ref
+              .read(todoRepositoryProvider)
+              .addFocusedMinutes(linkedKey, minutes);
+          if (updated != null && mounted) {
+            showFToast(
+              context: context,
+              title: Text('已为「${updated.title}」累计 $minutes 分钟'),
+            );
+          }
+        }
+      } catch (_) {
+        // 联动失败不影响番茄钟主流程
+      }
+    }
   }
 
   /// 双保险：排程「专注结束」原生一次性系统通知（覆盖进程被杀不提醒）。

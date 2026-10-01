@@ -59,6 +59,9 @@ class TodoItem {
     required this.recurrenceEnd,
     required this.recurrenceId,
     required this.isRecurrenceInstance,
+    required this.deleted,
+    required this.focusedMinutes,
+    required this.recurrenceMode,
   });
 
   factory TodoItem.fromRow(TodoListData row) {
@@ -86,6 +89,10 @@ class TodoItem {
       recurrenceEnd: row.recurrenceEnd,
       recurrenceId: row.recurrenceId,
       isRecurrenceInstance: int.tryParse(row.isRecurrenceInstance ?? '') ?? 0,
+      // 2026-10-01 批次新列：TEXT 列 Number 缺省兜底（与既有 remindInterval 等写法一致）
+      deleted: int.tryParse(row.deleted ?? '') ?? 0,
+      focusedMinutes: int.tryParse(row.focusedMinutes ?? '') ?? 0,
+      recurrenceMode: row.recurrenceMode,
     );
   }
 
@@ -128,7 +135,7 @@ class TodoItem {
   /// 关联父任务 key 数组；空数组/空表示根任务
   final List<String> parentIds;
 
-  /// 重复规则：daily / weekly / null
+  /// 重复规则：daily / weekly / monthly / yearly / null（E4 扩展月年）
   final String? recurrenceRule;
   final int recurrenceInterval;
 
@@ -143,6 +150,20 @@ class TodoItem {
 
   /// 是否为周期自动生成的实例（0/1）
   final int isRecurrenceInstance;
+
+  // ===== 2026-10-01 批次新列（与 PC 端同批上线，同步链路按列过滤自动携带）=====
+
+  /// E5 软删除标记（0/1）：1 = 在回收站，不参与常规列表/统计，30 天后清理
+  final int deleted;
+
+  /// E3 番茄钟累计专注分钟数（番茄钟专注段完整走完时累加）
+  final int focusedMinutes;
+
+  /// F2 重复实例生成方式：'fixed'（到点自动生成，缺省）/ 'on_complete'（完成后生成下一次）
+  final String? recurrenceMode;
+
+  /// 是否已进回收站（E5）
+  bool get isDeleted => deleted == 1;
 
   /// 是否子任务（关联了任一父任务）
   bool get isChild => parentIds.isNotEmpty;
@@ -262,10 +283,13 @@ List<TodoItem> parentItemsOf(List<TodoItem> all, TodoItem child) =>
         .expand((x) => x)
         .toList();
 
-/// 把重复配置格式化为可读文案，如「每 2 天」「每周一、三」
+/// 把重复配置格式化为可读文案，如「每 2 天」「每周一、三」「每 2 月」「每年」
 String formatRecurrence(String? rule, int interval, List<int> weekdays) {
   if (rule == null || rule.isEmpty) return '';
   if (rule == 'daily') return interval > 1 ? '每 $interval 天' : '每天';
+  // E4：月/年规则（按锚点「几号」/「月-日」命中，间隔对齐 PC recurrenceInterval）
+  if (rule == 'monthly') return interval > 1 ? '每 $interval 月' : '每月';
+  if (rule == 'yearly') return interval > 1 ? '每 $interval 年' : '每年';
   const labels = ['日', '一', '二', '三', '四', '五', '六'];
   if (weekdays.isNotEmpty) {
     final days = weekdays.map((d) => '周${labels[d % 7]}').join('、');

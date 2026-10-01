@@ -34,6 +34,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../app/ui/file_export.dart';
 import '../../../app/ui/page_banner.dart';
 import '../../../app/ui/pinned_search_row.dart';
 import '../../../app/ui/scope_tab_bar.dart';
@@ -43,6 +44,7 @@ import '../models/todo.dart';
 import '../models/todo_filter.dart';
 import '../models/todo_view_mode.dart';
 import '../providers/todo_providers.dart';
+import '../utils/export_todo_markdown.dart';
 import 'todo_calendar_view.dart';
 import 'todo_card_view.dart';
 import 'todo_sheets.dart';
@@ -93,7 +95,14 @@ class _TodoPageState extends ConsumerState<TodoPage> {
 
   Future<void> _restoreViewMode() async {
     final saved = await TodoViewModeStore.load();
-    if (mounted) setState(() => _view = saved);
+    // D7：排序模式一并恢复（持久化键 todo.sortMode，默认 updated）
+    final sort = await TodoSortModeStore.load();
+    if (mounted) {
+      setState(() {
+        _view = saved;
+        _filter = _filter.copyWith(sortBy: sort);
+      });
+    }
   }
 
   @override
@@ -202,6 +211,24 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             ),
           ),
           TapScale(
+            onTap: _exportMarkdown,
+            child: Icon(
+              // D4：导出 Markdown 入口（工具区），落盘走 exportTextToDownloadDir
+              FLucideIcons.download,
+              size: 20,
+              color: t.colors.foreground,
+            ),
+          ),
+          TapScale(
+            onTap: _openRecycleBin,
+            child: Icon(
+              // E5：回收站入口（软删除的待办在此恢复 / 彻底删除）
+              FLucideIcons.trash2,
+              size: 18,
+              color: t.colors.foreground,
+            ),
+          ),
+          TapScale(
             onTap: _openViewModeSheet,
             child: Icon(
               FLucideIcons.settings,
@@ -226,15 +253,20 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final groups = groupTodos(scoped, _filter.groupBy);
     final empty = _emptyState(context, totallyEmpty: all.isEmpty);
 
-    // 卡片 / 日历：整个头部（搜索 / 条件 / Tab）都固定在滚动区外，不参与滚动。
-    // ⚠️ 与列表页的「搜索行吸顶」是两种形态，待统一（见 interaction-patterns.md §4 待办项）。
-    if (_view == TodoViewMode.calendar) {
-      return Column(
-        children: [
-          _searchRow(context),
-          _chipsRow(context),
-          _tabBar(context),
-          Expanded(
+    // D10 统一：卡片 / 日历分支并入列表的 CustomScrollView 骨架 ——
+    // 吸顶锚点同为搜索行（PinnedSearchHeader + kSearchRowExtent，minExtent==maxExtent），
+    // 横幅 / 条件 chip / Tab 栏作为普通 sliver 随滚动移出；pinnedCover 只在
+    // shrinkOffset>0 时铺（共享原子内部逻辑，三视图行为一致）。
+    // ⚠️ 视图子组件（TodoCardView / TodoCalendarView）不改：
+    //   - 卡片瀑布：TodoCardView 内层的 SingleChildScrollView 在 SliverToBoxAdapter
+    //     给出的无界主轴约束下直接收缩为内容高（不产生内层滚动），整页统一由外层滚动；
+    //   - 日历：TodoCalendarView 内层是 ListView（无界高度会抛异常），故用
+    //     SliverFillRemaining 给有界剩余空间；月历卡片内容通常不溢出，
+    //     内层不可拖拽（canDrag=false）时手势自动落到外层，滚动行为与列表一致。
+    Widget bodySliver() {
+      switch (_view) {
+        case TodoViewMode.calendar:
+          return SliverFillRemaining(
             child: TodoCalendarView(
               items: scoped,
               onPickDay: (day, dayItems) => showTodoDaySheet(
@@ -246,20 +278,12 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                 tags: tags,
               ),
             ),
-          ),
-        ],
-      );
-    }
-    if (_view == TodoViewMode.card) {
-      return Column(
-        children: [
-          _searchRow(context),
-          _chipsRow(context),
-          _tabBar(context),
-          Expanded(
-            child: scoped.isEmpty
-                ? empty
-                : TodoCardView(
+          );
+        case TodoViewMode.card:
+          return scoped.isEmpty
+              ? SliverFillRemaining(hasScrollBody: false, child: empty)
+              : SliverToBoxAdapter(
+                  child: TodoCardView(
                     items: scoped,
                     allTodos: all,
                     tags: tags,
@@ -270,12 +294,27 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                     onSelect: (item) => _toggleSelect(item.key),
                     onTap: (item) => _openDetail(item),
                   ),
-          ),
-        ],
-      );
+                );
+        case TodoViewMode.list:
+          return scoped.isEmpty
+              ? SliverFillRemaining(hasScrollBody: false, child: empty)
+              : SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    4,
+                    16,
+                    AppTokens.pageBottomGapOf(context),
+                  ),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate(
+                      _listChildren(context, groups, all, tags),
+                    ),
+                  ),
+                );
+      }
     }
 
-    // 列表（画布 07 / 08）：整页可滚，**吸顶以搜索行为锚点**——
+    // 三视图共用骨架（画布 07 / 08）：整页可滚，**吸顶以搜索行为锚点**——
     // 横幅 / 条件 chip / Tab 栏随滚动移出视口，搜索框常驻顶部（随时可改关键词）。
     return CustomScrollView(
       slivers: [
@@ -289,22 +328,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         ),
         SliverToBoxAdapter(child: _chipsRow(context)),
         SliverToBoxAdapter(child: _tabBar(context)),
-        if (scoped.isEmpty)
-          SliverFillRemaining(hasScrollBody: false, child: empty)
-        else
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              4,
-              16,
-              AppTokens.pageBottomGapOf(context),
-            ),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate(
-                _listChildren(context, groups, all, tags),
-              ),
-            ),
-          ),
+        bodySliver(),
       ],
     );
   }
@@ -543,18 +567,57 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   void _clearAllFilters() {
     _searchController.clear();
     setState(() {
-      _filter = const TodoFilterState(groupBy: TodoGroupBy.due);
+      // D7：排序是显示项（已持久化），清筛选不重置排序
+      _filter = TodoFilterState(
+        groupBy: TodoGroupBy.due,
+        sortBy: _filter.sortBy,
+      );
       _search = '';
     });
   }
 
-  /// 显示风格（画布 09）：点选即生效并持久化
+  /// 显示风格（画布 09）+ 排序（D7）：点选即生效并持久化
   Future<void> _openViewModeSheet() async {
-    final next = await showTodoViewModeSheet(context, current: _view);
-    if (!mounted || next == null || next == _view) return;
-    setState(() => _view = next);
-    await TodoViewModeStore.save(next);
+    final next = await showTodoViewModeSheet(
+      context,
+      current: _view,
+      sort: _filter.sortBy,
+    );
+    if (!mounted || next == null) return;
+    final viewChanged = next.view != _view;
+    final sortChanged = next.sort != _filter.sortBy;
+    if (!viewChanged && !sortChanged) return;
+    if (viewChanged) setState(() => _view = next.view);
+    if (sortChanged) _updateFilter((f) => f.copyWith(sortBy: next.sort));
+    if (viewChanged) await TodoViewModeStore.save(next.view);
+    if (sortChanged) await TodoSortModeStore.save(next.sort);
   }
+
+  /// 导出 Markdown（D4）：把当前「筛选 + 状态范围」下的列表（与用户所见一致）
+  /// 组稿后经共享 helper 落盘到 `Download/渐离App导出/待办_<时间戳>.md`
+  /// （exportTextToDownloadDir 内含权限 / 落盘 / 媒体索引 / toast，直接用）。
+  Future<void> _exportMarkdown() async {
+    final all = ref.read(todoListProvider).value ?? const <TodoItem>[];
+    final tags = ref.read(todoTagsProvider).value ?? const <TodoTagView>[];
+    final filtered = applyTodoFilters(all, _filter.copyWith(search: _search));
+    final scoped = applyTodoScope(filtered, _scope);
+    await exportTextToDownloadDir(
+      context: context,
+      text: buildTodoMarkdown(scoped, tags: tags),
+      filename: '待办_${_fileStamp()}.md',
+    );
+  }
+
+  /// 导出文件名时间戳（yyyyMMdd_HHmmss，与习惯打卡 / 番茄钟导出同款）
+  String _fileStamp() {
+    final n = DateTime.now();
+    String p2(int v) => v.toString().padLeft(2, '0');
+    return '${n.year}${p2(n.month)}${p2(n.day)}_${p2(n.hour)}${p2(n.minute)}${p2(n.second)}';
+  }
+
+  /// 回收站（E5）：lg 抽屉列出软删除待办，可恢复 / 彻底删除 / 清空
+  Future<void> _openRecycleBin() =>
+      showTodoRecycleBinSheet(context, ref);
 
   /// 高级搜索（画布 10）
   Future<void> _openFilter() async {
@@ -636,6 +699,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       recurrenceEnd: null,
       recurrenceId: null,
       isRecurrenceInstance: 0,
+      // 2026-10-01 批次新列缺省（新建即有效待办 / 无专注累计 / 缺省 fixed）
+      deleted: 0,
+      focusedMinutes: 0,
+      recurrenceMode: null,
     );
     final saved = await showTodoEditSheet(
       context,

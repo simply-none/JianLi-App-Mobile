@@ -22,7 +22,7 @@
 //   （注：新版 alarm 送达走原生 AlarmRingActivity，awesome 的 fullScreen/snooze 主要服务
 //   普通通知被设为全屏的场景。）
 import 'package:awesome_notifications/awesome_notifications.dart';
-import 'package:flutter/foundation.dart' show ValueNotifier;
+import 'package:flutter/foundation.dart' show ValueNotifier, debugPrint;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../android/system_actions.dart' as sys;
@@ -506,8 +506,12 @@ class NotificationService {
           allowWhileIdle: true,
         ),
       );
-    } catch (_) {
-      // 单条排程失败（权限/参数）忽略，保证其余提醒不受影响
+    } catch (e) {
+      // 单条排程失败（权限/参数）不中断流程，保证其余提醒不受影响；
+      // 但必须 debugPrint 留痕——此前静默吞错，排程失败完全无从排查
+      debugPrint(
+        '[NotificationService] scheduleOnce 排程失败(id=$id, channel=$channelKey): $e',
+      );
     }
   }
 

@@ -71,6 +71,18 @@ class TodoList extends Table {
 
   TextColumn get parentIds => text().named('parentIds').nullable()();
 
+  // ---- 2026-10-01 批次新增（与 PC 端同批上线，schemaVersion 6→7）----
+  /// E5 软删除标记：'0'/'1'，'1' = 在回收站（不参与常规列表/统计，30 天后清理）
+  TextColumn get deleted => text().named('deleted').nullable()();
+
+  /// E3 番茄钟累计专注分钟（文本数字，对齐 PC TEXT 列；番茄钟专注段完成时累加）
+  TextColumn get focusedMinutes =>
+      text().named('focusedMinutes').nullable()();
+
+  /// F2 重复实例生成方式：'fixed'（到点自动生成，缺省）/ 'on_complete'（完成后生成下一次）
+  TextColumn get recurrenceMode =>
+      text().named('recurrenceMode').nullable()();
+
   /// 旧层遗留的可空整型列（桌面库存在，样例全为 NULL）
   IntColumn get id => integer().nullable()();
 

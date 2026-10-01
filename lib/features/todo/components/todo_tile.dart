@@ -234,6 +234,15 @@ class TodoListTile extends StatelessWidget {
                   color: muted,
                 ),
               ],
+              // E3：番茄钟累计专注分钟（>0 时展示；hug 宽 _MetaText，行尾优先级由 Spacer 兜住）
+              if (item.focusedMinutes > 0) ...[
+                const SizedBox(width: 6),
+                _MetaText(
+                  icon: FLucideIcons.timer,
+                  text: '🍅 ${item.focusedMinutes} 分钟',
+                  color: muted,
+                ),
+              ],
               const Spacer(),
               _MetaText(
                 icon: FLucideIcons.flag,

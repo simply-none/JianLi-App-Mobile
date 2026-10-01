@@ -24,6 +24,8 @@ Future<void> updateTodayWidget(DashboardStats s) async {
     final mm = now.minute.toString().padLeft(2, '0');
     await HomeWidget.saveWidgetData<String>('w_updated', '$hh:$mm 更新');
 
+    // 口径：todosTotal/todosActive 来自 dashboardStatsProvider，已排除回收站行
+    // （E5 软删除 deleted='1'），这里只做展示换算，不再过滤。
     final todosDone = s.todosTotal - s.todosActive;
     await HomeWidget.saveWidgetData<String>(
       'w_todos',

@@ -1662,6 +1662,39 @@ class $TodoListTable extends TodoList
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<String> deleted = GeneratedColumn<String>(
+    'deleted',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _focusedMinutesMeta = const VerificationMeta(
+    'focusedMinutes',
+  );
+  @override
+  late final GeneratedColumn<String> focusedMinutes = GeneratedColumn<String>(
+    'focusedMinutes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recurrenceModeMeta = const VerificationMeta(
+    'recurrenceMode',
+  );
+  @override
+  late final GeneratedColumn<String> recurrenceMode = GeneratedColumn<String>(
+    'recurrenceMode',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<int> id = GeneratedColumn<int>(
@@ -1700,6 +1733,9 @@ class $TodoListTable extends TodoList
     recurrenceWeekdays,
     sortOrder,
     parentIds,
+    deleted,
+    focusedMinutes,
+    recurrenceMode,
     id,
   ];
   @override
@@ -1914,6 +1950,30 @@ class $TodoListTable extends TodoList
         parentIds.isAcceptableOrUnknown(data['parentIds']!, _parentIdsMeta),
       );
     }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    }
+    if (data.containsKey('focusedMinutes')) {
+      context.handle(
+        _focusedMinutesMeta,
+        focusedMinutes.isAcceptableOrUnknown(
+          data['focusedMinutes']!,
+          _focusedMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('recurrenceMode')) {
+      context.handle(
+        _recurrenceModeMeta,
+        recurrenceMode.isAcceptableOrUnknown(
+          data['recurrenceMode']!,
+          _recurrenceModeMeta,
+        ),
+      );
+    }
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
@@ -2034,6 +2094,18 @@ class $TodoListTable extends TodoList
         DriftSqlType.string,
         data['${effectivePrefix}parentIds'],
       ),
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deleted'],
+      ),
+      focusedMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}focusedMinutes'],
+      ),
+      recurrenceMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recurrenceMode'],
+      ),
       id: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}id'],
@@ -2085,6 +2157,15 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
   final String? sortOrder;
   final String? parentIds;
 
+  /// E5 软删除标记：'0'/'1'，'1' = 在回收站（不参与常规列表/统计，30 天后清理）
+  final String? deleted;
+
+  /// E3 番茄钟累计专注分钟（文本数字，对齐 PC TEXT 列；番茄钟专注段完成时累加）
+  final String? focusedMinutes;
+
+  /// F2 重复实例生成方式：'fixed'（到点自动生成，缺省）/ 'on_complete'（完成后生成下一次）
+  final String? recurrenceMode;
+
   /// 旧层遗留的可空整型列（桌面库存在，样例全为 NULL）
   final int? id;
   const TodoListData({
@@ -2115,6 +2196,9 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
     this.recurrenceWeekdays,
     this.sortOrder,
     this.parentIds,
+    this.deleted,
+    this.focusedMinutes,
+    this.recurrenceMode,
     this.id,
   });
   @override
@@ -2199,6 +2283,15 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
     if (!nullToAbsent || parentIds != null) {
       map['parentIds'] = Variable<String>(parentIds);
     }
+    if (!nullToAbsent || deleted != null) {
+      map['deleted'] = Variable<String>(deleted);
+    }
+    if (!nullToAbsent || focusedMinutes != null) {
+      map['focusedMinutes'] = Variable<String>(focusedMinutes);
+    }
+    if (!nullToAbsent || recurrenceMode != null) {
+      map['recurrenceMode'] = Variable<String>(recurrenceMode);
+    }
     if (!nullToAbsent || id != null) {
       map['id'] = Variable<int>(id);
     }
@@ -2282,6 +2375,15 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
       parentIds: parentIds == null && nullToAbsent
           ? const Value.absent()
           : Value(parentIds),
+      deleted: deleted == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deleted),
+      focusedMinutes: focusedMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(focusedMinutes),
+      recurrenceMode: recurrenceMode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(recurrenceMode),
       id: id == null && nullToAbsent ? const Value.absent() : Value(id),
     );
   }
@@ -2327,6 +2429,9 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
       ),
       sortOrder: serializer.fromJson<String?>(json['sortOrder']),
       parentIds: serializer.fromJson<String?>(json['parentIds']),
+      deleted: serializer.fromJson<String?>(json['deleted']),
+      focusedMinutes: serializer.fromJson<String?>(json['focusedMinutes']),
+      recurrenceMode: serializer.fromJson<String?>(json['recurrenceMode']),
       id: serializer.fromJson<int?>(json['id']),
     );
   }
@@ -2361,6 +2466,9 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
       'recurrenceWeekdays': serializer.toJson<String?>(recurrenceWeekdays),
       'sortOrder': serializer.toJson<String?>(sortOrder),
       'parentIds': serializer.toJson<String?>(parentIds),
+      'deleted': serializer.toJson<String?>(deleted),
+      'focusedMinutes': serializer.toJson<String?>(focusedMinutes),
+      'recurrenceMode': serializer.toJson<String?>(recurrenceMode),
       'id': serializer.toJson<int?>(id),
     };
   }
@@ -2393,6 +2501,9 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
     Value<String?> recurrenceWeekdays = const Value.absent(),
     Value<String?> sortOrder = const Value.absent(),
     Value<String?> parentIds = const Value.absent(),
+    Value<String?> deleted = const Value.absent(),
+    Value<String?> focusedMinutes = const Value.absent(),
+    Value<String?> recurrenceMode = const Value.absent(),
     Value<int?> id = const Value.absent(),
   }) => TodoListData(
     key: key ?? this.key,
@@ -2440,6 +2551,13 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
         : this.recurrenceWeekdays,
     sortOrder: sortOrder.present ? sortOrder.value : this.sortOrder,
     parentIds: parentIds.present ? parentIds.value : this.parentIds,
+    deleted: deleted.present ? deleted.value : this.deleted,
+    focusedMinutes: focusedMinutes.present
+        ? focusedMinutes.value
+        : this.focusedMinutes,
+    recurrenceMode: recurrenceMode.present
+        ? recurrenceMode.value
+        : this.recurrenceMode,
     id: id.present ? id.value : this.id,
   );
   TodoListData copyWithCompanion(TodoListCompanion data) {
@@ -2499,6 +2617,13 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
           : this.recurrenceWeekdays,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       parentIds: data.parentIds.present ? data.parentIds.value : this.parentIds,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
+      focusedMinutes: data.focusedMinutes.present
+          ? data.focusedMinutes.value
+          : this.focusedMinutes,
+      recurrenceMode: data.recurrenceMode.present
+          ? data.recurrenceMode.value
+          : this.recurrenceMode,
       id: data.id.present ? data.id.value : this.id,
     );
   }
@@ -2533,6 +2658,9 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
           ..write('recurrenceWeekdays: $recurrenceWeekdays, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('parentIds: $parentIds, ')
+          ..write('deleted: $deleted, ')
+          ..write('focusedMinutes: $focusedMinutes, ')
+          ..write('recurrenceMode: $recurrenceMode, ')
           ..write('id: $id')
           ..write(')'))
         .toString();
@@ -2567,6 +2695,9 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
     recurrenceWeekdays,
     sortOrder,
     parentIds,
+    deleted,
+    focusedMinutes,
+    recurrenceMode,
     id,
   ]);
   @override
@@ -2600,6 +2731,9 @@ class TodoListData extends DataClass implements Insertable<TodoListData> {
           other.recurrenceWeekdays == this.recurrenceWeekdays &&
           other.sortOrder == this.sortOrder &&
           other.parentIds == this.parentIds &&
+          other.deleted == this.deleted &&
+          other.focusedMinutes == this.focusedMinutes &&
+          other.recurrenceMode == this.recurrenceMode &&
           other.id == this.id);
 }
 
@@ -2631,6 +2765,9 @@ class TodoListCompanion extends UpdateCompanion<TodoListData> {
   final Value<String?> recurrenceWeekdays;
   final Value<String?> sortOrder;
   final Value<String?> parentIds;
+  final Value<String?> deleted;
+  final Value<String?> focusedMinutes;
+  final Value<String?> recurrenceMode;
   final Value<int?> id;
   final Value<int> rowid;
   const TodoListCompanion({
@@ -2661,6 +2798,9 @@ class TodoListCompanion extends UpdateCompanion<TodoListData> {
     this.recurrenceWeekdays = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.parentIds = const Value.absent(),
+    this.deleted = const Value.absent(),
+    this.focusedMinutes = const Value.absent(),
+    this.recurrenceMode = const Value.absent(),
     this.id = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -2692,6 +2832,9 @@ class TodoListCompanion extends UpdateCompanion<TodoListData> {
     this.recurrenceWeekdays = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.parentIds = const Value.absent(),
+    this.deleted = const Value.absent(),
+    this.focusedMinutes = const Value.absent(),
+    this.recurrenceMode = const Value.absent(),
     this.id = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : key = Value(key);
@@ -2723,6 +2866,9 @@ class TodoListCompanion extends UpdateCompanion<TodoListData> {
     Expression<String>? recurrenceWeekdays,
     Expression<String>? sortOrder,
     Expression<String>? parentIds,
+    Expression<String>? deleted,
+    Expression<String>? focusedMinutes,
+    Expression<String>? recurrenceMode,
     Expression<int>? id,
     Expression<int>? rowid,
   }) {
@@ -2755,6 +2901,9 @@ class TodoListCompanion extends UpdateCompanion<TodoListData> {
       if (recurrenceWeekdays != null) 'recurrenceWeekdays': recurrenceWeekdays,
       if (sortOrder != null) 'sortOrder': sortOrder,
       if (parentIds != null) 'parentIds': parentIds,
+      if (deleted != null) 'deleted': deleted,
+      if (focusedMinutes != null) 'focusedMinutes': focusedMinutes,
+      if (recurrenceMode != null) 'recurrenceMode': recurrenceMode,
       if (id != null) 'id': id,
       if (rowid != null) 'rowid': rowid,
     });
@@ -2788,6 +2937,9 @@ class TodoListCompanion extends UpdateCompanion<TodoListData> {
     Value<String?>? recurrenceWeekdays,
     Value<String?>? sortOrder,
     Value<String?>? parentIds,
+    Value<String?>? deleted,
+    Value<String?>? focusedMinutes,
+    Value<String?>? recurrenceMode,
     Value<int?>? id,
     Value<int>? rowid,
   }) {
@@ -2819,6 +2971,9 @@ class TodoListCompanion extends UpdateCompanion<TodoListData> {
       recurrenceWeekdays: recurrenceWeekdays ?? this.recurrenceWeekdays,
       sortOrder: sortOrder ?? this.sortOrder,
       parentIds: parentIds ?? this.parentIds,
+      deleted: deleted ?? this.deleted,
+      focusedMinutes: focusedMinutes ?? this.focusedMinutes,
+      recurrenceMode: recurrenceMode ?? this.recurrenceMode,
       id: id ?? this.id,
       rowid: rowid ?? this.rowid,
     );
@@ -2910,6 +3065,15 @@ class TodoListCompanion extends UpdateCompanion<TodoListData> {
     if (parentIds.present) {
       map['parentIds'] = Variable<String>(parentIds.value);
     }
+    if (deleted.present) {
+      map['deleted'] = Variable<String>(deleted.value);
+    }
+    if (focusedMinutes.present) {
+      map['focusedMinutes'] = Variable<String>(focusedMinutes.value);
+    }
+    if (recurrenceMode.present) {
+      map['recurrenceMode'] = Variable<String>(recurrenceMode.value);
+    }
     if (id.present) {
       map['id'] = Variable<int>(id.value);
     }
@@ -2949,6 +3113,9 @@ class TodoListCompanion extends UpdateCompanion<TodoListData> {
           ..write('recurrenceWeekdays: $recurrenceWeekdays, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('parentIds: $parentIds, ')
+          ..write('deleted: $deleted, ')
+          ..write('focusedMinutes: $focusedMinutes, ')
+          ..write('recurrenceMode: $recurrenceMode, ')
           ..write('id: $id, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -19246,6 +19413,9 @@ typedef $$TodoListTableCreateCompanionBuilder = TodoListCompanion Function({
   Value<String?> recurrenceWeekdays,
   Value<String?> sortOrder,
   Value<String?> parentIds,
+  Value<String?> deleted,
+  Value<String?> focusedMinutes,
+  Value<String?> recurrenceMode,
   Value<int?> id,
   Value<int> rowid,
 });
@@ -19277,6 +19447,9 @@ typedef $$TodoListTableUpdateCompanionBuilder = TodoListCompanion Function({
   Value<String?> recurrenceWeekdays,
   Value<String?> sortOrder,
   Value<String?> parentIds,
+  Value<String?> deleted,
+  Value<String?> focusedMinutes,
+  Value<String?> recurrenceMode,
   Value<int?> id,
   Value<int> rowid,
 });
@@ -19422,6 +19595,21 @@ class $$TodoListTableFilterComposer
 
   ColumnFilters<String> get parentIds => $composableBuilder(
     column: $table.parentIds,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get focusedMinutes => $composableBuilder(
+    column: $table.focusedMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recurrenceMode => $composableBuilder(
+    column: $table.recurrenceMode,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -19575,6 +19763,21 @@ class $$TodoListTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get focusedMinutes => $composableBuilder(
+    column: $table.focusedMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recurrenceMode => $composableBuilder(
+    column: $table.recurrenceMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get id => $composableBuilder(
     column: $table.id,
     builder: (column) => ColumnOrderings(column),
@@ -19699,6 +19902,19 @@ class $$TodoListTableAnnotationComposer
   GeneratedColumn<String> get parentIds =>
       $composableBuilder(column: $table.parentIds, builder: (column) => column);
 
+  GeneratedColumn<String> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
+
+  GeneratedColumn<String> get focusedMinutes => $composableBuilder(
+    column: $table.focusedMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get recurrenceMode => $composableBuilder(
+    column: $table.recurrenceMode,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 }
@@ -19761,6 +19977,9 @@ class $$TodoListTableTableManager
                 Value<String?> recurrenceWeekdays = const Value.absent(),
                 Value<String?> sortOrder = const Value.absent(),
                 Value<String?> parentIds = const Value.absent(),
+                Value<String?> deleted = const Value.absent(),
+                Value<String?> focusedMinutes = const Value.absent(),
+                Value<String?> recurrenceMode = const Value.absent(),
                 Value<int?> id = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TodoListCompanion(
@@ -19791,6 +20010,9 @@ class $$TodoListTableTableManager
                 recurrenceWeekdays: recurrenceWeekdays,
                 sortOrder: sortOrder,
                 parentIds: parentIds,
+                deleted: deleted,
+                focusedMinutes: focusedMinutes,
+                recurrenceMode: recurrenceMode,
                 id: id,
                 rowid: rowid,
               ),
@@ -19823,6 +20045,9 @@ class $$TodoListTableTableManager
                 Value<String?> recurrenceWeekdays = const Value.absent(),
                 Value<String?> sortOrder = const Value.absent(),
                 Value<String?> parentIds = const Value.absent(),
+                Value<String?> deleted = const Value.absent(),
+                Value<String?> focusedMinutes = const Value.absent(),
+                Value<String?> recurrenceMode = const Value.absent(),
                 Value<int?> id = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TodoListCompanion.insert(
@@ -19853,6 +20078,9 @@ class $$TodoListTableTableManager
                 recurrenceWeekdays: recurrenceWeekdays,
                 sortOrder: sortOrder,
                 parentIds: parentIds,
+                deleted: deleted,
+                focusedMinutes: focusedMinutes,
+                recurrenceMode: recurrenceMode,
                 id: id,
                 rowid: rowid,
               ),

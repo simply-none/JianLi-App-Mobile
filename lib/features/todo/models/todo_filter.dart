@@ -4,10 +4,44 @@
 // 列表页持有该状态，applyTodoFilters 生成过滤后的扁平列表，分组在视图层按 groupBy 处理。
 // 文件末段另收「日期口径」两个纯函数（parseTodoDateTime / formatTodoDue）——
 // 它们是列表卡片、详情抽屉、日历三处的共用口径，放这里避免各自复制一份后漂掉。
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/todo.dart';
 
 /// 分组方式
 enum TodoGroupBy { none, status, due, parent }
+
+/// 排序模式（D7 移动端排序选项）
+/// - updated 更新时间（默认，与仓库 watchTodos 的 updateTime 倒序口径一致）
+/// - due 截止最早 / priority 优先级 / created 创建时间
+enum TodoSortMode { updated, due, priority, created }
+
+/// 排序选项（值 + 字面量），供「显示风格」弹层与后续 UI 复用
+const List<(TodoSortMode, String)> kTodoSortOptions = [
+  (TodoSortMode.updated, '更新时间'),
+  (TodoSortMode.due, '截止最早'),
+  (TodoSortMode.priority, '优先级'),
+  (TodoSortMode.created, '创建时间'),
+];
+
+/// 排序模式持久化（shared_preferences，键 `todo.sortMode`，写法参照 todo_view_mode.dart）
+abstract final class TodoSortModeStore {
+  static const _key = 'todo.sortMode';
+
+  static Future<TodoSortMode> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString(_key);
+    return TodoSortMode.values.firstWhere(
+      (m) => m.name == name,
+      orElse: () => TodoSortMode.updated,
+    );
+  }
+
+  static Future<void> save(TodoSortMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, mode.name);
+  }
+}
 
 /// 列表页 Tab 栏的状态范围
 /// （画布「07 待办·列表页 主态」Tab 栏：进行中 / 未开始 / 已完成 / 已取消 / 全部）
@@ -71,6 +105,7 @@ class TodoFilterState {
     this.showCompleted = true,
     this.showTemplates = false,
     this.groupBy = TodoGroupBy.none,
+    this.sortBy = TodoSortMode.updated,
   });
 
   final String search;
@@ -86,6 +121,10 @@ class TodoFilterState {
   final bool showTemplates; // false 时隐藏重复模板
   final TodoGroupBy groupBy;
 
+  /// 排序模式（D7）：默认 updated（更新时间倒序，与仓库查询口径一致）。
+  /// 属显示项（同 groupBy），不计入 hasActive / activeCount。
+  final TodoSortMode sortBy;
+
   TodoFilterState copyWith({
     String? search,
     String? priority,
@@ -98,6 +137,7 @@ class TodoFilterState {
     bool? showCompleted,
     bool? showTemplates,
     TodoGroupBy? groupBy,
+    TodoSortMode? sortBy,
   }) {
     return TodoFilterState(
       search: search ?? this.search,
@@ -108,6 +148,7 @@ class TodoFilterState {
       showCompleted: showCompleted ?? this.showCompleted,
       showTemplates: showTemplates ?? this.showTemplates,
       groupBy: groupBy ?? this.groupBy,
+      sortBy: sortBy ?? this.sortBy,
     );
   }
 
@@ -236,9 +277,11 @@ List<(String, List<TodoItem>)> groupTodos(
 /// 应用筛选状态，返回过滤后的扁平列表（分组在视图层处理）。
 /// 语义对齐 PC useTodo.filteredTodos：搜索(标题/描述) + 优先级 + 状态 + 标签(任一命中)
 /// + 到期时间段 + 显示已完成开关 + 显示模板开关。
+/// 管线末端按 [TodoFilterState.sortBy] 排序（D7）——排序必须先于视图层分组。
+/// 仓库的 watchTodos 仍固定 updateTime 倒序，不动。
 List<TodoItem> applyTodoFilters(List<TodoItem> all, TodoFilterState f) {
   final kw = f.search.trim().toLowerCase();
-  return all.where((t) {
+  final matched = all.where((t) {
     if (!f.showCompleted && effectiveStatus(t) == 'completed') return false;
     if (!f.showTemplates && t.isTemplate) return false;
     if (kw.isNotEmpty) {
@@ -251,6 +294,50 @@ List<TodoItem> applyTodoFilters(List<TodoItem> all, TodoFilterState f) {
     if (f.dueGroup != null && dueRangeOf(t) != f.dueGroup) return false;
     return true;
   }).toList();
+  return sortTodos(matched, f.sortBy);
+}
+
+/// 按 [mode] 内存排序（D7）。比较键全部用「定长格式字符串的安全比较」——
+/// createTime / updateTime / dueDate 均为 yyyy-MM-dd HH:mm:ss 定长文本，
+/// 字典序即时间序，无需解析成 DateTime。
+/// - updated：updateTime 倒序（空排最后）
+/// - due：dueDate 字符串升序（空排最后）
+/// - priority：high < medium < low（未知值排最后）
+/// - created：createTime 倒序（空排最后）
+List<TodoItem> sortTodos(List<TodoItem> items, TodoSortMode mode) {
+  // 升序比较：空值一律排最后
+  int cmpAsc(String? a, String? b) {
+    final aEmpty = a == null || a.isEmpty;
+    final bEmpty = b == null || b.isEmpty;
+    if (aEmpty && bEmpty) return 0;
+    if (aEmpty) return 1;
+    if (bEmpty) return -1;
+    return a.compareTo(b);
+  }
+
+  // 倒序比较：非空按倒序，空值仍排最后（不是简单取反 cmpAsc）
+  int cmpDesc(String? a, String? b) {
+    final aEmpty = a == null || a.isEmpty;
+    final bEmpty = b == null || b.isEmpty;
+    if (aEmpty && bEmpty) return 0;
+    if (aEmpty) return 1;
+    if (bEmpty) return -1;
+    return b.compareTo(a);
+  }
+
+  switch (mode) {
+    case TodoSortMode.updated:
+      return items.toList()..sort((a, b) => cmpDesc(a.updateTime, b.updateTime));
+    case TodoSortMode.created:
+      return items.toList()..sort((a, b) => cmpDesc(a.createTime, b.createTime));
+    case TodoSortMode.due:
+      return items.toList()..sort((a, b) => cmpAsc(a.dueDate, b.dueDate));
+    case TodoSortMode.priority:
+      // 对齐 PC 优先级语义：高 → 中 → 低
+      const rank = {'high': 0, 'medium': 1, 'low': 2};
+      return items.toList()
+        ..sort((a, b) => (rank[a.priority] ?? 3).compareTo(rank[b.priority] ?? 3));
+  }
 }
 
 /// 到期时间段的用户语义标签（画布「10 高级搜索 · 到期时间」组与生效条件 chip 共用）。

@@ -8,16 +8,22 @@
 import 'package:forui/forui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../app/ui/datetime_pickers.dart';
 import '../../../app/ui/gradient_button.dart';
+import '../../../app/ui/sheet_form.dart'
+    show SheetFieldLabel, SheetInputBox, showSheetConfirm;
 import '../../../app/ui/sheet_surface.dart';
+import '../../../core/db/app_database.dart' show TodoTag;
 import '../../conversation/repositories/conversation_repository.dart';
 import '../models/todo.dart';
 import '../models/todo_filter.dart';
 import '../models/todo_view_mode.dart';
 import '../providers/todo_providers.dart';
+import '../repositories/todo_repository.dart'
+    show kTodoTagPalette, kTodoPomodoroLinkKey;
 import 'todo_chips.dart';
 
 // ===================== 统一抽屉入口（键盘兼容） =====================
@@ -222,22 +228,60 @@ Future<List<String>?> showTodoTagSheet(
   required List<TodoTagView> tags,
   required List<String> selected,
 }) async {
-  final draft = List<String>.from(selected);
-  final controller = TextEditingController();
-  return _showTodoSheet<List<String>?>(
-    context: context,
-    builder: (c) => _sheetScaffold(
-      context: c,
-      title: '标签',
-      size: SheetSize.lg,
-      body: StatefulBuilder(
-        builder: (c, setInner) {
-          final t = c.theme;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 新建标签输入行：对齐搜索栏/习惯输入框样式（h40 · r10 · 1px 描边 · 卡色底）
-              Container(
+    final draft = List<String>.from(selected);
+    final controller = TextEditingController();
+    return _showTodoSheet<List<String>?>(
+      context: context,
+      builder: (c) => _sheetScaffold(
+        context: c,
+        title: '标签',
+        size: SheetSize.lg,
+        body: StatefulBuilder(
+          builder: (c, setInner) {
+            final t = c.theme;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // D5：标签管理入口（右上角铅笔，进 lg 管理抽屉；回来后同步草稿并刷新）
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FTappable(
+                    onPress: () async {
+                      await showTodoTagManageSheet(c, ref);
+                      // 管理抽屉里可能删过标签：把已删 key 从草稿里摘掉，
+                      // 并由下方 Consumer 监听标签流自动刷新 chip 列表
+                      final live = ref.read(todoTagsProvider).value ??
+                          const <TodoTagView>[];
+                      draft.removeWhere(
+                        (k) => !live.any((tag) => tag.key == k),
+                      );
+                      setInner(() {});
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            FLucideIcons.pencil,
+                            size: 13,
+                            color: t.colors.mutedForeground,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '管理标签',
+                            style: t.typography.body.xs.copyWith(
+                              fontSize: 12,
+                              color: t.colors.mutedForeground,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // 新建标签输入行：对齐搜索栏/习惯输入框样式（h40 · r10 · 1px 描边 · 卡色底）
+                Container(
                 height: 40,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
@@ -300,26 +344,35 @@ Future<List<String>?> showTodoTagSheet(
                 ),
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final tag in tags)
-                    _choiceChip(
-                      c,
-                      label: tag.name,
-                      selected: draft.contains(tag.key),
-                      color: _parseColor(tag.color),
-                      onTap: () {
-                        if (draft.contains(tag.key)) {
-                          draft.remove(tag.key);
-                        } else {
-                          draft.add(tag.key);
-                        }
-                        setInner(() {});
-                      },
-                    ),
-                ],
+              // D5：标签列表用 Consumer 自行订阅标签流（红线 #28：抽屉内容不归页面
+              // element 所有，必须用 overlay 自己的 ref）——管理抽屉改/删标签后此处即时刷新。
+              // 入参 tags 仅作流尚未出首帧时的兜底快照。
+              Consumer(
+                builder: (c, tagRef, _) {
+                  final liveTags =
+                      tagRef.watch(todoTagsProvider).value ?? tags;
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final tag in liveTags)
+                        _choiceChip(
+                          c,
+                          label: tag.name,
+                          selected: draft.contains(tag.key),
+                          color: _parseColor(tag.color),
+                          onTap: () {
+                            if (draft.contains(tag.key)) {
+                              draft.remove(tag.key);
+                            } else {
+                              draft.add(tag.key);
+                            }
+                            setInner(() {});
+                          },
+                        ),
+                    ],
+                  );
+                },
               ),
             ],
           );
@@ -336,6 +389,288 @@ Future<List<String>?> showTodoTagSheet(
       ],
     ),
   );
+}
+
+// ===================== 2.5 标签管理（D5：重命名 / 改色 / 删除） =====================
+
+/// 标签管理抽屉（lg 定高，骨架与 `_sheetScaffold` 同源）：
+/// 标签列表（色点 + 名称 + 编辑 / 删除），行内操作直接改库，
+/// 抽屉无需返回值（todoTagsProvider / todoListProvider 流自动刷新各方）。
+Future<void> showTodoTagManageSheet(BuildContext context, WidgetRef ref) {
+  return _showTodoSheet<void>(
+    context: context,
+    builder: (c) => const _TodoTagManageSheet(),
+  );
+}
+
+class _TodoTagManageSheet extends ConsumerWidget {
+  const _TodoTagManageSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 红线 #28：抽屉内容用自己的 Consumer ref 订阅流，页面层不背依赖
+    final tags = ref.watch(todoTagsProvider).value ?? const <TodoTagView>[];
+    final todos = ref.watch(todoListProvider).value ?? const <TodoItem>[];
+    return _sheetScaffold(
+      context: context,
+      title: '标签管理',
+      size: SheetSize.lg,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 8,
+        children: [
+          Text(
+            '重命名 / 改色即时生效；删除会同时从相关待办上移除该标签。',
+            style: context.theme.typography.body.xs.copyWith(
+              fontSize: 12,
+              color: context.theme.colors.mutedForeground,
+            ),
+          ),
+          if (tags.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 24),
+              child: Center(
+                child: Text(
+                  '暂无标签，编辑待办或「新建标签」可创建',
+                  style: context.theme.typography.body.sm.copyWith(
+                    color: context.theme.colors.mutedForeground,
+                  ),
+                ),
+              ),
+            )
+          else
+            for (final tag in tags)
+              _TodoTagManageRow(
+                tag: tag,
+                // 删除确认文案用：该标签当前被多少条待办引用
+                refCount: todos.where((t) => t.tags.contains(tag.key)).length,
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 标签管理行：色点 + 名称 + 编辑 / 删除
+class _TodoTagManageRow extends ConsumerWidget {
+  const _TodoTagManageRow({required this.tag, required this.refCount});
+
+  final TodoTagView tag;
+
+  /// 引用该标签的待办条数（删除确认文案用）
+  final int refCount;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.theme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: t.colors.muted,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _parseColor(tag.color),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              tag.name,
+              style: t.typography.body.sm.copyWith(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: t.colors.foreground,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (refCount > 0) ...[
+            const SizedBox(width: 6),
+            Text(
+              '$refCount 条',
+              style: t.typography.body.xs.copyWith(
+                fontSize: 12,
+                color: t.colors.mutedForeground,
+              ),
+            ),
+          ],
+          _rowIcon(context, FLucideIcons.pencil, () => _edit(context)),
+          _rowIcon(
+            context,
+            FLucideIcons.trash2,
+            () => _remove(context, ref),
+            destructive: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _rowIcon(
+    BuildContext context,
+    IconData icon,
+    VoidCallback onTap, {
+    bool destructive = false,
+  }) {
+    final t = context.theme;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(
+          icon,
+          size: 16,
+          color: destructive ? t.colors.destructive : t.colors.mutedForeground,
+        ),
+      ),
+    );
+  }
+
+  /// 编辑进 md 输入抽屉（名称 + 10 色调色板，同新建标签的调色板）
+  Future<void> _edit(BuildContext context) async {
+    await showFSheet<void>(
+      context: context,
+      side: FLayout.btt,
+      mainAxisMaxRatio: AppTokens.sheetHeightLg,
+      // sm/md 含输入框必须 true（抽屉抬到键盘上方，红线 #9②）
+      resizeToAvoidBottomInset: true,
+      builder: (c) => _TodoTagEditSheet(tag: tag),
+    );
+  }
+
+  Future<void> _remove(BuildContext context, WidgetRef ref) async {
+    final ok = await showSheetConfirm(
+      context,
+      title: '删除标签',
+      message: refCount > 0
+          ? '确定删除「${tag.name}」？将同时从 $refCount 条待办移除该标签。'
+          : '确定删除「${tag.name}」？',
+    );
+    if (!ok) return;
+    await ref.read(todoRepositoryProvider).deleteTag(tag.key);
+  }
+}
+
+/// 单标签编辑抽屉（md 定高）：名称输入 + 调色板选色。
+/// controller 归本 State 持有（_ControllerHost 结论：不能在 await 后 dispose）。
+class _TodoTagEditSheet extends ConsumerStatefulWidget {
+  const _TodoTagEditSheet({required this.tag});
+
+  final TodoTagView tag;
+
+  @override
+  ConsumerState<_TodoTagEditSheet> createState() => _TodoTagEditSheetState();
+}
+
+class _TodoTagEditSheetState extends ConsumerState<_TodoTagEditSheet> {
+  late final TextEditingController _name = TextEditingController(
+    text: widget.tag.name,
+  );
+  late String _color = widget.tag.color;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.theme;
+    return _sheetScaffold(
+      context: context,
+      title: '编辑标签',
+      size: SheetSize.md,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SheetFieldLabel('名称'),
+          SheetInputBox(controller: _name, hintText: '标签名称'),
+          const SizedBox(height: 16),
+          const SheetFieldLabel('颜色'),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final hex in kTodoTagPalette)
+                GestureDetector(
+                  onTap: () => setState(() => _color = hex),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _parseColor(hex),
+                      border: _color.toLowerCase() == hex.toLowerCase()
+                          ? Border.all(
+                              color: t.colors.foreground,
+                              width: 2,
+                              strokeAlign: BorderSide.strokeAlignOutside,
+                            )
+                          : null,
+                    ),
+                    child: _color.toLowerCase() == hex.toLowerCase()
+                        ? Icon(
+                            FLucideIcons.check,
+                            size: 14,
+                            color: t.colors.primaryForeground,
+                          )
+                        : null,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+      bottomBar: [
+        Expanded(
+          child: FButton(
+            variant: FButtonVariant.outline,
+            onPress: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+        ),
+        Expanded(
+          child: GradientButton(
+            label: '保存',
+            icon: FLucideIcons.check,
+            onPress: () async {
+              final name = _name.text.trim();
+              if (name.isEmpty) {
+                // 校验失败不静默 return（§1.8）
+                showFToast(
+                  context: context,
+                  variant: FToastVariant.destructive,
+                  title: const Text('标签名称不能为空'),
+                );
+                return;
+              }
+              // updateTag 只按 key 更新 name/color；TodoTag 的 id 为 drift 行主键，
+              // 这里传 0 占位、不参与更新（详见仓库 updateTag 注释）
+              await ref.read(todoRepositoryProvider).updateTag(
+                    TodoTag(
+                      id: 0,
+                      key: widget.tag.key,
+                      name: name,
+                      color: _color,
+                    ),
+                  );
+              if (context.mounted) Navigator.pop(context);
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ===================== 3. 父任务多选 =====================
@@ -686,10 +1021,13 @@ Future<void> showRecordProgressSheet(
 
 /// 显示风格三选一（画布「09 待办·设置 显示风格」）。
 /// 点击某一项立即返回该风格并关闭 —— 画布文案「切换后立即生效」。
-Future<TodoViewMode?> showTodoViewModeSheet(
+/// D7：同弹层追加「排序」选择（pill chip，与高级搜索同款），点选同样立即生效，
+/// 返回 (视图, 排序) 记录由调用方分别持久化。
+Future<({TodoViewMode view, TodoSortMode sort})?> showTodoViewModeSheet(
   BuildContext context, {
   required TodoViewMode current,
-}) => _showTodoSheet<TodoViewMode?>(
+  required TodoSortMode sort,
+}) => _showTodoSheet<({TodoViewMode view, TodoSortMode sort})?>(
   context: context,
   builder: (c) {
     final t = c.theme;
@@ -720,8 +1058,24 @@ Future<TodoViewMode?> showTodoViewModeSheet(
             title: opt.$2,
             desc: opt.$3,
             selected: current == opt.$1,
-            onTap: () => Navigator.pop(c, opt.$1),
+            onTap: () => Navigator.pop(c, (view: opt.$1, sort: sort)),
           ),
+        // D7：排序选择（显示项，同 groupBy 不进条件 chip）
+        _groupLabel(c, '排序'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final s in kTodoSortOptions)
+              _pill(
+                c,
+                label: s.$2,
+                selected: sort == s.$1,
+                onTap: () =>
+                    Navigator.pop(c, (view: current, sort: s.$1)),
+              ),
+          ],
+        ),
       ],
     );
   },
@@ -1050,6 +1404,8 @@ Future<TodoFilterState?> showTodoFilterSheet(
                           showCompleted: draftShowCompleted,
                           showTemplates: draftShowTemplates,
                           groupBy: draftGroup,
+                          // D7：排序不归高级搜索管，回传时保留现状不被重置
+                          sortBy: current.sortBy,
                         ),
                       ),
                       child: _sheetButton(
@@ -1363,6 +1719,9 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
   int _recurrenceInterval = 1;
   List<int> _weekdays = const [1];
   DateTime? _recurrenceEnd;
+
+  /// F2 生成方式：'fixed'（到点自动生成，缺省）/ 'on_complete'（完成后生成下一次）
+  late String _recurrenceMode;
   late List<String> _parentKeys;
   late List<String> _tagKeys;
 
@@ -1385,6 +1744,8 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
     _recurrenceInterval = it.recurrenceInterval;
     _weekdays = List<int>.from(it.recurrenceWeekdays);
     _recurrenceEnd = parseTodoDateTime(it.recurrenceEnd);
+    // F2：'on_complete' 之外一律回退 fixed（对齐 PC RecurrenceMode 缺省口径）
+    _recurrenceMode = it.recurrenceMode == 'on_complete' ? 'on_complete' : 'fixed';
     _parentKeys = List<String>.from(it.parentIds);
     _tagKeys = List<String>.from(it.tags);
   }
@@ -1646,8 +2007,25 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                       onTap: () => _setState(() => _recurrenceRule = 'daily')),
                   _choiceChip(context, label: '每周', selected: _recurrenceRule == 'weekly',
                       onTap: () => _setState(() => _recurrenceRule = 'weekly')),
+                  // E4：月 / 年规则（对齐 PC RecurrenceRule 扩展）
+                  _choiceChip(context, label: '每月', selected: _recurrenceRule == 'monthly',
+                      onTap: () => _setState(() => _recurrenceRule = 'monthly')),
+                  _choiceChip(context, label: '每年', selected: _recurrenceRule == 'yearly',
+                      onTap: () => _setState(() => _recurrenceRule = 'yearly')),
                 ],
               ),
+              // E4 hint：月/年命中的锚点口径（与 PC ruleHit 一致）
+              if (_recurrenceRule == 'monthly' || _recurrenceRule == 'yearly') ...[
+                const SizedBox(height: 8),
+                Text(
+                  _recurrenceRule == 'monthly'
+                      ? '按模板当天「几号」重复（当月无此号则跳过）'
+                      : '按模板当天「月-日」重复（2/29 只在闰年命中）',
+                  style: t.typography.body.xs.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -1666,7 +2044,12 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(_recurrenceRule == 'weekly' ? '周' : '天'),
+                  Text(switch (_recurrenceRule) {
+                    'weekly' => '周',
+                    'monthly' => '月',
+                    'yearly' => '年',
+                    _ => '天',
+                  }),
                 ],
               ),
               if (_recurrenceRule == 'weekly') ...[
@@ -1728,7 +2111,52 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
                   ),
                 ),
               ),
+              // F2 生成方式（仅规则非空时显示；实例行不显示本区，实例禁改区不受影响）
+              const SizedBox(height: 12),
+              _fieldLabel('生成方式'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _choiceChip(
+                    context,
+                    label: '到点自动生成',
+                    selected: _recurrenceMode == 'fixed',
+                    onTap: () => _setState(() => _recurrenceMode = 'fixed'),
+                  ),
+                  _choiceChip(
+                    context,
+                    label: '完成后生成下一次',
+                    selected: _recurrenceMode == 'on_complete',
+                    onTap: () =>
+                        _setState(() => _recurrenceMode = 'on_complete'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '到点自动生成 = 周期到点自动出现下一期；完成后生成下一次 = 完成当前一期后才生成下一期',
+                style: t.typography.body.xs.copyWith(
+                  color: t.colors.mutedForeground,
+                ),
+              ),
             ],
+            const SizedBox(height: 16),
+          ],
+          // E3：已专注分钟（>0 时只读展示，参照 PC 详情；编辑不提供入口，由番茄钟累计）
+          if (widget.initial.focusedMinutes > 0) ...[
+            Row(
+              children: [
+                Icon(FLucideIcons.timer, size: 16, color: t.colors.mutedForeground),
+                const SizedBox(width: 8),
+                Text(
+                  '🍅 已专注 ${widget.initial.focusedMinutes} 分钟',
+                  style: t.typography.body.sm.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
           ],
           // 父任务
@@ -1888,6 +2316,13 @@ class _TodoEditSheetState extends State<_TodoEditSheet> {
       recurrenceEnd: _recurrenceEnd == null ? null : _fmtDate(_recurrenceEnd!),
       recurrenceId: widget.initial.recurrenceId,
       isRecurrenceInstance: widget.initial.isRecurrenceInstance,
+      // E3/E5：软删除标记与专注分钟原样带出（编辑保存不得冲掉既有值）
+      deleted: widget.initial.deleted,
+      focusedMinutes: widget.initial.focusedMinutes,
+      // F2：生成方式随保存链路写入 upsertTodo（仅模板可改；实例/非重复保持原值）
+      recurrenceMode: (_recurrenceOn && allowRecurrence)
+          ? _recurrenceMode
+          : widget.initial.recurrenceMode,
     );
     Navigator.pop(context, item);
   }
@@ -2096,6 +2531,14 @@ Future<TodoDetailResult?> showTodoDetailSheet(
                 '子任务',
                 _detailText(c, '已完成 ${progress.done}/${progress.total} 项'),
               ),
+            // E3：已专注分钟（>0 时只读行，参照 PC 详情；累计由番茄钟联动完成）
+            if (item.focusedMinutes > 0)
+              _detailRow(
+                c,
+                FLucideIcons.timer,
+                '已专注',
+                _detailText(c, '🍅 ${item.focusedMinutes} 分钟'),
+              ),
             _detailRow(
               c,
               FLucideIcons.clock,
@@ -2286,9 +2729,11 @@ Widget _detailText(BuildContext c, String text, {bool primary = false}) {
 // ===================== 8. 操作菜单 + 删除确认 =====================
 
 /// 单条待办的操作项
-enum TodoAction { edit, record, delete }
+enum TodoAction { edit, record, delete, focusPomodoro, unfocusPomodoro }
 
-/// 操作菜单（底部抽屉）：编辑 / 记录进展 / 删除
+/// 操作菜单（底部抽屉）：编辑 / 记录进展 / 番茄钟专注关联（E3）/ 删除。
+/// 「番茄钟专注此待办」写 SharedPreferences 键 `todo.pomodoroLink`（值为待办 key，
+/// 空串 = 未关联）；UI 态按当前已关联 key 判断显示「专注此待办」还是「取消专注关联」。
 Future<void> showTodoActionSheet(
   BuildContext context,
   WidgetRef ref,
@@ -2296,6 +2741,11 @@ Future<void> showTodoActionSheet(
   required List<TodoItem> allTodos,
   required List<TodoTagView> tags,
 }) async {
+  // E3：先取当前关联态（抽屉内选项随它切换）
+  final prefs = await SharedPreferences.getInstance();
+  if (!context.mounted) return;
+  final linkedKey = prefs.getString(kTodoPomodoroLinkKey) ?? '';
+  final isLinked = linkedKey == item.key;
   final action = await _showTodoSheet<TodoAction?>(
     context: context,
     builder: (c) => _sheetScaffold(
@@ -2316,6 +2766,15 @@ Future<void> showTodoActionSheet(
             label: '记录进展',
             icon: FLucideIcons.bell,
             onTap: () => Navigator.pop(c, TodoAction.record),
+          ),
+          _actionRow(
+            c,
+            label: isLinked ? '取消专注关联' : '番茄钟专注此待办',
+            icon: FLucideIcons.timer,
+            onTap: () => Navigator.pop(
+              c,
+              isLinked ? TodoAction.unfocusPomodoro : TodoAction.focusPomodoro,
+            ),
           ),
           _actionRow(
             c,
@@ -2345,12 +2804,26 @@ Future<void> showTodoActionSheet(
     case TodoAction.record:
       if (!context.mounted) return;
       await showRecordProgressSheet(context, ref, item);
+    case TodoAction.focusPomodoro:
+      // E3：写入关联键；专注段完整走完时由番茄钟页累计 focusedMinutes
+      await prefs.setString(kTodoPomodoroLinkKey, item.key);
+      if (context.mounted) {
+        showFToast(
+          context: context,
+          title: const Text('已关联，专注一轮即为其累计分钟'),
+        );
+      }
+    case TodoAction.unfocusPomodoro:
+      await prefs.setString(kTodoPomodoroLinkKey, '');
+      if (context.mounted) {
+        showFToast(context: context, title: const Text('已取消专注关联'));
+      }
     case TodoAction.delete:
       if (!context.mounted) return;
       final ok = await showTodoConfirmSheet(
         context,
         '删除待办',
-        '确定删除「${item.title}」及其全部子任务？',
+        '确定删除「${item.title}」及其全部子任务？（可在回收站恢复）',
       );
       if (ok == true) await repo.deleteTodo(item.key);
   }
@@ -2414,6 +2887,181 @@ Future<bool?> showTodoConfirmSheet(
       ],
     ),
   );
+}
+
+// ===================== 11. 回收站（E5 软删除） =====================
+
+/// 回收站抽屉（lg 定高）：软删除待办列表（标题 + 删除时间 + 恢复 / 彻底删除），
+/// 底部「清空回收站」危险确认。数据走 [todoDeletedProvider]，操作调
+/// restoreTodo / purgeTodo 后由 drift watch 自动刷新。
+Future<void> showTodoRecycleBinSheet(BuildContext context, WidgetRef ref) {
+  return _showTodoSheet<void>(
+    context: context,
+    builder: (c) => const _TodoRecycleBinSheet(),
+  );
+}
+
+class _TodoRecycleBinSheet extends ConsumerWidget {
+  const _TodoRecycleBinSheet();
+
+  /// 清空回收站：逐条彻底删除（含各自子任务此前已随删入站）
+  Future<void> _purgeAll(BuildContext context, WidgetRef ref, int count) async {
+    final ok = await showTodoConfirmSheet(
+      context,
+      '清空回收站',
+      '确定彻底删除回收站内的 $count 项待办？不可恢复。',
+    );
+    if (ok != true) return;
+    final repo = ref.read(todoRepositoryProvider);
+    final items = await repo.watchDeletedTodos().first;
+    for (final it in items) {
+      await repo.purgeTodo(it.key);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.theme;
+    // 红线 #28：抽屉内容用自己的 Consumer ref 订阅流（不归页面 element 所有）
+    final items = ref.watch(todoDeletedProvider).value ?? const <TodoItem>[];
+    return _sheetScaffold(
+      context: context,
+      title: '回收站',
+      size: SheetSize.lg,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 8,
+        children: [
+          Text(
+            '删除的待办在此保留 30 天，之后自动彻底删除；恢复后回到待办列表。',
+            style: t.typography.body.xs.copyWith(
+              fontSize: 12,
+              color: t.colors.mutedForeground,
+            ),
+          ),
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 24),
+              child: Center(
+                child: Text(
+                  '回收站是空的',
+                  style: t.typography.body.sm.copyWith(
+                    color: t.colors.mutedForeground,
+                  ),
+                ),
+              ),
+            )
+          else
+            for (final item in items) _RecycleRow(item: item),
+        ],
+      ),
+      bottomBar: [
+        Expanded(
+          child: FTappable(
+            onPress:
+                items.isEmpty ? null : () => _purgeAll(context, ref, items.length),
+            child: _sheetButton(
+              context,
+              label: items.isEmpty ? '清空回收站' : '清空回收站（${items.length}）',
+              bg: t.colors.destructive,
+              fg: t.colors.primaryForeground,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 回收站行：标题 + 删除时间（updateTime）+ 恢复 / 彻底删除（样式对齐标签管理行）
+class _RecycleRow extends ConsumerWidget {
+  const _RecycleRow({required this.item});
+
+  final TodoItem item;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.theme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: t.colors.muted,
+        borderRadius: BorderRadius.circular(AppTokens.radiusMd),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 2,
+              children: [
+                Text(
+                  item.title,
+                  style: t.typography.body.sm.copyWith(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: t.colors.foreground,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  '删除于 ${item.updateTime ?? '—'}',
+                  style: t.typography.body.xs.copyWith(
+                    fontSize: 12,
+                    color: t.colors.mutedForeground,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _rowIcon(context, FLucideIcons.rotateCcw, () async {
+            await ref
+                .read(todoRepositoryProvider)
+                .restoreTodo(item.key);
+            if (context.mounted) {
+              showFToast(context: context, title: const Text('已恢复到待办列表'));
+            }
+          }),
+          _rowIcon(
+            context,
+            FLucideIcons.trash2,
+            () async {
+              final ok = await showSheetConfirm(
+                context,
+                title: '彻底删除',
+                message: '彻底删除「${item.title}」？不可恢复。',
+              );
+              if (!ok) return;
+              await ref.read(todoRepositoryProvider).purgeTodo(item.key);
+            },
+            destructive: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _rowIcon(
+    BuildContext context,
+    IconData icon,
+    VoidCallback onTap, {
+    bool destructive = false,
+  }) {
+    final t = context.theme;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(
+          icon,
+          size: 16,
+          color: destructive ? t.colors.destructive : t.colors.mutedForeground,
+        ),
+      ),
+    );
+  }
 }
 
 // ===================== 工具 =====================

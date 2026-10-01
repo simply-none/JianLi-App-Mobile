@@ -36,6 +36,10 @@ Future<void> bootstrapAlarms(AppDatabase db) async {
   try {
     await KeepAliveGuard(db).ensureRunning();
   } catch (_) {}
+  // ⑤ E5 回收站清扫：物理删除进站超 30 天的软删除待办（独立 try/catch，不影响提醒自愈）
+  try {
+    await TodoRepository(db).purgeExpiredDeleted();
+  } catch (_) {}
 }
 
 /// 到点提醒自愈（**不申请权限**，可安全地反复调用；调用方负责节流）。
@@ -57,5 +61,9 @@ Future<void> healAlarmSchedules(AppDatabase db) async {
   } catch (_) {}
   try {
     await TodoRepository(db).rescheduleAll();
+  } catch (_) {}
+  // E5 回收站清扫：回前台顺带清一次（独立 try/catch，失败不影响提醒自愈）
+  try {
+    await TodoRepository(db).purgeExpiredDeleted();
   } catch (_) {}
 }
